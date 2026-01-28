@@ -455,7 +455,7 @@ const tA = performance.now();
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))
         .if(options.syncScroll.value && options.mode.value === "Both", (b) => b.useSyncPreviewWithCursor({ text, lastTyped }))
-        .if(options.yamlSchema.value, (b) => b.useYamlSchema(options.yamlSchema.value, editorView, linter))
+        .if(options.yamlSchema.value, (b) => b.useYamlLSPExtension(options.yamlSchema.value, editorView, linter, options.language.value))
         .useCodeBlockLanguages(editorView, linter)
         .if(options.mode.value === "Inline", (b) => b.useInlinePreview(text, options))
         .useTrackHeadings(headings)
