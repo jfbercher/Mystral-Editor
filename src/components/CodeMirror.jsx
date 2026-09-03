@@ -376,7 +376,7 @@ const CodeMirror = () => {
   });
 
   useSignalEffect(() => {
-    if (!options.collaboration.value.enabled || (collab.value.ready.value && !collab.value.lockMsg.value && !error.value)) return;
+    if (!options.collaboration.value.enabled || (collab.value.ready.value && !error.value)) return;
     editorView.value?.destroy();
 
     const view = new EditorView({
@@ -405,7 +405,7 @@ const CodeMirror = () => {
 
   useSignalEffect(() => {
     if (options.collaboration.value.enabled) {
-      if (!collab.value.ready.value || collab.value.lockMsg.value || error.value) return;
+      if (!collab.value.ready.value || error.value) return;
 
       if (collab.value.ytext.toString().length === 0 && options.initialText.peek().length > 0) {
         console.warn("[Collaboration] Remote state is empty, overriding with local state");

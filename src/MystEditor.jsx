@@ -245,7 +245,6 @@ function stopResize() {
             {options.collaboration.value.enabled && !collab.value.ready.value && (
               <StatusBanner>Connecting to the collaboration server ...</StatusBanner>
             )}
-            {options.collaboration.value.enabled && collab.value.lockMsg.value && <StatusBanner>{collab.value.lockMsg}</StatusBanner>}
             <MystWrapper ref={wrapperRef} className="myst-editor-wrapper" $fullscreen={fullscreen.value}>
               <TocToggleWrapper>
                 <TocToggle open={tocOpen} onClick={() => setTocOpen((o) => !o)} title={tocOpen ? "Hide table of contents" : "Show table of contents"}>
