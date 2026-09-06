@@ -1,4 +1,5 @@
 import * as localUtils from "./utils/local_utils.js";
+import { resetBibliography } from "./markdown/bibliography.js"
 import MystEditor, { defaultButtons } from "./MystEditor.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
@@ -12,6 +13,9 @@ import footnotesCss from "./styles/footnotes.css?inline";
 import bibliographyCss from "./styles/biblio.css?inline";
 import editorTabsCss from "./styles/editor-tabs.css?inline";
 import katexCss from "katex/dist/katex.min.css?inline";
+
+// WorkingDirectory
+import { workingDirectory } from "./utils/local_utils.js";
 
 const previewStyle = localUtils.makeStyleSheet(previewCss);
 const frontmatterStyle = localUtils.makeStyleSheet(frontmatterCss);
@@ -34,6 +38,9 @@ const color = usercolors[Math.floor(Math.random() * usercolors.length)];
 
 const collabEnabled = !(import.meta.env.VITE_COLLAB == "OFF") && urlParams.get("collab") != "false";
 const collabUrl = import.meta.env.VITE_WS_URL ?? urlParams.get("collab_server");
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {
   const reducedButtons = [1, 2, 3, 4, 6].map((i) => defaultButtons[i]);
@@ -153,12 +160,12 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
       },
     },
     */
-    {
-      id: "workingDirectory",
-      text: h("span", { style: "font-size:1.5em" }, "🗃️"),
-      tooltip: "Select working directory",
-      action: async () => localUtils.selectWorkingFolder(),
-    },
+    (!isTauri ? {
+        id: "workingDirectory",
+        text: h("span", { style: "font-size:1.5em" }, "🗃️"),
+        tooltip: "Select working directory",
+        action: async () => localUtils.selectWorkingFolder(),
+      } : {}),
     {
       id: "autosave",
       text: h("span", { style: "font-size:1.5em" }, "📌"),
@@ -207,7 +214,7 @@ export function mountEditor(options) {
         color,
         mode: collabUrl ? "websocket" : "local",
       },
-      getBibliographyDirectory: () => localUtils.getWorkingDirectory(),
+      getBibliographyDirectory: () => localUtils.getWorkingDirectory().value,
       onReady: ({ state }) => {
         let commentsLoaded = false;
         effect(async () => {
@@ -215,6 +222,9 @@ export function mountEditor(options) {
           if (view && !tab.editorReady) {
             tab.setEditorReady(false);
             await tab.applyThemeAtStartup();
+
+            await localUtils.loadImageFolderOnStartup();
+            await localUtils.loadWorkingFolderOnStartup();
 
             let rawContent = null;
             const pathResult = await localUtils.loadFileFromPathParam();
@@ -230,8 +240,6 @@ export function mountEditor(options) {
               rawContent = initialContent;
             }
 
-            await localUtils.loadImageFolderOnStartup();
-            await localUtils.loadWorkingFolderOnStartup();
 
             tab.setEditorText(rawContent);
             updateTabLabel(editorId);
@@ -251,9 +259,18 @@ export function mountEditor(options) {
             const ycomments = state.collab.value?.ycomments;
             if (ycomments) tab.registerYComments(ycomments);
           });
+            // Rerender la preview des images et de la biblio quand le workingDirectory change
+          effect(() => {
+            const dir = workingDirectory.value;
+            if (dir) {
+              resetBibliography(editorId);
+              state.cache.transform.clear();
+              state.text.rerender();
+            }
+          });
       },
       additionalStyles: [codeMirrorStyle, katexStyle, previewStyle, frontmatterStyle, footnotesStyle, bibliographyStyle],
-      mapUrl: (tag, url) => {
+      /*mapUrl: (tag, url) => {
             if (tag !== "img") return url;
             
             // Sous Tauri, on résout le chemin immédiatement de façon synchrone
@@ -264,7 +281,11 @@ export function mountEditor(options) {
             
             // En version Web standard, on conserve l'appel asynchrone
             return localUtils.resolveImage(url);
-          },
+          },*/
+      mapUrl: (tag, url) => {
+        if (tag !== "img") return url;
+        return localUtils.resolveImage(url); // async, fonctionne pour Tauri et Web
+      },
       customRoles: editorOptions.customRoles ?? [],
       customDirectives: editorOptions.customDirectives ?? [],
       includeButtons: makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab),
