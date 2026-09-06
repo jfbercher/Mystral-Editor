@@ -1,5 +1,6 @@
 import { BibtexParser } from "bibtex-js-parser";
 import { readTextFile } from '@tauri-apps/plugin-fs';
+import { currentFileDir } from "../utils/local_utils";
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -22,6 +23,59 @@ export function disposeEditorBibliography(editorId) {
 }
 
 export async function ensureBibliographyLoaded(editorId, path, getDirectoryHandle, onLoaded) {
+  const state = getBibState(editorId);
+
+  if (Array.isArray(path)) path = path[0];
+  if (!path || typeof path !== 'string') {
+    if (state.entries.length > 0) {
+      state.entries = [];
+      state.loadedPath = null;
+      onLoaded?.();
+    }
+    return;
+  }
+
+  if (path === state.loadedPath) return;
+  state.loadedPath = path;
+
+  try {
+    let text;
+
+    if (isTauri) {
+      // Tauri : on cherche à côté du fichier courant uniquement
+      const fileDir = currentFileDir.value;
+      if (!fileDir) {
+        console.warn("Bibliography: no current file directory available.");
+        state.loadedPath = null;
+        return;
+      }
+      const cleanPath = path.replace(/^\.?\//, '').replaceAll('\\', '/');
+      text = await readTextFile(`${fileDir}/${cleanPath}`);
+    } else {
+      // Web : comportement inchangé
+      const dirHandle = getDirectoryHandle?.();
+      if (!dirHandle) {
+        console.warn("Bibliography: no working directory available.");
+        state.loadedPath = null;
+        return;
+      }
+      const fileHandle = await dirHandle.getFileHandle(path);
+      const file = await fileHandle.getFile();
+      text = await file.text();
+    }
+
+    text = normalizeBibtex(text);
+    text = text.replace(/\\(?!\\)/g, "\\\\");
+    state.entries = BibtexParser.parseToJSON(text);
+    onLoaded?.();
+  } catch (err) {
+    console.error("Failed to load bibliography:", path, err);
+    state.entries = [];
+    state.loadedPath = null;
+  }
+}
+
+export async function ensureBibliographyLoadedOld(editorId, path, getDirectoryHandle, onLoaded) {
   const state = getBibState(editorId);
 
   // 1. Extraire le premier élément si path est un tableau (ex: ["references.bib"])
@@ -108,6 +162,13 @@ export function ensureBibliographyLoadedFetch(path, onLoaded) {
       loadedPath = null;
     });
 }
+
+export function resetBibliography(editorId) {
+  const state = getBibState(editorId);
+  state.loadedPath = null;
+  state.entries = [];
+}
+
 
 // --- Nettoyage / parsing des champs BibTeX ---
 
@@ -308,8 +369,7 @@ export function markdownItCitations(md) {
           : style === "author-year"
             ? `${inlineAuthorNames(info.entry.authors)}, ${info.entry.year}`
             : String(info.number);
-            
-
+      
       const preview = info.entry ? formatEntryFull(info.entry).replace(/<[^>]+>/g, "").replace(/"/g, "&quot;") : "";
       const titleAttr = preview ? ` title="${preview}"` : "";
       const previewAttr = ` data-preview="cite:${key}"`;
