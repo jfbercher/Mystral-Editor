@@ -1,6 +1,7 @@
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor } from "./editor_factory.js";
 import { config } from "./config.js";
+import { isTauri } from "./utils/local_utils/fs.js";
 
 
 // Helper function to compare handles/paths across Web and Tauri environments
@@ -94,6 +95,25 @@ export class TabManager {
     tabInfo.buttonEl.classList.toggle("active", editorId === this.activeTabId);
   };
 
+  updateTabLabel = (editorId) => {
+  const tabInfo = this.openTabs.get(editorId);
+  if (!tabInfo) return;
+  const label = tabInfo.buttonEl.querySelector(".myst-tab-label");
+  const name = tabInfo.tabState.currentFileName || "untitled";
+  label.textContent = name;
+  tabInfo.buttonEl.classList.toggle("active", editorId === this.activeTabId);
+  
+  // Tooltip with complete path (Tauri)
+    if (isTauri()) {
+      const handle = tabInfo.tabState.currentFileHandle;
+      if (handle) {
+        tabInfo.buttonEl.title = typeof handle === 'string' ? handle : handle.name;
+      } else {
+        tabInfo.buttonEl.title = "";
+      }
+    };
+  }
+
   showOnlyTab(editorId) {
     for (const [id, tabInfo] of this.openTabs.entries()) {
       if (tabInfo.container) tabInfo.container.style.display = id === editorId ? "block" : "none";
@@ -134,8 +154,8 @@ export class TabManager {
     this.activeTabId = editorId;
     this.touchTab(editorId);
     const tabInfo = this.openTabs.get(editorId);
-    console.log("Activating tab:", editorId);
-    console.log(tabInfo);
+    // console.log("Activating tab:", editorId);
+    // console.log(tabInfo);
     const content = tabInfo.savedText ?? this.newFileTemplate;
 
     if (!tabInfo.mounted) {
