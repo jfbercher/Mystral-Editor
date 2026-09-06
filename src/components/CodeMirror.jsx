@@ -15,7 +15,7 @@ const CodeEditor = styled.div`
   border-radius: var(--border-radius);
   background: ${(props) => (props.$mode != "Inline" ? "var(--editor-bg)" : "var(--panel-bg)")};
   font-family: monospace;
-  font-size: 14px;
+  font-size: 16px;
   resize: none;
   border: 0;
   padding: 20px;
