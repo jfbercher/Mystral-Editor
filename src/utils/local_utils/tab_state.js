@@ -5,10 +5,12 @@ import { showStatsPopup } from './stats.js';
 import { config } from "../../config.js";
 import { showToast } from '../utils_ui.js';
 import { saveCommentsForPath, loadCommentsForPath } from "../commentsStorage.js";
+import { effect } from '@preact/signals';
 
 
 import { 
   workingDirectory, 
+  currentFileDir,
   getRecentFileHandles, 
   addRecentFileHandle, 
   saveFileToPathParam, 
@@ -16,10 +18,10 @@ import {
   saveBackupFile
 } from './fs.js';
 
+
 // Détection de l'environnement Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-// Déclarations dynamiques des modules Tauri
 let tauriDialog, tauriFs;
 
 if (isTauri) {
@@ -41,6 +43,19 @@ function getFileName(fileHandleOrPath) {
   return fileHandleOrPath.name || config.defaultFileName;
 }
 
+// Fonction utilitaire pour construire une clé de sauvegarde
+// chemin complet (Tauri) ou workingDir+Handle (Web)
+function getFileKey(fileHandleOrPath) {
+  if (!fileHandleOrPath) return config.defaultFileName;
+  if (typeof fileHandleOrPath === 'string') {
+    return fileHandleOrPath;
+  }
+  if (workingDirectory.value.name) {
+    return workingDirectory.value.name + '_' + fileHandleOrPath.name || workingDirectory.value.name + '_' + config.defaultFileName;
+  }
+  return fileHandleOrPath.name || config.defaultFileName;
+}
+
 // Persist the active tab ID
 export async function saveActiveTabId(tabId) {
   return await set("activeTabId", tabId);
@@ -53,7 +68,7 @@ export async function getActiveTabId() {
 
 
 export function createTabState(editorId, onFileChanged, onDirtyChanged) {
-  let activeWorkingDir = workingDirectory;
+  let activeWorkingDir = workingDirectory.value;
 
   const tab = {
     editorId,
@@ -86,16 +101,16 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
 
   /** À appeler dès que le chemin du fichier + son contenu texte sont connus (chargement du fichier). */
   tab.loadCommentsForCurrentFile = async () => {
-    const filePath = tab.currentFileName; // ou un vrai chemin absolu si disponible, voir remarque plus bas
-    if (!filePath) return;
-    tab.pendingCommentsState = await loadCommentsForPath(filePath);
+    const fileKey = tab.currentFileKey; //tab.currentFileName; 
+    if (!fileKey) return;
+    tab.pendingCommentsState = await loadCommentsForPath(fileKey);
     tryApplyComments();
   };
 
   tab.saveCommentsForCurrentFile = async () => {
-    const filePath = tab.currentFileName;
-    if (!filePath || !tab.ycommentsRef) return;
-    await saveCommentsForPath(filePath, tab.ycommentsRef);
+    const fileKey = tab.currentFileKey; //tab.currentFileName;
+    if (!fileKey || !tab.ycommentsRef) return;
+    await saveCommentsForPath(fileKey, tab.ycommentsRef);
   };
 
   // End comments ------
@@ -126,10 +141,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     view.focus();
   };
 
-  tab.setSubtitle = async (text) => {
+  tab.setSubtitleOld = async (text) => {
     const shadowRoot = document.getElementById(editorId)?.shadowRoot;
     const subtitle = shadowRoot?.getElementById("document-subtitle");
-    let currentDir = workingDirectory || (isTauri ? localStorage.getItem("workingDirHandle") : await get("workingDirHandle"));
+    let currentDir = workingDirectory.value || (isTauri ? localStorage.getItem("workingDirHandle") : await get("workingDirHandle"));
     if (subtitle) {
       let dirName = "Undefined";
       if (currentDir) {
@@ -139,19 +154,46 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     }
   };
 
+  tab.setSubtitle = (text) => {
+    effect(async () => {
+      const shadowRoot = document.getElementById(editorId)?.shadowRoot;
+      const subtitle = shadowRoot?.getElementById("document-subtitle");
+      
+       // const currentDir = workingDirectory.value
+       // || (isTauri() ? localStorage.getItem("workingDirHandle") : await get("workingDirHandle"));
+
+      const currentDir = isTauri
+        ? currentFileDir.value
+        : workingDirectory.value || "";
+      
+      if (subtitle) {
+        let dirName = "Undefined";
+        if (currentDir) {
+          dirName = typeof currentDir === 'string' ? currentDir.split('/').pop() : currentDir.name;
+        }
+        subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;
+      }
+    });
+  };
+
   tab.setCurrentFile = async (handleOrPath) => {
     if (handleOrPath === null) {
       tab.currentFileHandle = null;
       tab.currentFileName = null;
+      currentFileDir.value = null;
       await tab.setSubtitle("");
       onFileChanged?.();
       return;
     }
     tab.currentFileHandle = handleOrPath;
     tab.currentFileName = getFileName(handleOrPath);
+    tab.currentFileKey = getFileKey(handleOrPath);
     await tab.setSubtitle(tab.currentFileName);
     
     if (isTauri) {
+      currentFileDir.value = typeof handleOrPath === 'string' 
+      ? handleOrPath.split('/').slice(0, -1).join('/')
+      : null;
       localStorage.setItem(`storedFileHandle:${editorId}`, tab.currentFileHandle);
     } else {
       await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
@@ -168,12 +210,14 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.selectMarkdownFile = async () => {
-    console.log("Opening new file... (m)");
+    console.log("Opening new file...");
     if (isTauri) {
+      //if (!tauriDialog) tauriDialog = await import('@tauri-apps/plugin-dialog');
+      while (!tauriDialog) await new Promise(r => setTimeout(r, 50));
       const selected = await tauriDialog.open({
-        multiple: false,
-        filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt"] }]
-      });
+          multiple: false,
+          filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt"] }]
+        });
       if (selected) {
         localStorage.setItem(`storedFileHandle:${editorId}`, selected);
         return selected;
@@ -197,6 +241,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.currentFileHandle = fileHandleOrPath;
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = getFileName(fileHandleOrPath);
+        tab.currentFileKey =  getFileKey(fileHandleOrPath);
+        currentFileDir.value = typeof fileHandleOrPath === 'string'  
+          ? fileHandleOrPath.split('/').slice(0, -1).join('/')
+          : null;
         localStorage.setItem(`storedFileHandle:${editorId}`, tab.currentFileHandle);
         await tab.setSubtitle(tab.currentFileName);
         onFileChanged?.();
@@ -214,6 +262,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.currentFileHandle = fileHandleOrPath;
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = fileHandleOrPath.name;
+        tab.currentFileKey =  getFileKey(fileHandleOrPath);
         await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
         await tab.setSubtitle(tab.currentFileName);
         onFileChanged?.();
@@ -229,7 +278,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     console.log("Opening new file...");
     try {
       const fileHandleOrPath = await tab.selectMarkdownFile();
-      console.log("Opening new file... (n)");
+      // console.log("Opening new file... (n)");
       if (!fileHandleOrPath) return;
       const file = await tab.loadFileFromHandle(fileHandleOrPath);
       if (file) {
@@ -330,8 +379,13 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
           return;
         }
       }
-
-      await tab.saveCurrentDoc();
+      if (tab.dirty) {
+        await tab.saveCurrentDoc();
+        console.log(`Autosave: ${tab.currentFileName}`);
+      }
+      else {
+        // console.log(`Not autosaved (not changed): ${tab.currentFileName}`);
+      }
       await tab.saveCommentsForCurrentFile(); 
       // console.log(`Autosave : ${tab.currentFileName}`);
     } catch (err) {

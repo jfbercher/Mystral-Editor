@@ -1,13 +1,16 @@
 import { get, set } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { config } from "../../config.js";
+import { signal } from '@preact/signals';
 
 // Helper de détection de l'environnement Tauri
 export const isTauri = () => typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
 // Variables globales d'état (String sous Tauri, DirectoryHandle sous Web)
 export let imagesDirectory = null;
-export let workingDirectory = null;
+export const workingDirectory = signal(null); // Signal WAS let workingDirectory = null
+export const currentFileDir = signal(null); 
+
 
 const imageExtensions = new Set([
   "gif", "jpg", "jpeg", "png", "webp", "avif", "svg", 
@@ -87,16 +90,17 @@ export async function selectWorkingFolder() {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const selected = await open({ directory: true, multiple: false });
     if (selected) {
-      workingDirectory = selected;
-      localStorage.setItem("workingDirHandle", workingDirectory);
-      console.log("Working folder selected and saved (Tauri):", workingDirectory);
+      workingDirectory.value = selected;                        
+      localStorage.setItem("workingDirHandle", selected);
+      console.log("Working folder selected and saved (Tauri):", workingDirectory.value);
     }
   } else {
     if ('showDirectoryPicker' in window) {
       try {
-        workingDirectory = await window.showDirectoryPicker();
-        await set("workingDirHandle", workingDirectory);
-        console.log("Working folder selected and saved (Web):", workingDirectory.name);
+        const handle = await window.showDirectoryPicker();
+        workingDirectory.value = handle;                       
+        await set("workingDirHandle", handle);
+        console.log("Working folder selected and saved (Web):", workingDirectory.value.name);
       } catch (err) {
         if (err.name !== 'AbortError') console.error("Error selecting working folder (Web):", err);
       }
@@ -108,13 +112,13 @@ export async function loadWorkingFolderOnStartup() {
   if (isTauri()) {
     const storedPath = localStorage.getItem("workingDirHandle");
     if (storedPath) {
-      workingDirectory = storedPath;
+      workingDirectory.value = storedPath;
       return workingDirectory;
     }
   } else {
     const storedHandle = await get("workingDirHandle");
     if (storedHandle) {
-      workingDirectory = storedHandle;
+      workingDirectory.value = storedHandle;
       return workingDirectory;
     }
   }
@@ -127,7 +131,57 @@ export function getWorkingDirectory() {
 
 // --- Résolution des images (Web vs Tauri) ---
 
+export async function resolveImage(path) {
+  // Gardes communes (inchangées)
+  if (
+    !path ||
+    /^(https?:|data:|blob:|mailto:|asset:)/i.test(path) ||
+    path.startsWith("https://asset.localhost")
+  ) return path;
+
+  const extension = path.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase();
+  if (!imageExtensions.has(extension)) return path;
+
+  if (isTauri()) {
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    const cleanPath = path.replace(/^\.?\//, "").replaceAll("\\", "/");
+    //const candidates = [currentFileDir.value, workingDirectory.value].filter(Boolean);
+    const candidates = [currentFileDir.value].filter(Boolean);
+
+    for (const dir of candidates) {
+      const absolutePath = `${dir.replace(/\/$/, "")}/${cleanPath}`;
+      if (await exists(absolutePath)) {
+        return convertFileSrc(absolutePath).replaceAll("%2F", "/");
+      }
+    }
+    return config.fallbackImage;
+  }
+
+  // Web (inchangé)
+  if (!workingDirectory.value) return path;
+  try {
+    const parts = path.replace(/^\.?\//, "").replaceAll("\\", "/").split("/").filter(Boolean);
+    const fileName = parts.pop();
+    let directory = workingDirectory.value;
+    for (const part of parts) {
+      directory = await directory.getDirectoryHandle(part);
+    }
+    const handle = await directory.getFileHandle(fileName);
+    const file = await handle.getFile();
+    return URL.createObjectURL(file);
+  } catch (err) {
+    console.error("Image not found (Web):", path, err);
+    return config.fallbackImage;
+  }
+}
+
 export function resolveImageSync(path) {
+  return resolveImage(path)
+}
+
+// ----
+
+export function resolveImageSyncOld(path) {
   // 1. Return immediately if empty or already an absolute/converted URL (http, https, blob, data, asset://)
   if (
     !path || 
@@ -139,13 +193,13 @@ export function resolveImageSync(path) {
 
   const extension = path.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase();
   if (!imageExtensions.has(extension)) return path;
-  if (!workingDirectory) return config.fallbackImage;
+  if (!workingDirectory.value) return config.fallbackImage;
 
   if (isTauri()) {
     try {
-      let rawWorkingDir = typeof workingDirectory === 'string' 
-        ? decodeURIComponent(workingDirectory) 
-        : workingDirectory;
+      let rawWorkingDir = typeof workingDirectory.value === 'string' 
+        ? decodeURIComponent(workingDirectory.value) 
+        : workingDirectory.value;
 
       const cleanWorkingDir = rawWorkingDir.replace(/\/$/, "");
       const cleanRelativePath = path.replace(/^\.?\//, "").replaceAll("\\", "/");
@@ -166,12 +220,12 @@ export function resolveImageSync(path) {
   return config.fallbackImage;
 }
 
-export async function resolveImage(path) {
+export async function resolveImageOld(path) {
   if (!path || /^(https?:|data:|blob:|mailto:)/i.test(path)) return path;
 
   const extension = path.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase();
   if (!imageExtensions.has(extension)) return path;
-  if (!workingDirectory) return path + " (no work dir)";
+  if (!workingDirectory.value) return path + " (no work dir)";
 
   if (isTauri()) {
     return resolveImageSync(path);
@@ -179,7 +233,7 @@ export async function resolveImage(path) {
     try {
       const parts = path.replace(/^\.?\//, "").replaceAll("\\", "/").split("/").filter(Boolean);
       const fileName = parts.pop();
-      let directory = workingDirectory;
+      let directory = workingDirectory.value;
       for (const part of parts) {
         directory = await directory.getDirectoryHandle(part);
       }
@@ -288,8 +342,8 @@ export async function saveBackupFile(currentHandleOrPath, content) {
         const backupName = originalName.replace(/\.[^/.]+$/, "") + ".bak";
 
         // 1. Primary approach: write inside workingDirectory if available
-        if (workingDirectory && typeof workingDirectory.getFileHandle === 'function') {
-          const backupHandle = await workingDirectory.getFileHandle(backupName, { create: true });
+        if (workingDirectory.value && typeof workingDirectory.value.getFileHandle === 'function') {
+          const backupHandle = await workingDirectory.value.getFileHandle(backupName, { create: true });
           const writable = await backupHandle.createWritable();
           await writable.write(content);
           await writable.close();
