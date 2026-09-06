@@ -17,12 +17,20 @@ export default defineConfig({
     }),
     filePlugin(),
   ],
+  optimizeDeps: {
+    include: [
+      '@tauri-apps/plugin-dialog',
+      '@tauri-apps/plugin-fs',
+      '@tauri-apps/plugin-shell',
+      '@tauri-apps/plugin-opener',
+    ]
+  },
   build: {
     outDir: "../dist",
     emptyOutDir: true,
     sourcemap: true,
     lib: {
-      entry: [resolve(__dirname, "src/MystEditor.jsx"), resolve(__dirname, "src/index.html"), resolve(__dirname, "src/myst-git/git.html")],
+      entry: [resolve(import.meta.dirname, "src/MystEditor.jsx"), resolve(import.meta.dirname, "src/index.html"), resolve(import.meta.dirname, "src/myst-git/git.html")],
       formats: ["es"],
     },
     rollupOptions: {

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "myst-editor",
-  "version": "0.1.0",
+  "productName": "Mystral Editor",
+  "version": "0.7.6",
   "identifier": "jfb",
   "build": {
     "frontendDist": "../dist",
@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "myst-editor",
-        "width": 800,
-        "height": 600,
+        "title": "Mystral Editor",
+        "width": 1200,
+        "height": 800,
+        "preventOverflow": true,
         "resizable": true,
         "fullscreen": false,
         "dragDropEnabled": false
