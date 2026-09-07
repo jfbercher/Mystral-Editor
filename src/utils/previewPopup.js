@@ -68,6 +68,12 @@ function resolvePreviewHtml(id, text) {
     const html = text.md?.value ? text.md.value.renderInline(formattedMd, {}) : formattedMd;
     return `<div class="preview-citation">${html}</div>`;
   }
+  if (id.startsWith("url:")) {
+    const url = id.slice(4);
+    const safe = url.replace(/[&<>"]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    return `<div class="preview-link"><code>${safe}</code></div>`;
+  }
   const html = getPreviewMap(editorId, text.chunks).get(id);
   return html ? `<div class="preview-generic">${html}</div>` : null;
 }

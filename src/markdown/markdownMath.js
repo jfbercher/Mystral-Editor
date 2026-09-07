@@ -520,6 +520,24 @@ const markdownItMath = (md, editorId) => {
     });
   });
 
+  // Liens externes : tooltip natif avec l'URL cible.
+md.core.ruler.push("external_link_title", (state) => {
+  state.tokens.forEach((blockToken) => {
+    if (blockToken.type !== "inline" || !blockToken.children) return;
+
+    for (const tok of blockToken.children) {
+      if (tok.type !== "link_open") continue;
+
+      const href = tok.attrGet("href") || "";
+      if (!href || href.startsWith("#")) continue;   // ancres internes : déjà gérées par data-preview
+      if (tok.attrGet("data-preview")) continue;     // déjà pris en charge par la popup
+      if (tok.attrGet("title")) continue;            // [txt](url "titre") : on respecte l'auteur
+      tok.attrSet("data-preview", `url:${href}`);
+      // tok.attrSet("title", href);
+    }
+  });
+});
+
   const originalTableOpen =
     md.renderer.rules.table_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
 
