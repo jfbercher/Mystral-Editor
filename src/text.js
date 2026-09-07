@@ -36,6 +36,7 @@ import {
 } from "./markdown/bibliography";
 import { invalidatePreviewMapCache } from "./utils/previewPopup";
 import { moveSectionInText, flattenHeadingsWithLines, computeSectionRange } from "./utils/sectionReorder";
+import { scanReferenceLinks, markdownItRefLinks } from "./markdown/markdownRefLinks";
 
 window.moveSectionInText = moveSectionInText;
 window.flattenHeadingsWithLines = flattenHeadingsWithLines;
@@ -104,6 +105,7 @@ export class TextManager {
         .use(markdownItFootnoteRefs)
         .use(markdownItBibliographyMarker)
         .use(markdownItCitations)
+        .use(markdownItRefLinks)
         .use(checkLinks)
         .use(colonFencedBlocks)
         //.use(markdownItMapUrls, options.mapUrl.value)
@@ -288,6 +290,8 @@ export class TextManager {
     if (numberingSectionsFrontmatter !== undefined && numberingSetting) {
       numberingSetting.enabled = numberingSectionsFrontmatter;
     }
+    const refDefs = scanReferenceLinks(this.text.value);
+    const refDefsSignature = [...refDefs.entries()].map(([k, v]) => `${k}:${v.url}`).join("|");
 
     ensureBibliographyLoaded(this.options.id.value, bibliographyPath, () => this.options.getBibliographyDirectory.value?.(), () => this.rerender());
 
@@ -342,10 +346,10 @@ export class TextManager {
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${refDefsSignature}`,
         42,
         ).result();
-
+        
         if (!(hash in chunkLookup)) {
           for (let l = startLine; l <= endLine; l++) {
             this.lineMap.delete(l);
@@ -369,6 +373,7 @@ export class TextManager {
               citationTemplate,
               kindLabel,
               numberingEnabled,
+              refDefs,
             }),
           );
         return { text, hash, id: chunkId, html, oldId: chunkLookup[hash]?.oldId, startLine, endLine };
