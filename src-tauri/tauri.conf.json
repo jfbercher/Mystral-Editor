@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Mystral Editor",
-  "version": "0.7.9",
+  "version": "0.7.9.1",
   "identifier": "jfb",
   "build": {
     "frontendDist": "../dist",
@@ -51,7 +51,8 @@
       "debugApplicationIdSuffix": ".debug"
     },
 	"macOS": {
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "signingIdentity": "-"
     }
   }
 }
