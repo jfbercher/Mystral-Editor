@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import { Directive, directivePlugin, Role, rolePlugin } from "markdown-it-docutils";
 import { escapeRE } from "markdown-it/lib/common/utils";
+import { Cite } from "../markdown/bibliography"
 
 /**
  * @typedef {{
@@ -162,13 +163,14 @@ const toDocutilsRole = ({ target, transform }) => {
  *  @returns {function(MarkdownIt): void}
  */
 const useCustomRoles = (transforms, cache) => (markdownIt) => {
-  const customRoles = transforms
+  let customRoles = transforms
     .map(overloadTransform(cache))
     .map(toDocutilsRole)
     .reduce((roles, { name, role }) => {
       roles[name] = role;
       return roles;
     }, {});
+  customRoles = { ...customRoles, ...{cite: Cite}}
 
   // Usually a markdownIt renderer rule would escape all html code. Here we create a rule
   // which explicitly does nothing so that all html returned by transforms is rendered.

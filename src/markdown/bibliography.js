@@ -438,3 +438,41 @@ export function renderBibliographySection(citeMap, style, template, md) {
 
   return `<hr class="bib-sep"><section class="bibliography"><h3>Bibliography</h3><ol class="bib-list">${items}</ol></section>`;
 }
+
+// -- Role ------------
+import { Role } from "markdown-it-docutils";
+
+export class Cite extends Role {
+  run({ content }) {
+    const keys = content.split(";").map((k) => k.trim()).filter(Boolean);
+
+    const open = new this.state.Token("citation_html", "", 0);
+
+    const style = this.state.env.citationStyle || "numeric";
+    const wrapper = style === "numeric" ? ["[", "]"] : ["(", ")"];
+
+    const parts = keys.map((key) => {
+      const info = this.state.env.citeMap?.get(key);
+      if (!info) return key; // label inconnu : affiché tel quel, pas de lien
+
+      info.occurrence = (info.occurrence || 0) + 1;
+      const refId = info.occurrence === 1 ? `citeref:${key}` : `citeref:${key}-${info.occurrence}`;
+
+      const label =
+        style === "author-year" && info.entry
+          ? `${inlineAuthorNames(info.entry.authors)}, ${info.entry.year}`
+          : String(info.number);
+
+      const preview = info.entry ? formatEntryFull(info.entry).replace(/<[^>]+>/g, "").replace(/"/g, "&quot;") : "";
+      const titleAttr = preview ? ` title="${preview}"` : "";
+      const previewAttr = ` data-preview="cite:${key}"`;
+
+      //return `<a id="${refId}" href="#cite:${key}" class="citation-ref">${label}</a>`;
+      return `<a id="${refId}" href="#cite:${key}" class="citation-ref"${previewAttr}>${label}</a>`;
+    });
+
+    //open.content = `<sup class="citation-group">${wrapper[0]}${parts.join("; ")}${wrapper[1]}</sup>`;
+    open.content = `<span class="citation-group">${wrapper[0]}${parts.join("; ")}${wrapper[1]}</span>`;
+    return [open];
+  }
+}
