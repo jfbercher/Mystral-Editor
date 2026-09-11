@@ -33,6 +33,10 @@
       height: 100% !important;
       box-sizing: border-box;
     }
+    .myst-chunk {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 500px;
+    }
   </style>
 
   <script type="module">
@@ -80,11 +84,12 @@
   import { initApp } from "./app.js";
 
     // Bootstrapping the application
-    initApp({
+    tabManager = initApp({
       customRoles: exampleCustomRoles,
       customDirectives: exampleCustomDirectives,
       transforms: exampleTransforms,
     });
+
 
   </script>
 </head>
