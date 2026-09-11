@@ -33,6 +33,7 @@ import {
   markdownItBibliographyMarker,
   renderBibliographySection,
   getBibEntries,
+  Cite,
 } from "./markdown/bibliography";
 import { invalidatePreviewMapCache } from "./utils/previewPopup";
 import { moveSectionInText, flattenHeadingsWithLines, computeSectionRange } from "./utils/sectionReorder";
@@ -47,15 +48,31 @@ window.testComputeSectionRange = computeSectionRange;
 
 
 
-
-
-
 export const markdownUpdatedEffect = StateEffect.define();
 /** Re-project Inline widgets after external data changes (transforms that don't touch the doc text). */
 export const inlineRefreshEffect = StateEffect.define();
+let timing_debug = false;
 
 
 hljs.registerLanguage("yaml", yamlHighlight);
+
+
+// Utils 
+export const lineStarts = (text) => {
+  const starts = [0];
+  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
+  return starts;
+};
+
+/** Numéro de ligne (1-based) pour un offset, en O(log n). */
+export const lineAtOffset = (starts, offset) => {
+  let lo = 0, hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid] <= offset) lo = mid; else hi = mid - 1;
+  }
+  return lo + 1;
+};
 
 /** This class stores the document text and renders the Markdown in the Preview */
 export class TextManager {
@@ -65,6 +82,7 @@ export class TextManager {
   #renderPending = null;
 
   constructor({ initialText, editorView, cache, options, userSettings, headings, cleanups }) {
+
     this.headings = headings;
     this.text = signal(initialText.peek());
     this.lineMap = new Map();
@@ -108,10 +126,10 @@ export class TextManager {
         .use(markdownItRefLinks)
         .use(checkLinks)
         .use(colonFencedBlocks)
-        //.use(markdownItMapUrls, options.mapUrl.value)
+        ////.use(markdownItMapUrls, options.mapUrl.value)
         .use(markdownItMapUrls, overloadMapUrl(cache.transform)(options.mapUrl.value))
         .use(markdownCheckboxes)
-        .use(criticMarkup)
+        //.use(criticMarkup)
         .use(markdownFrontmatter);
         
 
@@ -139,7 +157,8 @@ export class TextManager {
 
     const unsubscribe = cache.transform.onChange((input) => this.scheduleRender({ staleInput: input }));
     cleanups?.push(() => {
-      if (this.#renderFrame) cancelAnimationFrame(this.#renderFrame);
+      if (this.#renderFrame) clearTimeout(this.#renderFrame);
+      // if (this.#renderFrame) cancelAnimationFrame(this.#renderFrame);
       this.#renderFrame = 0;
       this.#renderPending = null;
       unsubscribe();
@@ -151,12 +170,15 @@ export class TextManager {
    * @param {{ useCache?: boolean, staleInput?: string }} [opts]
    */
   scheduleRender({ useCache = true, staleInput } = {}) {
+    if (timing_debug) console.log("scheduleRender appelé, useCache:", useCache, "staleInput:", staleInput, new Error().stack.split("\n")[2]);
+ 
     if (!this.#renderPending) this.#renderPending = { useCache: true, staleInputs: new Set() };
     this.#renderPending.useCache = this.#renderPending.useCache && useCache;
     if (staleInput) this.#renderPending.staleInputs.add(staleInput);
 
     if (this.#renderFrame) return;
-    this.#renderFrame = requestAnimationFrame(() => {
+    //this.#renderFrame = requestAnimationFrame(() => {
+    this.#renderFrame = setTimeout(() => {
       this.#renderFrame = 0;
       const { useCache: cached, staleInputs } = this.#renderPending;
       this.#renderPending = null;
@@ -164,7 +186,8 @@ export class TextManager {
       // Chunks first so Inline's refresh projects the same cached HTML Preview uses.
       this.renderText(cached, false, stale);
       this.editorView.value?.dispatch({ effects: inlineRefreshEffect.of(null) });
-    });
+    // });
+    }, 50);
   }
 
   /** @param {(chunkText: string) => boolean} [stale] - re-render these chunks even when cached */
@@ -266,10 +289,15 @@ export class TextManager {
     };
   }
 
+
+
   splitTextIntoChunks(chunkLookup = {}) {
+    
+    if (timing_debug) {const _t0 = performance.now();}
     const fmResult = extractFrontmatter(this.text.value);
     updateMathMacros(this.options.id.value, fmResult?.frontmatter);
     const macrosSignature = getMacrosSignature(this.options.id.value);
+    if (timing_debug) console.log("frontmatter+macros:", (performance.now() - _t0).toFixed(2), "ms");
     //
     //const refsKindLabel = getKindLabel(fmResult?.frontmatter)
     const { kindLabel, numberingEnabled } = getNumberingConfig(fmResult?.frontmatter);
@@ -290,27 +318,37 @@ export class TextManager {
     if (numberingSectionsFrontmatter !== undefined && numberingSetting) {
       numberingSetting.enabled = numberingSectionsFrontmatter;
     }
+    if (timing_debug) {const _t1 = performance.now();}
     const refDefs = scanReferenceLinks(this.text.value);
     const refDefsSignature = [...refDefs.entries()].map(([k, v]) => `${k}:${v.url}`).join("|");
+    if (timing_debug) console.log("scanReferenceLinks+macros:", (performance.now() - _t1).toFixed(2), "ms");
 
     ensureBibliographyLoaded(this.options.id.value, bibliographyPath, () => this.options.getBibliographyDirectory.value?.(), () => this.rerender());
-
+    if (timing_debug) {const _t2 = performance.now();}
     const { citeMap } = scanCitations(this.text.value, getBibEntries(this.options.id.value), citationStyle);
+    
     const citationsSignature = [...citeMap.entries()].map(([k, v]) => `${k}:${v.number}:${v.entry?.year}`).join("|");
-
-     // for headings numbering
+    if (timing_debug) console.log("scanCitations:", (performance.now() - _t2).toFixed(2), "ms");
+    
+    // for headings numbering
+    if (timing_debug) {const _t3 = performance.now();}
     const numberingSectionsActive = this.userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
     const numberedHeadings = numberHeadings(this.headings.value);
     const headingByLine = flattenToLineMap(numberedHeadings, this.text.value);
     const headingMap = { byLine: headingByLine, active: numberingSectionsActive };
+    if (timing_debug) console.log("headings, count:", this.headings.value.length, "temps:", (performance.now() - _t3).toFixed(2), "ms");
 
+    if (timing_debug) {const _t4 = performance.now();}
     const { byLine, byLabel, targets } = scanTargets(this.text.value, numberingEnabled, headingMap);
     const refMap = { byLine, byLabel };
+    if (timing_debug) console.log("scanTargets:", (performance.now() - _t4).toFixed(2), "ms");
 
     const sectionLabelsSignature = getSectionLabelsSignature(byLabel);
 
+    if (timing_debug) {const _t5 = performance.now();}
     const { footnoteMap } = scanFootnotes(this.text.value);
     const footnotesSignature = [...footnoteMap.entries()].map(([l, i]) => `${l}:${i.number}:${i.content}`).join("|");
+    if (timing_debug) console.log("scanFootnotes:", (performance.now() - _t5).toFixed(2), "ms");
 
     this.refMap = refMap; // exposed for external use (e.g. label resolution -> line in Inline mode)
     this.headingMap = headingMap; // same, for headings if necessary
@@ -319,7 +357,13 @@ export class TextManager {
     this.citationTemplate = citationTemplate;
     this.kindLabel = kindLabel;
     this.numberingEnabled = numberingEnabled;
+    this.bibArray = getBibEntries(this.options.id.value); //getBibEntries: () => getBibEntries(options.id.value)
 
+
+    if (timing_debug) {const _t6 = performance.now();}
+    let renderMs = 0
+    let sanitizeMs = 0
+    let cacheHits = 0
     const realChunks = this.text.value
       .split(/(?=\n#{1,3} )/g)
       .reduce((chunks, textChunk) => {
@@ -333,12 +377,20 @@ export class TextManager {
         }
         const endLine = startLine + textChunk.trimStart().split("\n").length - 1;
 
+        const MAX_CHUNK = 50_000;  // That's to limit chunks' size
         const fenceRegex = /^[`:~]{3}/gm;
-        if (countOccurences(lastChunk?.text, fenceRegex) % 2 != 0) {
+        const unbalanced = countOccurences(lastChunk?.text, fenceRegex) % 2 != 0;
+        if (unbalanced && lastChunk && lastChunk.text.length < MAX_CHUNK) {
           chunks[lastChunkIdx] = { text: lastChunk.text + textChunk, startLine: lastChunk.startLine, endLine };
         } else {
           chunks.push({ text: textChunk, startLine, endLine });
         }
+        /*const fenceRegex = /^[`:~]{3}/gm;
+        if (countOccurences(lastChunk?.text, fenceRegex) % 2 != 0) {
+          chunks[lastChunkIdx] = { text: lastChunk.text + textChunk, startLine: lastChunk.startLine, endLine };
+        } else {
+          chunks.push({ text: textChunk, startLine, endLine });
+        }*/
         return chunks;
       }, [])
       .map(({ text, startLine, endLine }, chunkId) => {
@@ -356,7 +408,35 @@ export class TextManager {
           }
         }
 
-        const html =
+      
+
+        let html = chunkLookup[hash]?.html;
+        if (html === undefined) {
+          if (timing_debug) {const _r0 = performance.now();}
+          const rendered = this.md.value.render(text, { chunkId,
+                      startLine,
+                      lineMap: this.lineMap,
+                      view: this.editorView.value,
+                      refMap,
+                      docutils: { targets },
+                      headingMap,
+                      footnoteMap,
+                      citeMap, 
+                      citationStyle,
+                      citationTemplate,
+                      kindLabel,
+                      numberingEnabled,
+                      refDefs, });
+          if (timing_debug) {const _r1 = performance.now();}
+          html = sanitize(rendered);
+          if (timing_debug) {
+            renderMs += _r1 - _r0;
+            sanitizeMs += performance.now() - _r1;}
+        } else {
+          cacheHits++;
+        }
+        
+        /* const html =
           chunkLookup[hash]?.html ||
           sanitize(
             this.md.value.render(text, {
@@ -375,9 +455,13 @@ export class TextManager {
               numberingEnabled,
               refDefs,
             }),
-          );
+          ); */
+
         return { text, hash, id: chunkId, html, oldId: chunkLookup[hash]?.oldId, startLine, endLine };
       });
+
+      if (timing_debug) console.log(`chunks: ${realChunks.length}, hits: ${cacheHits}, render: ${renderMs.toFixed(0)}ms, sanitize: ${sanitizeMs.toFixed(0)}ms`);
+      if (timing_debug) console.log("splitAndRender:", (performance.now() - _t6).toFixed(2), "ms");
 
     if (footnoteMap.size > 0) {
       const footnotesHash = `footnotes-${footnotesSignature}`;
