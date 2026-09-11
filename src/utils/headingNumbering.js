@@ -48,11 +48,35 @@ export function scanSectionLabelLines(fullText) {
     return labelToHeadingLine;
 }
 
-export function flattenToLineMap(nodes, fullText, map = new Map()) {
-  for (const node of nodes) {
-    const lineNumber = fullText.slice(0, node.pos).split("\n").length;
-    map.set(lineNumber, { number: node.number, isTitle: node.isTitle, text: node.text });
-    flattenToLineMap(node.children, fullText, map);
+/** Offsets de début de chaque ligne, calculés une seule fois. */
+const computeLineStarts = (text) => {
+  const starts = [0];
+  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
+  return starts;
+};
+
+/** Numéro de ligne (1-based) pour un offset, par dichotomie. */
+const lineAt = (starts, offset) => {
+  let lo = 0,
+    hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid] <= offset) lo = mid;
+    else hi = mid - 1;
   }
+  return lo + 1;
+};
+
+export function flattenToLineMap(nodes, fullText, map = new Map()) {
+  const starts = computeLineStarts(fullText);
+
+  const visit = (list) => {
+    for (const node of list) {
+      map.set(lineAt(starts, node.pos), { number: node.number, isTitle: node.isTitle, text: node.text });
+      visit(node.children);
+    }
+  };
+
+  visit(nodes);
   return map;
 }
