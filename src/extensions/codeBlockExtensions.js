@@ -62,7 +62,7 @@ const codeBlocksSubeditors = (extensions, editorView, tooltipSources = {}, compl
           const startLine = tr.state.doc.lineAt(ref.from);
           const lang = startLine.text.trim().replace(/[`~:]+/, "");
           if (!(lang in value.extensions)) return false;
-           console.log("lang extrait:", JSON.stringify(lang), "extensions disponibles:", Object.keys(value.extensions), "match:", lang in value.extensions);
+          // console.log("lang extrait:", JSON.stringify(lang), "extensions disponibles:", Object.keys(value.extensions), "match:", lang in value.extensions);
 
 
           const endLine = tr.state.doc.lineAt(ref.to);
