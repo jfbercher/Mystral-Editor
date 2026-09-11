@@ -75,6 +75,36 @@ function getHeadingsFlat(/** @type {EditorState} */ state) {
   return headingsFlat;
 }
 
+function getHeadingsFlatPerhaps(state) {
+  const headings = [];
+  const doc = state.doc;
+
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    const atx = /^(#{1,6})\s+(.*)$/.exec(line.text);
+    if (atx) {
+      headings.push({
+        level: atx[1].length,
+        text: atx[2].replace(FOLD_MARKER, "").trim(),
+        pos: line.from,
+      });
+      continue;
+    }
+    // Setext : soulignement === (niveau 1) ou --- (niveau 2) sous une ligne non vide.
+    if (n > 1 && /^(=+|-{2,})\s*$/.test(line.text)) {
+      const previous = doc.line(n - 1);
+      if (previous.text.trim() && !/^(#{1,6})\s/.test(previous.text)) {
+        headings.push({
+          level: line.text[0] === "=" ? 1 : 2,
+          text: previous.text.replace(FOLD_MARKER, "").trim(),
+          pos: previous.from,
+        });
+      }
+    }
+  }
+  return headings;
+}
+
 
  export function nestHeadings(headingsFlat) {
   const headingsNested = [];
