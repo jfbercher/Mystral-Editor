@@ -251,6 +251,8 @@ const defaults = {
   language: "markdown",
   // biblio
   getBibliographyDirectory: () => null,
+  /** @type {{key: string, run: (view: EditorView) => boolean}[]} */
+  appKeymap: [],
 };
 
 export const modeChangeAnnotation = Annotation.define();
