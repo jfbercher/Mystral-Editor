@@ -18,6 +18,7 @@ import {
   foldKeymap,
   HighlightStyle,
   forceParsing,
+  foldCode, unfoldCode, foldAll, unfoldAll, toggleFold,
 } from "@codemirror/language";
 import { frontmatterFoldService } from "./frontmatterFold";
 import { syncPreviewWithCursor } from "./syncDualPane";
@@ -40,6 +41,9 @@ import { FOLD_MARKER } from "../text";
 import { criticHistory, criticMarkup, suggestMode } from "./criticMarkup";
 import { codeBlockLanguages } from "./codeBlockLanguages";
 import { python } from "@codemirror/lang-python";
+import { mystCompletions } from "./mystCompletions";
+import { mystComments } from "./mystComments";
+
 
 
 const getRelativeCursorLocation = (view) => {
@@ -152,10 +156,11 @@ static codeLanguage(name) {
     if (lang === "markdown") {
       const md = markdown({
         codeLanguages: ExtensionBuilder.codeLanguage,
-        addKeymap: false,
+        addKeymap: true,
         extensions: [Autolink, Strikethrough, colonFencedCodeParser, checkboxParser, tableParser, roleParser, transformParser],
       });
       this.extensions.push(yamlFrontmatter({ content: md.language }), md);
+      // this.extensions.push(md.language.data.of({ commentTokens: { line: "%" } }));
     } else if (lang === "yaml") {
       this.extensions.push(
         yaml({
@@ -165,6 +170,38 @@ static codeLanguage(name) {
     } else {
       console.warn(`Unsupported language string in argument to useLanguage(): ${lang}.`);
     }
+    return this;
+  }
+
+
+  useMystCompletions(providers) {
+    this.extensions.push(mystCompletions(providers));
+    return this;
+  }
+
+  useMystComments() {
+    this.extensions.push(mystComments());
+    return this;
+  }
+
+  useFoldKeys() {
+    this.extensions.push(
+      Prec.high(
+        keymap.of([
+          { key: "Ctrl-Shift-ArrowLeft", run: foldCode, preventDefault: true },
+          { key: "Ctrl-Shift-ArrowRight", run: unfoldCode, preventDefault: true },
+          { key: "Ctrl-Shift-ArrowUp", run: foldAll, preventDefault: true },
+          { key: "Ctrl-Shift-ArrowDown", run: unfoldAll, preventDefault: true },
+          { key: "Ctrl-Shift-Space", run: toggleFold, preventDefault: true },
+        ]),
+      ),
+    );
+    return this;
+  }
+
+  useAppKeymap(bindings) {
+    if (!bindings?.length) return this;
+    this.base.push(Prec.high(keymap.of(bindings)));
     return this;
   }
 
@@ -331,7 +368,7 @@ static codeLanguage(name) {
   }
 
   useCodeBlockLanguages(editorView, linter) {
-  this.extensions.push(codeBlockLanguages(editorView, linter));
+    this.extensions.push(codeBlockLanguages(editorView, linter));
   return this;
 }
 
