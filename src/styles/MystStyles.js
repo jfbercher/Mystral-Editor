@@ -68,6 +68,7 @@ lightTheme.replaceSync(`
     --string-fg: var(--brown-500);
     --deleted-bg: var(--red-400);
     --inserted-bg: var(--green-300);
+    --text-fg: #333;
 
     --editor-subtitle:  #333;
 
@@ -124,6 +125,7 @@ darkTheme.replaceSync(`
     --string-fg: #ffa657;
     --deleted-bg: #e74a3cb2;
     --inserted-bg: #00af91b2;
+    --text-fg: #ddd;
 
     --editor-subtitle: #ddd;
 
@@ -251,5 +253,31 @@ export const MystContainer = styled(MystCSSVars)`
 
 #new-tab-button:hover {
   background-color: var(--button-bg-hover, #5c5c5c);
+}
+
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  background: var(--panel-bg);
+  color: var(--text-fg);
+  font-family: "Lato";
+  max-height: 20em;
+
+  & > li {
+    padding: 3px 1em 3px 3px;
+  }
+
+  & > li[aria-selected] {
+    background: var(--accent);
+    color: var(--accent-light);
+  }
+}
+
+.cm-completionDetail {
+  color: var(--editor-gutter-fg);
+  font-style: normal;
+  margin-left: 1em;
+}
+
+.cm-completionIcon {
+  opacity: 0.6;
 }
 `;
