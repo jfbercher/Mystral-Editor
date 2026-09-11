@@ -615,6 +615,9 @@ md.core.ruler.push("external_link_title", (state) => {
             } else if (tok.meta.kind === "ref" && tok.meta.value) {
               // value contient le texte du lien à compléter par le titre
               textTok.content = tok.meta.value + ' ' + info.title
+            } else if (tok.meta.kind === "cite" && tok.meta.value) {
+              // value contient le texte du lien à compléter par le titre
+              textTok.content = tok.meta.value + ' ' + info.title
             }
             else if (tok.meta.kind === "numref" && tok.meta.value) {
               // value contient le patron "%s"/"{number}" déjà résolu localement par docutils ;
