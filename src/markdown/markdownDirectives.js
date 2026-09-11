@@ -38,7 +38,166 @@ function extractHeadingTitle(bodyTokens) {
   return {full: title, title: title, consumedCount: 3 };
 }
 
+
+/* ------------------------------------------------------------------ *
+ * Constantes et utilitaires
+ * ------------------------------------------------------------------ */
+
+/** Noms d'admonitions reconnus comme `kind` lorsqu'ils apparaissent dans `:class:`. */
+const ADMONITION_KINDS = ["attention", "caution", "danger", "error", "hint", "important", "note", "seealso", "tip", "warning"];
+
+/** alias → nom canonique, d'après la doc mystmd. */
+const OPTION_ALIASES = {
+  name: "label",
+  numbered: "enumerated",
+  number: "enumerator",
+};
+
+/**
+ * markdown-it-docutils n'a pas de mécanisme d'alias : les deux noms doivent être
+ * déclarés dans `option_spec`, et on les réunifie ici. Le nom canonique explicite
+ * l'emporte si les deux sont fournis.
+ */
+const normalizeOptions = (options = {}) => {
+  const out = { ...options };
+  for (const [alias, canonical] of Object.entries(OPTION_ALIASES)) {
+    if (alias in out) {
+      if (!(canonical in out)) out[canonical] = out[alias];
+      delete out[alias];
+    }
+  }
+  return out;
+};
+
+/**
+ * Distingue trois états : option absente (`undefined`), drapeau nu ou valeur vraie
+ * (`true`), valeur explicitement fausse (`false`). La distinction absent / false
+ * est indispensable pour `open` : `:open: false` doit produire un dropdown fermé,
+ * pas une admonition ordinaire.
+ */
+const asBoolOld = (v) => {
+  console.log("v", typeof v, String(v), "v", v)
+  if (v === undefined) {console.log("undefined"); return undefined};
+  if (v === false) return false;
+  if (v === "") {console.log("vide"); return false;}
+  if (v === null || v === "") return true;
+  return !/^(false|off|no|0)$/i.test(String(v).trim());
+};
+
+const asBool = (v) => {
+  if (v === undefined) return undefined;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "") return true;                          // drapeau nu
+  return !/^(false|off|no|0)$/.test(s);
+};
+
+/* ------------------------------------------------------------------ *
+ * Directive
+ * ------------------------------------------------------------------ */
+
 class BaseAdmonitionV2 extends Directive {
+  final_argument_whitespace = true;
+  has_content = true;
+  rawOptions = true;
+
+  option_spec = {
+    class: directiveOptions.class_option,
+    label: directiveOptions.unchanged,
+    name: directiveOptions.unchanged, // alias de label
+    enumerated: directiveOptions.unchanged,
+    numbered: directiveOptions.unchanged, // alias de enumerated
+    enumerator: directiveOptions.unchanged,
+    number: directiveOptions.unchanged, // alias de enumerator
+    // `unchanged` et non `flag` : il faut pouvoir lire `false`.
+    icon: directiveOptions.unchanged,
+    open: directiveOptions.unchanged,
+  };
+
+  required_arguments = 0;
+  optional_arguments = 1; // titre optionnel
+
+  title = "";
+  kind = "";
+
+  run(data) {
+    const options = normalizeOptions(data.options);
+    //const classes = options.class ? [...options.class] : [];
+    const classes = [].concat(options.class ?? []).flatMap(c => String(c).split(/\s+/)).filter(Boolean);
+
+    // Une classe nommant une admonition l'emporte sur le nom de la directive.
+    // La première valide gagne, conformément à la spec.
+    const kindFromClass = classes.find((c) => ADMONITION_KINDS.includes(c));
+    const kind = kindFromClass ?? this.kind;
+
+    const open = "open" in options ? asBool(options.open) : undefined;
+    const showIcon = "icon" in options ? asBool(options.icon) : true;
+    // `:open:` transforme l'admonition en dropdown même sans `:class: dropdown`.
+    const isDropdown = classes.includes("dropdown") || open !== undefined;
+    const isOpen = open ?? false;
+
+    // --- Titre ---
+    let titleContent = data.args[0]; // markdown brut, pas encore parsé
+    let bodyText = data.body;
+    const bodyMapStart = data.bodyMap[0];
+
+    if (!titleContent) {
+      const probe = this.nestedParse(data.body, data.bodyMap[0]);
+      const headingResult = extractHeadingTitle(probe);
+      const boldResult = extractBoldOnlyTitle(probe);
+      const result = headingResult || boldResult;
+
+      if (result) {
+        const lines = data.body.split("\n");
+        const index = lines.findIndex((line) => line.includes(result.full));
+
+        titleContent = result.title;
+        bodyText = index >= 0 ? lines.slice(index + 1).join("\n") : data.body;
+      } else {
+        titleContent = this.title || DEFAULT_TITLES[kind] || "";
+      }
+    }
+
+    // --- Conteneur : <details> pour dropdown, <aside> sinon ---
+    const containerTag = isDropdown ? "details" : "aside";
+    const openToken = this.createToken("admonition_open", containerTag, 1, {
+      map: data.map,
+      block: true,
+      //meta: { kind, enumerated: asBool(options.enumerated), enumerator: options.enumerator },
+      meta: { kind, enumerated: false, enumerator: false },
+    });
+
+    if (classes.length) openToken.attrSet("class", classes.join(" "));
+    openToken.attrJoin("class", "admonition");
+    if (kind) openToken.attrJoin("class", kind);
+    if (!showIcon) openToken.attrJoin("class", "no-icon");
+    if (isDropdown && isOpen) openToken.attrSet("open", "");
+    if (options.label) openToken.attrSet("id", options.label);
+
+    const newTokens = [openToken];
+
+    // --- Titre : <summary> pour dropdown, <header> sinon ---
+    const titleTag = isDropdown ? "summary" : "header";
+    const titleOpen = this.createToken("admonition_title_open", titleTag, 1);
+    titleOpen.attrSet("class", "admonition-title");
+    newTokens.push(titleOpen);
+    newTokens.push(
+      this.createToken("inline", "", 0, {
+        map: [data.map[0], data.map[0]],
+        content: titleContent,
+        children: [],
+      }),
+    );
+    newTokens.push(this.createToken("admonition_title_close", titleTag, -1, { block: true }));
+
+    // --- Corps ---
+    newTokens.push(...this.nestedParse(bodyText, bodyMapStart));
+    newTokens.push(this.createToken("admonition_close", containerTag, -1, { block: true }));
+
+    return newTokens;
+  }
+}
+
+class BaseAdmonitionV2Old extends Directive {
   final_argument_whitespace = true;
   has_content = true;
   option_spec = {
