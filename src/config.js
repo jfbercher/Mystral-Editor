@@ -7,6 +7,9 @@ export const config = {
   recentFilesMax: 10,
   defaultFileName: "Untitled.md",
   fallbackImage: "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png",
+  saveKey: "Mod-Shift-s", 
+  openKey: "Mod-Shift-o",
+  newTabKey: "Mod-Shift-e",
 };
 
 export async function loadConfig() {
