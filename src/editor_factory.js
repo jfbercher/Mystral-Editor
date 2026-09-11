@@ -4,6 +4,7 @@ import MystEditor, { defaultButtons } from "./MystEditor.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
 import { h } from "preact";
+import { config } from "./config.js"
 
 // Styles dynamiques
 import codeMirrorCss from "./styles/codemirror-addition.css?inline";
@@ -184,7 +185,7 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
   ]);
 }
 
-export function mountEditor(options) {
+export function mountEditor(mnt_options) {
   const { 
     editorId, 
     tab, 
@@ -193,14 +194,17 @@ export function mountEditor(options) {
     editorOptions, 
     getAllEditorIds, 
     updateTabLabel, 
-    openFileHandleInTab 
-  } = options;
-// export function mountEditor({ editorId, tab, container, initialContent, editorOptions, getAllEditorIds, updateTabLabel }) {
-  MystEditor(
+    openFileHandleInTab, 
+    openTab,
+  } = mnt_options;
+  
+
+  // export function mountEditor({ editorId, tab, container, initialContent, editorOptions, getAllEditorIds, updateTabLabel }) {
+   MystEditor(
     {
       id: editorId,
       templatelist: "linkedtemplatelist.json",
-      initialText: "",
+      initialText: initialContent ?? "",
       title: "Adapted from [MyST Editor](https://github.com/antmicro/myst-editor/)",
       subtitle: "Template for new files (new_file.md)",
       transforms: editorOptions.transforms ?? [],
@@ -214,26 +218,36 @@ export function mountEditor(options) {
         color,
         mode: collabUrl ? "websocket" : "local",
       },
+      appKeymap: [
+        { key: config.saveKey, preventDefault: true, run: () => { tab.smartSave();  return true; } },
+        { key: config.openKey, preventDefault: true, run: () => { tab.openNewFile(); return true; } },
+        { key: config.newTabKey, preventDefault: true, run: () => { setTimeout(() => openTab(), 0);  return true; } },
+      ],
       getBibliographyDirectory: () => localUtils.getWorkingDirectory().value,
       onReady: ({ state }) => {
         let commentsLoaded = false;
+        let loadStarted = false;
         effect(async () => {
           const view = state.editorView.value;
-          if (view && !tab.editorReady) {
+          if (view && !tab.editorReady && !loadStarted) {
+            loadStarted = true;
             tab.setEditorReady(false);
             await tab.applyThemeAtStartup();
 
             await localUtils.loadImageFolderOnStartup();
             await localUtils.loadWorkingFolderOnStartup();
 
-            let rawContent = null;
-            const pathResult = await localUtils.loadFileFromPathParam();
-            if (pathResult) {
-              tab.setCurrentFilePathParam(pathResult.path);
-              rawContent = pathResult.content;
-            } else {
-              const fileData = await tab.loadFileOnStartup();
-              rawContent = fileData ? await fileData.text() : "";
+            let rawContent = initialContent || null;
+            if (!rawContent) {
+              const pathResult = await localUtils.loadFileFromPathParam();
+              if (pathResult) {
+                tab.setCurrentFilePathParam(pathResult.path);
+                rawContent = pathResult.content;
+              } else {
+                const fileData = await tab.loadFileOnStartup();
+                rawContent = fileData ? await fileData.text() : "";
+                console.log("File read in onReady");
+              }
             }
 
             if (!rawContent) {
@@ -249,6 +263,7 @@ export function mountEditor(options) {
               await tab.loadCommentsForCurrentFile();
             }
             tab.setEditorReady(true);
+            
           }
         });
           effect(() => {
@@ -286,6 +301,7 @@ export function mountEditor(options) {
         if (tag !== "img") return url;
         return localUtils.resolveImage(url); // async, fonctionne pour Tauri et Web
       },
+      mode: "Both", // Source
       customRoles: editorOptions.customRoles ?? [],
       customDirectives: editorOptions.customDirectives ?? [],
       includeButtons: makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab),
