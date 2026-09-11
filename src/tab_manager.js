@@ -150,12 +150,19 @@ export class TabManager {
     }
   }
 
-  activateTab(editorId) {
+  async activateTab(editorId) {
     this.activeTabId = editorId;
     this.touchTab(editorId);
     const tabInfo = this.openTabs.get(editorId);
-    // console.log("Activating tab:", editorId);
-    // console.log(tabInfo);
+    if (tabInfo.tabState.currentFileHandle && !tabInfo.mounted && !tabInfo.savedText){ //Startup
+      const fileHandle = tabInfo.tabState.currentFileHandle;
+      await localUtils.loadWorkingFolderOnStartup();
+      const fileData = await tabInfo.tabState.loadFileFromHandle(fileHandle);
+      if (fileData) {
+        await localUtils.addRecentFileHandle(fileHandle);
+        tabInfo.savedText = typeof fileData === "string" ? fileData : await fileData.text();
+      }
+    } 
     const content = tabInfo.savedText ?? this.newFileTemplate;
 
     if (!tabInfo.mounted) {
@@ -168,6 +175,7 @@ export class TabManager {
         getAllEditorIds: this.getAllEditorIds,
         updateTabLabel: this.updateTabLabel,
         openFileHandleInTab: (handle) => this.openFileHandleInTab(handle),
+        openTab: () => this.openTab(),
       });
       // S'assurer que le tabState considère ce contenu initial comme propre
       tabInfo.tabState.markSaved(content);
@@ -252,7 +260,6 @@ export class TabManager {
   }
 
   async restoreTabs() {
-    // Delegated to localUtils
     const savedOrder = await localUtils.getOpenTabsOrder();
     const lastActiveTabId = await localUtils.getActiveTabId();
     console.log("Restoring tabs:", savedOrder);
