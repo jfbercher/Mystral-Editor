@@ -11,6 +11,8 @@ import { useSignalEffect } from "@preact/signals";
 import { FoldChevron, MdStyles } from "./Preview";
 import { Logger } from "../logger";
 
+let timing_debug = false;
+
 const CodeEditor = styled.div`
   border-radius: var(--border-radius);
   background: ${(props) => (props.$mode != "Inline" ? "var(--editor-bg)" : "var(--panel-bg)")};
@@ -315,7 +317,7 @@ const CodeMirror = () => {
     return () => {
       view.destroy();
     };
-  });
+  }); 
 
   useSignalEffect(() => {
     const userExtensions = userSettings.value.filter((s) => s.enabled && s.extension).map((s) => s.extension);
@@ -344,7 +346,7 @@ const CodeMirror = () => {
         lastTyped.current = performance.now();
       });
     }
-
+const tA = performance.now();
     const startState = EditorState.create({
       root: options.parent,
       doc: options.collaboration.value.enabled ? collab.value.ytext.toString() : text.text.peek(),
@@ -364,39 +366,63 @@ const CodeMirror = () => {
           // intermediate line shifts and broke dual-pane cursor/preview sync.
           text.shiftLineMap(update);
           clearTimeout(renderTimer.current);
-          renderTimer.current = setTimeout(() => {
+          /*renderTimer.current = setTimeout(() => {
             text.text.value = view.state.doc.toString();
-          });
+          });*/
+          const delay = view.state.doc.length > 200000 ? 400 : 120;
+          renderTimer.current = setTimeout(() => { 
+            text.text.value = view.state.doc.toString();
+           }, delay);
         })
         .useFixFoldingScroll(focusScroll)
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))
         .if(options.syncScroll.value && options.mode.value === "Both", (b) => b.useSyncPreviewWithCursor({ text, lastTyped }))
         .if(options.yamlSchema.value, (b) => b.useYamlSchema(options.yamlSchema.value, editorView, linter))
-        //.useCodeBlockLanguages(editorView, linter)
+        .useCodeBlockLanguages(editorView, linter)
         .if(options.mode.value === "Inline", (b) => b.useInlinePreview(text, options))
         .useTrackHeadings(headings)
+        .useMystCompletions({
+          getRefMap: () => text.refMap,
+          getBibEntries: () => text.bibArray,
+        })
+        .useMystComments()
+        .useFoldKeys()
         .useExceptionSink(error)
         .useLogger(logger)
         .if(options.cmDarkTheme.value, (b) => b.useCmDarkTheme())
         .useCriticMarkup()
+        .useAppKeymap(options.appKeymap.value)
         .if(suggestMode.value, (b) => b.useSuggestMode())
         .create(),
     });
+    if (timing_debug) console.log("EditorState.create:", (performance.now() - tA).toFixed(0));
 
-    const view = new EditorView({
-      state: startState,
-      parent: editorMountpoint.current,
-    });
+      /*const view = new EditorView({
+        state: startState,
+        parent: editorMountpoint.current,
+      });*/
+    if (timing_debug) {const t = performance.now();}
+    const view = new EditorView({ state: startState, parent: editorMountpoint.current });
+    if (timing_debug) console.log("EditorView:", (performance.now() - t).toFixed(0));
+
     editorView.value = view;
     window.myst_editor[options.id.value].main_editor = view;
 
-    if (options.unfoldedHeadings.value != undefined) {
+    /*if (options.unfoldedHeadings.value != undefined) {
       skipAndFoldAll(view, options.unfoldedHeadings.value);
-    }
-    if (options.collapsibleHeadingMarker.value) {
+    }*/
+    if (timing_debug) {const t2 = performance.now();}
+    if (options.unfoldedHeadings.value != undefined) skipAndFoldAll(view, options.unfoldedHeadings.value);
+    if (timing_debug) console.log("skipAndFoldAll:", (performance.now() - t2).toFixed(0));
+
+
+    /*if (options.collapsibleHeadingMarker.value) {
       foldMarkedHeadings(view);
-    }
+    }*/
+    if (timing_debug) {const t3 = performance.now();}
+    if (options.collapsibleHeadingMarker.value) foldMarkedHeadings(view);
+    if (timing_debug) console.log("foldMarkedHeadings:", (performance.now() - t3).toFixed(0));
 
     collab.value?.ycomments?.registerCodeMirror(view);
 
@@ -414,7 +440,6 @@ const CodeMirror = () => {
 
   return (
     <CodeEditor className="myst-main-editor" ref={editorMountpoint} $mode={options.mode.value} id={`${options.id.value}-editor`}>
-      // {options.collaboration.value.commentsEnabled && collab.value.ready.value && collab.value.ycomments?.mainCodeMirror && <YCommentsParent />}
     {options.collaboration.value.commentsEnabled && collab.value.ready.value && collab.value.ycomments?.mainCodeMirrorSignal.value && <YCommentsParent />}
 </CodeEditor>
   );
