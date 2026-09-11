@@ -18,6 +18,7 @@ import {
   saveBackupFile
 } from './fs.js';
 
+let timing_debug = false;
 
 // Détection de l'environnement Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -131,7 +132,8 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   tab.setCurrentFilePathParam = (value) => { tab.currentFilePathParam = value; };
   tab.toggleAutoSave = () => { tab.autoSaveEnabled = !tab.autoSaveEnabled; return tab.autoSaveEnabled; };
 
-  tab.setEditorText = (newText) => {
+  tab.setEditorTextBefore = (newText) => {
+    if (timing_debug) {const tE = performance.now();}
     const view = window.myst_editor[editorId]?.main_editor;
     if (!view) {
       console.warn("Editor not ready yet:", editorId);
@@ -139,7 +141,19 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     }
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newText }, selection: { anchor: 0 } });
     view.focus();
+    if (timing_debug) console.log("setEditorText:", (performance.now() - tE).toFixed(0));
   };
+
+  tab.setEditorText = (newText) => {
+  const view = window.myst_editor[editorId]?.main_editor;
+  if (!view) return;
+  if (view.state.doc.length === newText.length && view.state.doc.toString() === newText) {
+    view.focus();
+    return;
+  }
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newText }, selection: { anchor: 0 } });
+  view.focus();
+};
 
   tab.setSubtitleOld = async (text) => {
     const shadowRoot = document.getElementById(editorId)?.shadowRoot;
