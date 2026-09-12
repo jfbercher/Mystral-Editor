@@ -106,16 +106,33 @@ export async function initApp(options = {}) {
   const tabManager = new TabManager(options);
   await tabManager.init();
 
+ // Handle desktop-specific interactions if running within Tauri
   if (isTauri()) {
-    const [{ listen }, { invoke }] = await Promise.all([
+    console.log("Tauri environment detected");
+    
+    // Import Window API alongside Event and Core APIs
+    const [{ listen }, { invoke }, { getCurrentWindow }] = await Promise.all([
       import("@tauri-apps/api/event"),
-      import("@tauri-apps/api/core")
+      import("@tauri-apps/api/core"),
+      import("@tauri-apps/api/window")
     ]);
 
+    // Force application window to the foreground on launch
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.show();
+      await appWindow.setFocus();
+    } catch (err) {
+      console.error("Failed to focus window on startup:", err);
+    }
+
+    // Listen for file-open events
     await listen("open-file", (event) => {
+      console.log("File open event received:", event.payload);
       tabManager.openFileHandleInTab(event.payload);
     });
 
+    // Check for pending startup file
     try {
       const pendingPath = await invoke("get_pending_file");
       if (pendingPath) {
