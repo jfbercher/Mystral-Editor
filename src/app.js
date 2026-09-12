@@ -25,15 +25,11 @@ export async function checkForUpdates(onProgress) {
   }
 
   try {
-    const pkgUpdater = '@tauri-apps/plugin-updater';
-    const pkgProcess = '@tauri-apps/plugin-process';
-    const pkgDialog = '@tauri-apps/plugin-dialog';
-
     const [{ check }, { relaunch }, { ask }] = await Promise.all([
-      import(/* @vite-ignore */ pkgUpdater),
-      import(/* @vite-ignore */ pkgProcess),
-      import(/* @vite-ignore */ pkgDialog)
-    ]);
+          import('@tauri-apps/plugin-updater'),
+          import('@tauri-apps/plugin-process'),
+          import('@tauri-apps/plugin-dialog')
+        ]);
 
     const update = await check();
 
