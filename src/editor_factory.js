@@ -13,6 +13,7 @@ import frontmatterCss from "./styles/frontmatter.css?inline";
 import footnotesCss from "./styles/footnotes.css?inline";
 import bibliographyCss from "./styles/biblio.css?inline";
 import editorTabsCss from "./styles/editor-tabs.css?inline";
+import modalCss from "./styles/modal.css?inline";
 import katexCss from "katex/dist/katex.min.css?inline";
 
 // WorkingDirectory
@@ -21,6 +22,7 @@ import { workingDirectory } from "./utils/local_utils.js";
 const previewStyle = localUtils.makeStyleSheet(previewCss);
 const frontmatterStyle = localUtils.makeStyleSheet(frontmatterCss);
 const codeMirrorStyle = localUtils.makeStyleSheet(codeMirrorCss);
+const modalStyle = localUtils.makeStyleSheet(modalCss);
 const katexCssPlus = katexCss + `
 .eq-numbered { position: relative; padding-right: 3em; }
 .eq-number { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
@@ -284,7 +286,7 @@ export function mountEditor(mnt_options) {
             }
           });
       },
-      additionalStyles: [codeMirrorStyle, katexStyle, previewStyle, frontmatterStyle, footnotesStyle, bibliographyStyle],
+      additionalStyles: [codeMirrorStyle, katexStyle, previewStyle, frontmatterStyle, footnotesStyle, bibliographyStyle, modalStyle],
       /*mapUrl: (tag, url) => {
             if (tag !== "img") return url;
             

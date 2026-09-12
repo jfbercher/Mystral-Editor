@@ -101,6 +101,18 @@
     </div>
     <div id="tabs-content" style="flex: 1; position: relative; overflow: hidden;"></div>
   </div>
+
+    <!-- Modal de mise à jour Tauri -->
+  <div id="update-modal" class="update-modal-backdrop" style="display: none;">
+    <div class="update-modal-content">
+      <h3>Update in progress</h3>
+      <p id="update-progress-text">Preparing download...</p>
+      
+      <div class="update-progress-container">
+        <progress id="update-progress-bar" value="0" max="100"></progress>
+      </div>
+    </div>
+  </div>
 </body>
 
 </html>
