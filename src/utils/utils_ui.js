@@ -43,7 +43,7 @@ export function showToast(message, type = "success", duration = 2000) {
   }, duration);
 }
 
-**
+/**
  * Creates and manages the Update Progress Overlay
  */
 export function createUpdateUI() {
