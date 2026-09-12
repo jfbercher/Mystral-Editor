@@ -61,6 +61,8 @@ export async function checkForUpdates() {
  */
 export async function initApp(options = {}) {
   // Load global configurations and initialize basic UI utilities
+  await checkForUpdates();
+
   await loadConfig();
   initZoom();
   initExternalLinkHandler();
