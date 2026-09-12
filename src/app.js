@@ -62,6 +62,10 @@ export async function checkForUpdates(onProgress) {
           }
         });
 
+        // Petite pause de sécurité de 1s pour laisser le temps au FS de libérer les verrous
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Redémarrage effectif
         await relaunch();
       }
     }

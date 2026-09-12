@@ -8,6 +8,8 @@
     "updater:default",
     "updater:allow-check",
     "updater:allow-download-and-install",
+    "process:default",
+    "process:allow-restart",
     "dialog:default",
     "core:webview:allow-set-webview-zoom",
     "shell:allow-open",
