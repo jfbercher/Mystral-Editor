@@ -263,7 +263,25 @@ export function mountEditor(mnt_options) {
               await tab.loadCommentsForCurrentFile();
             }
             tab.setEditorReady(true);
-            
+            // Here the shadowRoot exists, then 
+            effect(() => {
+              const shadowRoot = document.getElementById(editorId)?.shadowRoot;
+              const subtitle = shadowRoot?.getElementById("document-subtitle");
+              if (!subtitle) return;
+
+              const text = tab.subtitleText.value;
+
+              let dirName = "Undefined";
+              if (isTauri) {
+                const dir = localUtils.currentFileDir.value;
+                if (dir) dirName = dir.split('/').pop();
+              } else {
+                const dir = workingDirectory.value;
+                if (dir) dirName = typeof dir === 'string' ? dir.split('/').pop() : dir.name;
+              }
+
+              subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;
+            });
           }
         });
           effect(() => {

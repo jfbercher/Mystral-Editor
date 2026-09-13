@@ -5,7 +5,7 @@ import { showStatsPopup } from './stats.js';
 import { config } from "../../config.js";
 import { showToast } from '../utils_ui.js';
 import { saveCommentsForPath, loadCommentsForPath } from "../commentsStorage.js";
-import { effect } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 
 
 import { 
@@ -17,6 +17,7 @@ import {
   loadFileFromPathParam, 
   saveBackupFile
 } from './fs.js';
+
 
 let timing_debug = false;
 
@@ -84,6 +85,8 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     ycommentsRef: null,
     pendingCommentsState: null,
   };
+  
+  tab.subtitleText = signal("");
 
   // Comments ------
 
@@ -168,7 +171,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     }
   };
 
-  tab.setSubtitle = (text) => {
+  tab.setSubtitleBefore = (text) => {
     effect(async () => {
       const shadowRoot = document.getElementById(editorId)?.shadowRoot;
       const subtitle = shadowRoot?.getElementById("document-subtitle");
@@ -179,7 +182,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       const currentDir = isTauri
         ? currentFileDir.value
         : workingDirectory.value || "";
-      
+
       if (subtitle) {
         let dirName = "Undefined";
         if (currentDir) {
@@ -188,6 +191,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;
       }
     });
+  };
+
+  tab.setSubtitle = (text) => {
+    tab.subtitleText.value = text;
   };
 
   tab.setCurrentFile = async (handleOrPath) => {
