@@ -237,7 +237,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       while (!tauriDialog) await new Promise(r => setTimeout(r, 50));
       const selected = await tauriDialog.open({
           multiple: false,
-          filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt"] }]
+          filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt", "yml", "yaml"] }]
         });
       if (selected) {
         localStorage.setItem(`storedFileHandle:${editorId}`, selected);
