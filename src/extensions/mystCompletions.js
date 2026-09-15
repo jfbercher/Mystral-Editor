@@ -49,6 +49,14 @@ const DIRECTIVES = [
   { name: "hint", group: "Admonition" },
   { name: "seealso", group: "Admonition" },
   { name: "admonition", group: "Admonition", arg: "Title" },
+  // Exercices
+  { name: "exercise", group: "Exercice", arg: "Titre", opts: ["label", "enumerated"] },
+  //{ name: "solution", group: "Exercice", arg: "label-exercice", opts: ["label"] },
+  { name: "solution", group: "Exercice", opts: ["label"] },
+  { name: "exercise-start", group: "Exercice", opts: ["label"] },
+  { name: "exercise-end", group: "Exercice" },
+  { name: "solution-start", group: "Exercice", arg: "label-exercice", opts: ["label"] },
+  { name: "solution-end", group: "Exercice" },
 
   // Figures, images, and tables
 
@@ -63,7 +71,7 @@ const DIRECTIVES = [
   // Mathematics and proofs
 
   { name: "math", group: "Math", opts: ["label"] },
-  /*{ name: "proof", group: "Math", arg: "Title", opts: ["label"] },
+  { name: "proof", group: "Math", arg: "Title", opts: ["label"] },
   { name: "theorem", group: "Math", arg: "Title", opts: ["label"] },
   { name: "lemma", group: "Math", arg: "Title", opts: ["label"] },
   { name: "corollary", group: "Math", arg: "Title", opts: ["label"] },
@@ -71,7 +79,7 @@ const DIRECTIVES = [
   { name: "remark", group: "Math", arg: "Title", opts: ["label"] },
   { name: "example", group: "Math", arg: "Title", opts: ["label"] },
   { name: "algorithm", group: "Math", arg: "Title", opts: ["label"] },
-   */
+   
 
   // Code
 
@@ -113,7 +121,7 @@ const ADMONITION_KINDS = ["attention", "caution", "danger", "error", "hint", "im
 const ADMONITION_OPTIONS = ["icon", "open", "enumerated", "enumerator"];
 
 const DIRECTIVE_OPTIONS = {
-  figure: ["alt", "align", "width", "height", "figwidth", "no-figures"],
+  figure: ["alt", "align", "width", "height", "figwidth", "no-figures", "enumerated", "enumerator"],
   image: ["alt", "align", "width", "height"],
   table: ["align"],
   "list-table": ["header-rows", "align", "widths"],
@@ -131,6 +139,7 @@ const DIRECTIVE_OPTIONS = {
   iframe: ["width", "align"],
   include: ["start-after", "end-before", "literal"],
   bibliography: ["filter"],
+  exercise: ["enumerated", "hidden"],
   ...Object.fromEntries(
     ADMONITION_KINDS.map(kind => [kind, ADMONITION_OPTIONS])
   ),
@@ -144,6 +153,7 @@ const OPTION_VALUES = {
   icon: ["true", "false"],
   linenos: ["true", "false"],
   literal: ["true", "false"],
+  hidden: ["true", "false"],
 };
 
 /** Métadonnées d'affichage par `kind` de la refMap. */
@@ -359,6 +369,12 @@ export const mystCompletionSource =
         })),
         /^[\w-]*$/,
       );
+    }
+
+    // 0c - Argument d'une solution : proposer les labels d'exercices connus.
+    const sol = /^\s*(?::{3,}|`{3,})\s*\{solution(?:-start)?\}\s+([\w.:/-]*)$/.exec(before);
+    if (sol) {
+      return result(context.pos - sol[1].length, targets(["exercise"]), /^[\w.:/-]*$/);
     }
 
     // --- 1. Directive : début de ligne, après une clôture ::: ou ``` ---

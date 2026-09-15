@@ -313,7 +313,12 @@ const shared_option_spec = {
   scale: directiveOptions.percentage,
   target: directiveOptions.unchanged_required,
   class: directiveOptions.class_option,
-  name: directiveOptions.unchanged,
+  label: directiveOptions.unchanged,
+  name: directiveOptions.unchanged, // alias de label
+  enumerated: directiveOptions.unchanged,
+  numbered: directiveOptions.unchanged, // alias de enumerated
+  enumerator: directiveOptions.unchanged,
+  number: directiveOptions.unchanged, // alias de enumerator
 };
 
 class FigureMd extends directivesDefault.image {
@@ -444,12 +449,12 @@ function getNamespacedMeta(token) {
 }
 
 class FigureExtended extends directivesDefault.image {
+  rawOptions = true;
   option_spec = {
     ...shared_option_spec,
     align: directiveOptions.create_choice(["left", "center", "right"]),
     figwidth: directiveOptions.length_or_percentage_or_unitless_figure,
     figclass: directiveOptions.class_option,
-    jfbclass: directiveOptions.class_option,
   };
   has_content = true;
   required_arguments = 1;   // <-- changé : l'image est maintenant un argument obligatoire
@@ -461,9 +466,6 @@ class FigureExtended extends directivesDefault.image {
     });
     if (data.options.figclass) {
       openToken.attrJoin("class", data.options.figclass.join(" "));
-    }
-    if (data.options.jfbclass) {
-      openToken.attrJoin("class", data.options.jfbclass.join(" "));
     }
     if (data.options.align) {
       openToken.attrJoin("class", `align-${data.options.align}`);
@@ -541,6 +543,175 @@ class Table extends Directive {
     return [...prefixTokens, ...tableTokens, ...suffixTokens];
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Directives numérotées : exercices, solutions, preuves
+ *
+ * À ajouter dans markdownDirectives.js, après `titledAdmonitions`.
+ * Le numéro vient de `refMap` (produit par scanTargets), et non du
+ * compteur interne `nextNumber` — sinon les numéros affichés ne
+ * correspondraient pas à ceux que résolvent {ref} et {numref}.
+ * ------------------------------------------------------------------ */
+
+const NUMBERED_TITLES = {
+  exercise: "Exercise",
+  solution: "Solution",
+  proof: "Proof",
+  theorem: "Theorem",
+  lemma: "Lemma",
+  corollary: "Corollary",
+  definition: "Definition",
+  example: "Example",
+  remark: "Remark",
+  algorithm: "Algorithm",
+};
+
+/** Entrée de refMap correspondant à cette directive, par label. */
+const targetFor = (state, label) => {
+  if (!label) return null;
+  return state?.env?.refMap?.byLabel?.get(label) ?? null;
+};
+
+/** Libellé configuré pour cette directive (frontmatter), sinon celui de la table. */
+const displayLabel = (state, name, kind) => {
+  const kindLabel = state?.env?.kindLabel ?? {};
+  return kindLabel[name] ?? kindLabel[kind] ?? NUMBERED_TITLES[name] ?? name;
+};
+
+class BaseNumberedV2 extends BaseAdmonitionV2 {
+  /** Nom de la directive, pour retrouver son libellé configuré. */
+  name = "";
+
+  /**
+   * Construit « Exercise 3 », « Exercise 3 (Mon titre) » ou « Exercise ».
+   * Surchargée par Solution, qui hérite du numéro de son exercice.
+   */
+  buildTitle(data, options, userTitle) {
+    const base = displayLabel(this.state, this.name, this.kind);
+    const target = targetFor(this.state, options.label);
+    const number = target?.number;
+
+    const head = number != null ? `${base} ${number}` : base;
+    return userTitle ? `${head} (${userTitle})` : head;
+  }
+
+  run(data) {
+    const options = normalizeOptions(data.options);
+    // L'argument est un titre libre ; on le retire avant de déléguer,
+    // pour reconstruire le titre complet ici.
+    const userTitle = (data.args[0] ?? "").trim();
+    const withoutArg = { ...data, args: [this.buildTitle(data, options, userTitle)] };
+    return super.run(withoutArg);
+  }
+}
+
+/** `solution` prend en argument obligatoire le label de l'exercice résolu. */
+class Solution extends BaseNumberedV2 {
+  kind = "solution";
+  name = "solution";
+  required_arguments = 1;
+  optional_arguments = 0;
+
+  buildTitle(data, options) {
+    const exerciseLabel = (data.args[0] ?? "").trim();
+    const exercise = targetFor(this.state, exerciseLabel);
+    const base = displayLabel(this.state, "solution", "solution");
+
+    if (!exercise) return base;
+    const exBase = displayLabel(this.state, exercise.name ?? "exercise", exercise.kind);
+    // « Solution to Exercise 3 », ou « Solution to Mon titre » si non numérotée.
+    const ref = exercise.number != null ? `${exBase} ${exercise.number}` : exercise.title || exBase;
+    return `${base} to ${ref}`;
+  }
+}
+
+function makeNumbered(name, kind) {
+  return class extends BaseNumberedV2 {
+    kind = kind;
+    name = name;
+  };
+}
+
+/**
+ * Les formes « gated » : deux fences indépendantes, contenu au niveau racine.
+ * `-start` se comporte comme la directive normale mais n'émet pas de clôture ;
+ * `-end` n'émet que la clôture.
+ */
+function makeGatedStart(name, kind) {
+  return class extends BaseNumberedV2 {
+    kind = kind;
+    name = name;
+    has_content = false;
+    run(data) {
+      // On retire le token de fermeture produit par BaseAdmonitionV2.
+      return super.run({ ...data, body: "", bodyMap: data.bodyMap ?? data.map }).slice(0, -1);
+    }
+  };
+}
+
+function makeGatedEnd(kind) {
+  return class extends Directive {
+    has_content = false;
+    run() {
+      return [this.createToken("admonition_close", "aside", -1, { block: true })];
+    }
+  };
+}
+
+export const numberedDirectives = {
+  exercise: makeNumbered("exercise", "exercise"),
+  solution: Solution,
+  "exercise-start": makeGatedStart("exercise", "exercise"),
+  "exercise-end": makeGatedEnd("exercise"),
+  "solution-start": makeGatedStart("solution", "solution"),
+  "solution-end": makeGatedEnd("solution"),
+
+  proof: makeNumbered("proof", "proof"),
+  theorem: makeNumbered("theorem", "theorem"),
+  lemma: makeNumbered("lemma", "theorem"),
+  corollary: makeNumbered("corollary", "theorem"),
+  definition: makeNumbered("definition", "definition"),
+  example: makeNumbered("example", "example"),
+  remark: makeNumbered("remark", "remark"),
+  algorithm: makeNumbered("algorithm", "algorithm"),
+};
+
+/* ------------------------------------------------------------------ *
+ * Directive math : accepter enumerated / numbered
+ *
+ * Le renderer math_block lit déjà `token.meta?.numbered` ; il suffit de
+ * le renseigner depuis les options.
+ * ------------------------------------------------------------------ */
+
+class MathNumbered extends directivesDefault.math {
+  rawOptions = true;
+
+  run(data) {
+    const options = normalizeOptions(data.options);
+    const tokens = super.run(data);
+    const token = tokens[0];
+    if (!token) return tokens;
+
+    const label = options.label ?? null;
+    // Absent = on suit la configuration globale ; présent = surcharge locale.
+    const explicit = "enumerated" in options ? asBool(options.enumerated) : undefined;
+
+    token.meta = token.meta ?? {};
+    if (label) {
+      token.meta.label = label;
+      token.attrSet("id", label);
+    }
+    if (explicit !== undefined) token.meta.enumerated = explicit;
+    token.meta.numbered = !!label;
+
+    return tokens;
+  }
+}
+
+export const mathDirectives = {
+  math: MathNumbered,
+};
+
 
 export default {
   "figure-md": FigureMd,
