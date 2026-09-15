@@ -4,7 +4,10 @@ import MystEditor, { defaultButtons } from "./MystEditor.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
 import { h } from "preact";
-import { config } from "./config.js"
+import { config, configReady } from "./config.js";
+
+await configReady();
+
 
 // Styles dynamiques
 import codeMirrorCss from "./styles/codemirror-addition.css?inline";
@@ -219,9 +222,9 @@ export function mountEditor(mnt_options) {
         mode: collabUrl ? "websocket" : "local",
       },
       appKeymap: [
-        { key: config.saveKey, preventDefault: true, run: () => { tab.smartSave();  return true; } },
-        { key: config.openKey, preventDefault: true, run: () => { tab.openNewFile(); return true; } },
-        { key: config.newTabKey, preventDefault: true, run: () => { setTimeout(() => openTab(), 0);  return true; } },
+        { key: config.shortcuts.save, preventDefault: true, run: () => { tab.smartSave();  return true; } },
+        { key: config.shortcuts.open, preventDefault: true, run: () => { tab.openNewFile(); return true; } },
+        { key: config.shortcuts.newTab, preventDefault: true, run: () => { setTimeout(() => openTab(), 0);  return true; } },
       ],
       getBibliographyDirectory: () => localUtils.getWorkingDirectory().value,
       onReady: ({ state }) => {
@@ -233,7 +236,7 @@ export function mountEditor(mnt_options) {
             loadStarted = true;
             tab.setEditorReady(false);
             await tab.applyThemeAtStartup();
-
+            await localUtils.applyCustomCss(editorId); 
             await localUtils.loadImageFolderOnStartup();
             await localUtils.loadWorkingFolderOnStartup();
 

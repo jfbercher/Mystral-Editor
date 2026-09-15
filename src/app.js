@@ -1,4 +1,4 @@
-import { loadConfig } from "./config.js";
+import { configReady } from "./config.js";
 import { initZoom, initExternalLinkHandler, isTauri } from "./utils/local_utils.js";
 import { TabManager } from "./tab_manager.js";
 import { createUpdateUI } from "./utils/utils_ui.js";
@@ -99,7 +99,8 @@ export async function initApp(options = {}) {
     }
   });
 
-  await loadConfig();
+
+  await configReady();
   initZoom();
   initExternalLinkHandler();
 

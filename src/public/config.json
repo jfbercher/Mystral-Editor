@@ -4,5 +4,53 @@
   "autosaveIntervalMs": 60000,
   "recentFilesMax": 10,
   "defaultFileName": "Untitled.md",
-  "fallbackImage": "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png"
+  "fallbackImage": "./assets/image-not-found.png",
+
+  "shortcuts": {
+    "save": "Mod-Shift-s",
+    "open": "Mod-Shift-o",
+    "newTab": "Mod-Shift-e"
+  },
+
+  "directives": {
+    "figure": {"kind":"fig","label":"Figure","numbered":true,"caption":"body"},
+    "figure-md": {"kind":"fig","label":"Figure","numbered":true,"caption":"body"},
+    "figure-perso": {"kind":"fig","label":"Figure","numbered":true,"caption":"body"},
+    "image": {"kind":"fig","label":"Image","numbered":false},
+    "table": {"kind":"table","label":"Table","numbered":true,"caption":"both"},
+    "tableau": {"kind":"table","label":"Table","numbered":true,"caption":"both"},
+    "list-table": {"kind":"table","label":"Table","numbered":true,"caption":"both"},
+    "csv-table": {"kind":"table","label":"Table","numbered":true,"caption":"both"},
+
+    "math": {"kind":"eq","label":"Equation","numbered":true},
+
+    "exercise": {"kind":"exercise","label":"Exercise","numbered":true,"caption":"arg"},
+    "solution": {"kind":"solution","label":"Solution","numbered":false,"caption":"arg","reference":true},
+    "exercise-start": {"kind":"exercise","label":"Exercise","numbered":true,"caption":"arg"},
+    "exercise-end": {"kind":null},
+    "solution-start": {"kind":"solution","label":"Solution","numbered":false,"caption":"arg","reference":true},
+    "solution-end": {"kind":null},
+
+    "proof": {"kind":"proof","label":"Proof","numbered":true,"caption":"arg"},
+    "theorem": {"kind":"theorem","label":"Theorem","numbered":true,"caption":"arg"},
+    "lemma": {"kind":"theorem","label":"Lemma","numbered":true,"caption":"arg"},
+    "corollary": {"kind":"theorem","label":"Corollary","numbered":true,"caption":"arg"},
+    "definition": {"kind":"definition","label":"Definition","numbered":true,"caption":"arg"},
+    "example": {"kind":"example","label":"Example","numbered":true,"caption":"arg"},
+    "remark": {"kind":"remark","label":"remark","numbered":true,"caption":"arg"},
+    "algorithm": {"kind":"algorithm","label":"Algorithm","numbered":true,"caption":"arg"},
+
+    "admonition": {"kind":"adm","label":"Admonition","numbered":false,"caption":"arg"},
+    "attention": {"kind":"adm","label":"Attention","numbered":false,"caption":"arg"},
+    "caution": {"kind":"adm","label":"Caution","numbered":false,"caption":"arg"},
+    "danger": {"kind":"adm","label":"Danger","numbered":false,"caption":"arg"},
+    "error": {"kind":"adm","label":"Error","numbered":false,"caption":"arg"},
+    "hint": {"kind":"adm","label":"Hint","numbered":false,"caption":"arg"},
+    "important": {"kind":"adm","label":"Important","numbered":false,"caption":"arg"},
+    "note": {"kind":"note","label":"Note","numbered":true,"caption":"arg"},
+    "seealso": {"kind":"adm","label":"See also","numbered":false,"caption":"arg"},
+    "tip": {"kind":"adm","label":"Tip","numbered":false,"caption":"arg"},
+    "warning": {"kind":"adm","label":"Warning","numbered":true,"caption":"arg"}
+  }
+
 }
