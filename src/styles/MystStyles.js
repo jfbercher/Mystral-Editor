@@ -14,16 +14,23 @@ export const MystCSSVars = styled.div`
   --gray-300: #e8e6e8;
   --gray-200: #f8f8f8;
   --gray-100: #f9f9f9;
+  --gray-50: #f9fafbcc;
 
+
+  --blue-600: #6b46c1;
+  --blue-550: #2b6cb0;
   --blue-500: #0083e1;
   --blue-200: #82cfe6;
   --blue-100: #c1e4ef;
+  --blue-50: #eff6ffcc;
 
   --red-500: #e74a3c;
   --red-400: #fae6e6;
 
   --orange-500: #f59e0b;
+  --orange-300: #f0b755;
 
+  --green-600: #2f855a;
   --green-500: #00af91;
   --green-400: #00ccaa;
   --green-300: #ecfce6;
