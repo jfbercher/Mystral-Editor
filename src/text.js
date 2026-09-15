@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
@@ -19,12 +19,13 @@ import yamlHighlight from "highlight.js/lib/languages/yaml";
 import { markdownCheckboxes } from "./markdown/markdownCheckboxes";
 import { criticMarkup } from "./markdown/markdownCriticMarkup";
 import { markdownFrontmatter } from "./markdown/markdownFrontmatter";
-import markdownItMath, { scanTargets } from "./markdown/markdownMath";
+import markdownItMath from "./markdown/markdownMath";
+import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./markdown/scanTargets";
 import { extractFrontmatter } from "./markdown/frontmatterUtils";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap } from "./utils/headingNumbering";
 import markdownItHeadings from "./markdown/markdownHeadings";
-import { getSectionLabelsSignature, getNumberingConfig } from "./markdown/markdownMath";
+import { getNumberingConfig } from "./markdown/markdownMath";
 import { scanFootnotes, markdownItFootnoteRefs, markdownItFootnoteDefs, renderFootnotesSection } from "./markdown/markdownFootnotes";
 import {
   ensureBibliographyLoaded,
@@ -110,7 +111,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions,  ...numberedDirectives,   ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
@@ -344,6 +345,7 @@ export class TextManager {
     if (timing_debug) console.log("scanTargets:", (performance.now() - _t4).toFixed(2), "ms");
 
     const sectionLabelsSignature = getSectionLabelsSignature(byLabel);
+    const numberedSignature = getNumberedSignature(byLabel);
 
     if (timing_debug) {const _t5 = performance.now();}
     const { footnoteMap } = scanFootnotes(this.text.value);
@@ -398,7 +400,7 @@ export class TextManager {
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${refDefsSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}`,
         42,
         ).result();
         

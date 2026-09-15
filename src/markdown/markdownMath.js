@@ -1,9 +1,11 @@
 import texmath from "markdown-it-texmath";
 import katex from "katex";
 import { getLineById } from "./markdownSourceMap";
-import { scanSectionLabelLines } from "../utils/headingNumbering";
+import { kindLabelsFrom, numberedByNameFrom } from "./scanTargets";
+import { getLabelledDirectives } from "../config";
 
 
+const LABELLED_DIRECTIVES = getLabelledDirectives();
 export const katexMacros = {};
 
 // --- multitabs
@@ -36,14 +38,6 @@ export function disposeEditorMacros(editorId) {
 
 
 
-export function getSectionLabelsSignature(byLabel) {
-  const entries = [];
-  for (const [label, info] of byLabel.entries()) {
-    if (info.kind === "sec") entries.push(`${label}:${info.number}:${info.title}`);
-  }
-  entries.sort();
-  return entries.join("|");
-}
 
 function findNearestTableEntry(byLine, absoluteLine) {
   let best = null;
@@ -58,25 +52,21 @@ function findNearestTableEntry(byLine, absoluteLine) {
   return best;
 }
 
+
 export function getNumberingConfig(frontmatter) {
-  const defaultKindLabel = {
-    eq: "Equation",
-    fig: "Figure",
-    table: "Table",
-    sec: "Section"
-  };
+  const defaultKindLabel = kindLabelsFrom(LABELLED_DIRECTIVES);
+  //const defaultNumbered = numberedByKindFrom(LABELLED_DIRECTIVES);
+  const defaultNumbered = numberedByNameFrom(LABELLED_DIRECTIVES);
 
   const numbering = frontmatter?.numbering ?? {};
 
-  const getEntry = (singular, plural) =>
-    numbering[singular] ?? numbering[plural];
+  const getEntry = (singular, plural) => numbering[singular] ?? numbering[plural];
 
   const getTemplate = (singular, plural, fallback) => {
     const entry = getEntry(singular, plural);
-    return (typeof entry === "object" && entry?.template)
-      ? entry.template.replace("%s", "").trim()
-      : fallback;
+    return typeof entry === "object" && entry?.template ? entry.template.replace("%s", "").trim() : fallback;
   };
+
 
   const getEnabled = (singular, plural, fallback = true) => {
     const entry = getEntry(singular, plural);
@@ -84,46 +74,34 @@ export function getNumberingConfig(frontmatter) {
     return fallback;
   };
 
-  return {
-    kindLabel: {
-      eq: getTemplate("equation", "equations", defaultKindLabel.eq),
-      fig: getTemplate("figure", "figures", defaultKindLabel.fig),
-      table: getTemplate("table", "tables", defaultKindLabel.table),
-      sec: getTemplate("section", "sections", defaultKindLabel.sec),
-    },
-    numberingEnabled: {
-      eq: getEnabled("equation", "equations"),
-      fig: getEnabled("figure", "figures"),
-      table: getEnabled("table", "tables"),
-      sec: numbering.headings ?? true,
-    }
-  };
-}
-
-export function getKindLabel(frontmatter) {
-  const defaultKindLabel = {
-    eq: "Equation",
-    fig: "Figure",
-    table: "Table",
-    sec: "Section"
+  /** Clé frontmatter pour un kind : dérivée du libellé, minuscules. */
+  const keysFor = (kind) => {
+    const singular = (defaultKindLabel[kind] ?? kind).toLowerCase();
+    return [singular, `${singular}s`];
   };
 
-  const numbering = frontmatter?.numbering ?? {};
+  const kindLabel = {};
+  const numberingEnabled = {};
 
-  const getTemplate = (singular, plural, fallback) => {
-    const value =
-      numbering[singular]?.template ??
-      numbering[plural]?.template;
+  for (const [name, spec] of Object.entries(LABELLED_DIRECTIVES)) {
+    if (!spec.kind) continue;
+    const singular = (spec.fmKey ?? spec.label ?? name).toLowerCase();
+    const plural = `${singular}s`;
+    kindLabel[name] = getTemplate(singular, plural, spec.label ?? name);
+    numberingEnabled[name] = getEnabled(singular, plural, defaultNumbered[name]);
+  }
 
-    return value?.replace("%s", "").trim() || fallback;
-  };
+  for (const [name, spec] of Object.entries(LABELLED_DIRECTIVES)) {
+    if (!spec.kind) continue;
+    numberingEnabled[spec.kind] ||= numberingEnabled[name];
+    kindLabel[spec.kind] ??= kindLabel[name];
+  }
 
-  return {
-    eq: getTemplate("equation", "equations", defaultKindLabel.eq),
-    fig: getTemplate("figure", "figures", defaultKindLabel.fig),
-    table: getTemplate("table", "tables", defaultKindLabel.table),
-    sec: getTemplate("section", "sections", defaultKindLabel.sec)
-  };
+  // Les sections ne viennent pas d'une directive.
+  kindLabel.sec = getTemplate("section", "sections", "Section");
+  numberingEnabled.sec = numbering.headings ?? true;
+
+  return { kindLabel, numberingEnabled };
 }
 
 export function refDisplayText(info, state) {
@@ -131,8 +109,9 @@ export function refDisplayText(info, state) {
   const kindLabel = state.env?.kindLabel ?? {};
   const numberingEnabled = state.env?.numberingEnabled ?? {};
 
-  const currentLabel = kindLabel[info.kind] ?? info.kind;
-  const isNumberingEnabled = numberingEnabled[info.kind] ?? true;
+  const currentLabel = kindLabel[info.name] ?? kindLabel[info.kind] ?? info.kind;
+  // const currentLabel = kindLabel[info.kind] ?? info.kind;
+  const isNumberingEnabled = numberingEnabled[info.kind] ?? false;
 
   // Numérotation explicitement désactivée
   if (!isNumberingEnabled) {
@@ -149,213 +128,6 @@ export function refDisplayText(info, state) {
     : `${currentLabel} ${info.number}`;
 }
 
-
-
-export function scanTargets(fullText, numberingEnabled=null, headingMap = null) {
-  const envs = ["equation", "align", "gather", "multline"];
-  const labelRE = /\\label\{([^}]+)\}/;
-  const directiveLabelRE = /^:label:\s*(\S+)/;
-  const nameRE = /^:name:\s*(\S+)/;
-
-  const byLine = new Map();
-  const byLabel = new Map();
-
-  let eqNumber = 0;
-  let figNumber = 0;
-  let storedNumber = 0;
-
-  let currentLine = null;
-  let mathFenceMarker = null;
-
-  // Figures
-  let inFigure = false;
-  let figureFenceMarker = null;
-  let figureLine = null;
-  let figureLabel = null;
-  let figureOptionsDone = false;
-  let figureCaptionLines = [];
-  let figureCaptionDone = false;
-  // Tables
-  let inTable = false;
-  let tableFenceMarker = null;
-  let tableLine = null;
-  let tableLabel = null;
-  let tableCaption = "";
-  let tableOptionsDone = false;
-  let tableNumber = 0;
-
-  const lines = fullText.split("\n");
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNo = i + 1;
-
-    // ---------- FIGURE ----------
-    if (inFigure) {
-      const closeMatch = figureFenceMarker && line.trim() === figureFenceMarker;
-      if (closeMatch) {
-        if (figureLabel) {
-          const title = figureCaptionLines.join(" ").trim();
-          const entry = byLine.get(figureLine);
-          entry.label = figureLabel;
-          entry.title = title;
-          byLabel.set(figureLabel, { number: entry.number, kind: "fig", title, line: figureLine });
-        }
-        inFigure = false;
-        figureFenceMarker = null;
-        figureLabel = null;
-        figureOptionsDone = false;
-        figureCaptionLines = [];
-        figureCaptionDone = false;
-        continue;
-      }
-
-      if (!figureOptionsDone) {
-        const nameMatch = line.match(nameRE);
-        if (nameMatch) { figureLabel = nameMatch[1]; continue; }
-        if (line.trim() === "") { figureOptionsDone = true; }
-        else if (!/^:/.test(line)) {
-          figureOptionsDone = true;
-          figureCaptionLines.push(line.trim());
-        }
-        continue;
-      }
-
-      if (!figureCaptionDone) {
-        if (line.trim() === "") figureCaptionDone = true;
-        else figureCaptionLines.push(line.trim());
-      }
-      continue;
-    }
-
-    const figureFenceOpen = line.match(/^([`:~]{3,})\{figure[^}]*\}/);
-    if (figureFenceOpen) {
-      inFigure = true;
-      figureFenceMarker = figureFenceOpen[1];
-      figureLine = lineNo;
-      figNumber++;
-      storedNumber = numberingEnabled.fig ? figNumber : "??";
-      byLine.set(figureLine, { number: storedNumber, label: null, kind: "fig", title: "" });
-      figureOptionsDone = false;
-      figureCaptionLines = [];
-      figureCaptionDone = false;
-      continue;
-    }
-
-    // ---------- Tables -----------
-
-    // ---------- TABLE ----------
-    if (inTable) {
-      const closeMatch = tableFenceMarker && line.trim() === tableFenceMarker;
-      if (closeMatch) {
-        if (tableLabel) {
-          const entry = byLine.get(tableLine);
-          entry.label = tableLabel;
-          entry.title = tableCaption;
-          byLabel.set(tableLabel, { number: entry.number, kind: "table", title: tableCaption, line: tableLine });
-        }
-        inTable = false;
-        tableFenceMarker = null;
-        tableLabel = null;
-        tableOptionsDone = false;
-        continue;
-      }
-
-      if (!tableOptionsDone) {
-        const nameMatch = line.match(nameRE);
-        if (nameMatch) { tableLabel = nameMatch[1]; continue; }
-        if (line.trim() === "") tableOptionsDone = true;
-        continue;
-      }
-      continue;
-    }
-
-    const tableFenceOpen = line.match(/^([`:~]{3,})\{list-table\}(?:\s+(.*))?$/);
-    if (tableFenceOpen && numberingEnabled.table) {
-      inTable = true;
-      tableFenceMarker = tableFenceOpen[1];
-      tableCaption = (tableFenceOpen[2] || "").trim();
-      tableLine = lineNo;
-      tableNumber++;
-      byLine.set(tableLine, { number: tableNumber, label: null, kind: "table", title: tableCaption });
-      tableOptionsDone = false;
-      continue;
-    }
-
-    // ---------- EQUATION ----------
-      const begin = envs.some(env => line.includes(`\\begin{${env}}`));
-      const end = envs.some(env => line.includes(`\\end{${env}}`));
-      const dollarCount = (line.match(/\$\$/g) ?? []).length;
-      const hasDollar = dollarCount > 0;
-      const singleLineDollar = dollarCount >= 2;
-
-      const mathFenceOpenMatch = !currentLine && line.match(/^([`:~]{3,})\{math\}/);
-      const mathFenceCloseMatch = currentLine && mathFenceMarker && line.trim() === mathFenceMarker;
-
-      if (!currentLine && (begin || hasDollar || mathFenceOpenMatch)) {
-        currentLine = lineNo;
-        if (mathFenceOpenMatch) mathFenceMarker = mathFenceOpenMatch[1];
-        const inlineLabel = line.match(labelRE)?.[1] ?? null;
-        eqNumber++;
-        storedNumber = numberingEnabled.eq ? eqNumber : "??";
-        byLine.set(currentLine, { number: storedNumber, label: inlineLabel, kind: "eq" });
-        if (inlineLabel) byLabel.set(inlineLabel, { number: eqNumber, kind: "eq", title: "" });
-        if (singleLineDollar) currentLine = null;
-        continue;
-      }
-
-      if (!currentLine) continue;
-
-      const label = line.match(labelRE) ?? line.match(directiveLabelRE);
-      if (label) {
-        byLine.get(currentLine).label = label[1];
-        byLabel.set(label[1], { number: byLine.get(currentLine).number, kind: "eq", title: "", line: currentLine });
-      }
-
-      if (end || hasDollar || mathFenceCloseMatch) {
-        currentLine = null;
-        mathFenceMarker = null;
-      }
-  }
-
-
-  // Sections
-  /*if (headingMap?.byLine) {
-    for (const info of headingMap.byLine.values()) {
-      if (!info.label) continue;
-      byLabel.set(info.label, {
-        number: headingMap.active ? info.number : null,
-        kind: "sec",
-        title: info.text,
-      });
-    }
-  }*/
-
-
-// Sections par
-const sectionLabelLines = scanSectionLabelLines(fullText); // label -> ligne du heading
-for (const [label, headingLine] of sectionLabelLines.entries()) {
-  const headingInfo = headingMap?.byLine.get(headingLine);
-  if (!headingInfo) continue;
-  byLabel.set(label, {
-    number: headingMap.active ? headingInfo.number : null,
-    kind: "sec",
-    title: headingInfo.text,
-    line: headingLine, 
-  });
-}
-
-
-  const targets = {};
-  for (const [label, info] of byLabel.entries()) {
-    targets[label] = { label, kind: info.kind, title: info.title, number: info.number };
-  }
-
-  //console.log("headingMap reçu:", headingMap);
-  //console.log("byLabel final:", byLabel); 
-  //console.log("Targets found:", byLine, byLabel);
-  return { byLine, byLabel, targets };
-}
 
 
 const markdownItMath = (md, editorId) => {
@@ -397,7 +169,8 @@ const markdownItMath = (md, editorId) => {
     const numberingEnabled = state.env?.numberingEnabled;
 
     // const kindLabel = { eq: "Equation", fig: "Figure", table: "Table", sec: "Section" }[info.kind] ?? info.kind;
-    const currentLabel = kindLabel[info.kind] ?? info.kind;
+    const currentLabel = kindLabel[info.name] ?? kindLabel[info.kind] ?? info.kind;
+    // const currentLabel = kindLabel[info.kind] ?? info.kind;
 
     const linkTok = state.push("link_open", "a", 1);
     linkTok.attrSet("href", `#${label}`);
@@ -438,8 +211,12 @@ const markdownItMath = (md, editorId) => {
     const anchorId = eqInfo.label || token.attrGet("id");
     const anchorAttr = anchorId ? ` id="${anchorId}"` : "";
     const lineIdAttr = sourceLineId ? ` data-line-id="${sourceLineId}"` : "";
-    if (!env.numberingEnabled.eq) {
-      return `<div ${anchorAttr}${lineIdAttr}>${html}</div>`;
+    //if (!env.numberingEnabled.eq) {
+    //  return `<div ${anchorAttr}${lineIdAttr}>${html}</div>`;
+    //}
+    const eqEnabled = env.numberingEnabled?.math ?? env.numberingEnabled?.eq;
+    if (!eqEnabled) {
+      return `<div${anchorAttr}${lineIdAttr}>${html}</div>`;
     }
     else { 
     return `<div class="eq-numbered"${anchorAttr}${lineIdAttr}>${html}<span class="eq-number">(${eqInfo.number})</span></div>`;
@@ -472,7 +249,7 @@ const markdownItMath = (md, editorId) => {
     const info = resolvedLine != null ? env.refMap.byLine.get(resolvedLine) : null;
     if (!info) return html;
 
-    return html + `<span class="fig-number">Figure ${info.number}: </span>`;
+    return html + `<span class="fig-number">Figure${info.number != null ? ` ${info.number}` : ""}: </span>`;
   };
 
 
@@ -559,7 +336,8 @@ md.core.ruler.push("external_link_title", (state) => {
     // Si aucune caption n'a été fournie, on en injecte une minimale nous-mêmes.
     const nextToken = tokens[idx + 1];
     if (!nextToken || nextToken.type !== "table_caption_open") {
-      html += `<caption class="table-number-only">Table ${info.number}</caption>`;
+      //html += `<caption class="table-number-only">Table ${info.number}</caption>`;
+      html += `<caption class="table-number-only">Table${info.number != null ? ` ${info.number}` : ""}: </caption>`;
     }
 
     return html;
