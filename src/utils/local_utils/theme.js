@@ -3,6 +3,7 @@
 
 import { get, set } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
 import { darkTheme, lightTheme } from "../../MystEditor.jsx";
+import { getCustomCss } from "../../config.js"
 
 export let mystEditorTheme = "lightTheme";
 
@@ -27,6 +28,30 @@ export function makeStyleSheet(cssText) {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(cssText);
   return sheet;
+}
+
+let customSheet = null;
+
+const getCustomSheet = () => {
+  if (customSheet) return customSheet;
+  const css = getCustomCss();
+  if (!css) return null;
+  customSheet = new CSSStyleSheet();
+  customSheet.replaceSync(css);
+  return customSheet;
+};
+
+export function applyCustomCss(editorId) {
+  const sheet = getCustomSheet();
+  if (!sheet) return;
+
+  const shadowRoot = document.getElementById(editorId)?.shadowRoot;
+  if (!shadowRoot) return;
+
+  // Retirer puis remettre en dernier : l'ordre détermine qui gagne
+  // à spécificité égale.
+  const sheets = shadowRoot.adoptedStyleSheets.filter((s) => s !== sheet);
+  shadowRoot.adoptedStyleSheets = [...sheets, sheet];
 }
 
 
