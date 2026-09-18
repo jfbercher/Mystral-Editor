@@ -32,3 +32,14 @@
    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
    font-size: 0.9em;
  }
+
+ table > caption[data-number]::before {
+  content: "Table " attr(data-number) ": ";
+}
+
+figure > figcaption > p:first-child {
+  display: inline;
+}
+ figure > figcaption[data-number]::before {
+  content: "Figure " attr(data-number) ": ";
+}
