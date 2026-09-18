@@ -1,11 +1,9 @@
 const BUILTIN_DIRECTIVES = {
   // Médias
   figure: { kind: "fig", label: "Figure", numbered: true, caption: "body" },
-  "figure-md": { kind: "fig", label: "Figure", numbered: true, caption: "body" },
-  "figure-perso": { kind: "fig", label: "Figure", numbered: true, caption: "body" },
+  "figure-md": { kind: "fig", label: "Figure", numbered: true, caption: "body", argIsLabel: true },
   image: { kind: "fig", label: "Image", numbered: false },
   table: { kind: "table", label: "Table", numbered: true, caption: "both" },
-  tableau: { kind: "table", label: "Table", numbered: true, caption: "both" },
   "list-table": { kind: "table", label: "Table", numbered: true, caption: "both" },
   "csv-table": { kind: "table", label: "Table", numbered: true, caption: "both" },
 
