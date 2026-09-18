@@ -190,7 +190,8 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
         wantsNumber,
         numbered: false,
         number: null,
-        label: null,
+        //label: null,
+        label: spec.argIsLabel ? arg || null : null, // Pour figure-md, le label est l'argument, pas une option.
         reference: spec.reference ? arg || null : null,
         caption,
         optionsDone: false,
