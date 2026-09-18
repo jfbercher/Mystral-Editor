@@ -74,7 +74,7 @@ export function getNumberingConfig(frontmatter) {
     return fallback;
   };
 
-  /** Clé frontmatter pour un kind : dérivée du libellé, minuscules. */
+/** Frontmatter key for a kind: derived from the label, lowercase. */
   const keysFor = (kind) => {
     const singular = (defaultKindLabel[kind] ?? kind).toLowerCase();
     return [singular, `${singular}s`];
@@ -97,7 +97,7 @@ export function getNumberingConfig(frontmatter) {
     kindLabel[spec.kind] ??= kindLabel[name];
   }
 
-  // Les sections ne viennent pas d'une directive.
+// The sections do not come from a directive.
   kindLabel.sec = getTemplate("section", "sections", "Section");
   numberingEnabled.sec = numbering.headings ?? true;
 
@@ -113,12 +113,12 @@ export function refDisplayText(info, state) {
   // const currentLabel = kindLabel[info.kind] ?? info.kind;
   const isNumberingEnabled = numberingEnabled[info.kind] ?? false;
 
-  // Numérotation explicitement désactivée
+  // Numbering explicitly disabled
   if (!isNumberingEnabled) {
     return `${currentLabel} ??`;
   }
 
-  // Pas de numéro disponible
+  // No number available
   if (info.number == null || info.number === "") {
     return info.title + "??" || `${currentLabel} ??`;
   }
@@ -224,7 +224,7 @@ const markdownItMath = (md, editorId) => {
 };
 
 
-  const originalParagraphOpen =
+/*  const originalParagraphOpen =
     md.renderer.rules.paragraph_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
 
   md.renderer.rules.paragraph_open = (tokens, idx, options, env, self) => {
@@ -251,7 +251,7 @@ const markdownItMath = (md, editorId) => {
 
     return html + `<span class="fig-number">Figure${info.number != null ? ` ${info.number}` : ""}: </span>`;
   };
-
+*/
 
   md.core.ruler.after("inline", "auto_ref", (state) => {
     if (!state.env.refMap) return;
@@ -279,7 +279,7 @@ const markdownItMath = (md, editorId) => {
         const isEmpty = next && next.type === "link_close";
 
         if (isEmpty) {
-          // Lien vide : on génère tout le texte, comme avant /!\ on perd le lien
+          // Empty link: we generate all the text, as before /!\ we lose the link
           const textToken = new state.Token("text", "", 0);
           textToken.content = refDisplayText(info, state);//info.kind === "fig" ? `Figure ${info.number}` : `(${info.number})`;
           blockToken.children.splice(i + 1, 0, textToken);
@@ -287,8 +287,8 @@ const markdownItMath = (md, editorId) => {
         } else if (next && next.type === "text" &&
           (next.content.includes("{number}") || next.content.includes("%s"))) {
 
-          // Lien avec texte explicite contenant {number} ou %s :
-          // on substitue le placeholder par le numéro
+          // Link with explicit text containing {number} or %s:
+          // we replace the placeholder with the number
           next.content = next.content
             .replace(/\{number\}/g, String(info.number))
             .replace(/%s/g, String(info.number));
@@ -297,7 +297,7 @@ const markdownItMath = (md, editorId) => {
     });
   });
 
-  // Liens externes : tooltip natif avec l'URL cible.
+  // External links: native tooltip with the target URL.
 md.core.ruler.push("external_link_title", (state) => {
   state.tokens.forEach((blockToken) => {
     if (blockToken.type !== "inline" || !blockToken.children) return;
@@ -315,7 +315,7 @@ md.core.ruler.push("external_link_title", (state) => {
   });
 });
 
-  const originalTableOpen =
+ /*const originalTableOpen =
     md.renderer.rules.table_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
 
   md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
@@ -360,7 +360,7 @@ md.core.ruler.push("external_link_title", (state) => {
     if (!info) return html;
 
     return html + `Table ${info.number}: `;
-  };
+  };*/
 
 
   // Corrects the text displayed by {eq}label, overwritten locally by chunk (docutils internal bug)
@@ -398,8 +398,8 @@ md.core.ruler.push("external_link_title", (state) => {
               textTok.content = tok.meta.value + ' ' + info.title
             }
             else if (tok.meta.kind === "numref" && tok.meta.value) {
-              // value contient le patron "%s"/"{number}" déjà résolu localement par docutils ;
-              // on le recalcule nous-mêmes avec le bon numéro global.
+              // value contains the pattern "%s"/"{number}" already resolved locally by docutils;
+              // we recalculate it ourselves with the correct overall number.
               textTok.content = tok.meta.value
                 .replace(/%s/g, String(info.number))
                 .replace(/\{number\}/g, String(info.number));
