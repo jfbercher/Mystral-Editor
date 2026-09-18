@@ -76,10 +76,9 @@ const normalizeOptions = (options = {}) => {
  * pas une admonition ordinaire.
  */
 const asBoolOld = (v) => {
-  console.log("v", typeof v, String(v), "v", v)
   if (v === undefined) {console.log("undefined"); return undefined};
   if (v === false) return false;
-  if (v === "") {console.log("vide"); return false;}
+  if (v === "") {console.log("empty"); return false;}
   if (v === null || v === "") return true;
   return !/^(false|off|no|0)$/i.test(String(v).trim());
 };
@@ -197,90 +196,6 @@ class BaseAdmonitionV2 extends Directive {
   }
 }
 
-class BaseAdmonitionV2Old extends Directive {
-  final_argument_whitespace = true;
-  has_content = true;
-  option_spec = {
-    class: directiveOptions.class_option,
-    name: directiveOptions.unchanged,
-    open: directiveOptions.flag,
-    icon: directiveOptions.unchanged, // "false" pour masquer l'icône ; toute autre valeur = icône normale
-  };
-  
-  required_arguments = 0;
-  optional_arguments = 1; // Permet de capturer le titre optionnel
-
-  title = "";
-  kind = "";
-
-  run(data) {
-    const classes = data.options.class ? [...data.options.class] : [];
-    const isDropdown = classes.includes("dropdown");
-    const noIcon = data.options.icon == false;
-    const hasOpen = data.options.open == null;
-
-
-    // --- Titre ---
-    let titleContent = data.args[0]; // markdown brut, pas encore parsé
-    let bodyStartOffset = 0;
-    let bodyText = data.body;
-    let bodyMapStart = data.bodyMap[0];
-
-    if (!titleContent) {
-      const probe = this.nestedParse(data.body, data.bodyMap[0]); 
-      const headingResult = extractHeadingTitle(probe); 
-      const boldResult = extractBoldOnlyTitle(probe);
-      const result = headingResult || boldResult;
-
-      if (result) {
-        const lines = data.body.split("\n");
-        const index = lines.findIndex(line => line.includes(result.full));
-
-        titleContent = result.title;
-        bodyText = index >= 0 ? lines.slice(index + 1).join("\n") : data.body;
-      } else {
-        titleContent = this.title || DEFAULT_TITLES[this.kind] || "";
-      }
-    }
-
-    // --- Conteneur : <details> pour dropdown, <aside> sinon ---
-    const containerTag = isDropdown ? "details" : "aside";
-    const openToken = this.createToken("admonition_open", containerTag, 1, {
-      map: data.map,
-      block: true,
-      meta: { kind: this.kind },
-    });
-    if (classes.length) openToken.attrSet("class", classes.join(" "));
-    openToken.attrJoin("class", "admonition");
-    if (this.kind) openToken.attrJoin("class", this.kind);
-    if (noIcon) openToken.attrJoin("class", "no-icon");
-    if (isDropdown && hasOpen) openToken.attrSet("open", "");
-
-    const newTokens = [openToken];
-
-    // --- Titre : <summary> pour dropdown, <header> sinon ---
-    const titleTag = isDropdown ? "summary" : "header";
-    const titleOpen = this.createToken("admonition_title_open", titleTag, 1);
-    titleOpen.attrSet("class", "admonition-title");
-    newTokens.push(titleOpen);
-    newTokens.push(
-      this.createToken("inline", "", 0, {
-        map: [data.map[0], data.map[0]],
-        content: titleContent,
-        children: [],
-      }),
-    );
-    newTokens.push(this.createToken("admonition_title_close", titleTag, -1, { block: true }));
-
-    // --- Corps ---
-    const bodyTokens = this.nestedParse(bodyText, bodyMapStart);
-    newTokens.push(...bodyTokens);
-
-    newTokens.push(this.createToken("admonition_close", containerTag, -1, { block: true }));
-    return newTokens;
-  }
-}
-
 function makeAdmonition(kind) {
   return class extends BaseAdmonitionV2 {
     kind = kind;
@@ -347,8 +262,8 @@ class FigureMd extends directivesDefault.image {
     }
     let target;
     if (data.args.length > 0) {
-      target = newTarget(this.state, openToken, "fig", data.args[0], data.body.trim());
-      openToken.attrJoin("class", "numbered");
+      target = getTarget(this.state, openToken, data.args[0]);
+      //openToken.attrJoin("class", "numbered");
     }
 
     let captionTokens = [];
@@ -378,9 +293,9 @@ class FigureMd extends directivesDefault.image {
         const openCaption = this.createToken("figure_caption_open", "figcaption", 1, {
           block: true,
         });
-        if (target) {
-          openCaption.attrSet("number", `${target.number}`);
-        }
+        if (target?.number != null && target.number !== '') {
+          openCaption.attrSet("data-number", `${target.number}`);
+        } 
         const captionBody = this.nestedParse(caption, captionMap);
         const closeCaption = this.createToken("figure_caption_close", "figcaption", -1, {
           block: true,
@@ -404,6 +319,23 @@ class FigureMd extends directivesDefault.image {
   }
 }
 
+
+/** Numéro et cible depuis refMap. Retourne null si non trouvé. */
+export const resolveTarget = (state, label) => (label ? (state?.env?.refMap?.byLabel?.get(label) ?? null) : null);
+
+/** Pose l'ancre et retourne l'info de cible. Remplace newTarget. */
+export const getTarget = (state, token, label) => {
+  if (!label) return null;
+  token.attrSet("id", label);
+  const target = resolveTarget(state, label);
+  if (target?.number != null) {
+    token.attrJoin("class", "numbered");
+    //token.attrSet("data-number", `${target.number}`);
+  }
+  return target;
+};
+
+/*
 function newTarget(state, token, kind, label, title, silent = false) {
   const env = getDocState(state);
   const number = nextNumber(state, kind);
@@ -446,7 +378,7 @@ function getNamespacedMeta(token) {
   if (!token.meta) token.meta = {};
   if (!token.meta.docutils) token.meta.docutils = meta;
   return meta;
-}
+}*/
 
 class FigureExtended extends directivesDefault.image {
   rawOptions = true;
@@ -475,8 +407,9 @@ class FigureExtended extends directivesDefault.image {
     }
     let target;
     if (data.options.name) {
-      target = newTarget(this.state, openToken, "fig", data.options.name, data.body.trim());
-      openToken.attrJoin("class", "numbered");
+      // target = newTarget(this.state, openToken, "fig", data.options.name, data.body.trim());
+      target = getTarget(this.state, openToken, data.options.name);
+      //openToken.attrJoin("class", "numbered");
     }
 
     const imageToken = this.create_image(data);
@@ -493,7 +426,10 @@ class FigureExtended extends directivesDefault.image {
       const legend = legendParts.join("\n\n");
       const captionMap = data.bodyMap[0];
       const openCaption = this.createToken("figure_caption_open", "figcaption", 1, { block: true });
-      if (target) openCaption.attrSet("number", `${target.number}`);
+      //if (target) openCaption.attrSet("data-number", `${target.number ?? ''}`);
+      if (target?.number != null && target.number !== '') {
+        openCaption.attrSet("data-number", `${target.number}`);
+      } 
       const captionBody = this.nestedParse(caption, captionMap);
       const closeCaption = this.createToken("figure_caption_close", "figcaption", -1, { block: true });
       captionTokens = [openCaption, ...captionBody, closeCaption];
@@ -532,6 +468,7 @@ export class TableDirective extends Directive {
     //const classes = options.class ? [...options.class] : [];
     const classes = [].concat(options.class ?? []).flatMap(c => String(c).split(/\s+/)).filter(Boolean);
 
+
     // 1. Parser le corps pour obtenir les tokens du tableau Markdown natif
     const bodyTokens = this.nestedParse(data.body, data.bodyMap[0]);
 
@@ -539,8 +476,8 @@ export class TableDirective extends Directive {
     const tableOpenIndex = bodyTokens.findIndex((t) => t.type === "table_open");
 
     if (tableOpenIndex === -1) {
-      throw new DirectiveParsingError(
-        "Le contenu de la directive doit être un tableau Markdown (ex: | Header | ... |)"
+      throw new Error(
+        "Directive content must be a markdown table (ex: | Header | ... |)"
       );
     }
 
@@ -558,16 +495,31 @@ export class TableDirective extends Directive {
     }
 
     // 3. Générer le caption si un argument est présent
+    // Cible : ancre sur la table, numéro sur la légende.
+    //p const info = options.label ? this.state?.env?.refMap?.byLabel?.get(options.label) : null;
+    //p if (options.label) tableOpen.attrSet("id", options.label);
+    //console.log("label:", options.label, "| info:", info, "| refMap:", !!this.state?.env?.refMap);
+    
+    const info = getTarget(this.state, tableOpen, data.options.name);
+
     const captionTokens = [];
     if (data.args.length && data.args[0]) {
-      captionTokens.push(this.createToken("table_caption_open", "caption", 1));
+      const openCaption = this.createToken("table_caption_open", "caption", 1);
+      if (info?.number != null) {
+        openCaption.attrSet("data-number", `${info.number}`);
+        openCaption.attrJoin("class", "numbered");
+      }
+
+      captionTokens.push(openCaption);
+      const prefix = info?.number != null ? `Table ${info.number}: ` : "";
       captionTokens.push(
         this.createToken("inline", "", 0, {
           map: [data.map[0], data.map[0]],
-          content: data.args[0],
+          content: data.args[0],  // prefix +
           children: [],
         })
       );
+      
       captionTokens.push(this.createToken("table_caption_close", "caption", -1));
     }
 
@@ -576,6 +528,44 @@ export class TableDirective extends Directive {
     resultTokens.splice(tableOpenIndex + 1, 0, ...captionTokens);
 
     return resultTokens;
+  }
+}
+
+class ListTableExtended extends directivesDefault["list-table"] {
+  constructor(...args) {
+    super(...args);
+
+    this.option_spec = {
+      ...this.option_spec,
+      ...shared_option_spec,
+      align: directiveOptions.create_choice(["left", "center", "right"]),
+      label: directiveOptions.unchanged,
+    };
+  }
+  
+  run(data) {
+
+    const options = normalizeOptions(data.options);
+    const tokens = super.run(data);
+
+    const tableOpen = tokens.find((t) => t.type === "table_open");
+    if (!tableOpen) return tokens;
+
+    // Options supplémentaires
+    if (options.align) tableOpen.attrJoin("class", `align-${options.align}`);
+    if (options.class) {
+      tableOpen.attrJoin("class", [].concat(options.class).flatMap((c) => String(c).split(/\s+/)).filter(Boolean).join(" "));
+    }
+    if (options.width) tableOpen.attrSet("style", `width: ${options.width}`);
+
+    // Cible et numéro
+    const info = getTarget(this.state, tableOpen, options.label);
+    if (info?.number != null) {
+      const caption = tokens.find((t) => t.type === "table_caption_open");
+      if (caption) caption.attrSet("data-number", `${info.number}`);
+    }
+
+    return tokens;
   }
 }
 
@@ -755,5 +745,6 @@ export default {
   "figure-perso": FigureExtended,
   "figure": FigureExtended,
   table: TableDirective,
+  "list-table":ListTableExtended,
   math: MathNumbered,
 };
