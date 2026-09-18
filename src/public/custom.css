@@ -1,7 +1,13 @@
-
 #myst-css-namespace  {
   /*--accent: red;
    --blue-500: red;
   --navbar-bg: red;
   color:aquamarine;*/
+  em {
+    color: var(--tok-emphasis);
+}
+strong, h1, h2
+{
+    color: var(--tok-heading);
+}
 }
