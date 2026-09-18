@@ -123,7 +123,7 @@ const ADMONITION_OPTIONS = ["icon", "open", "enumerated", "enumerator"];
 const DIRECTIVE_OPTIONS = {
   figure: ["alt", "align", "width", "height", "figwidth", "no-figures", "enumerated", "enumerator"],
   image: ["alt", "align", "width", "height"],
-  table: ["align"],
+  table: ["align",  "enumerated", "width"],
   "list-table": ["header-rows", "align", "widths"],
   "csv-table": ["header-rows", "align", "widths", "file"],
   math: ["enumerated"],
