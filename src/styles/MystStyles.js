@@ -92,6 +92,7 @@ lightTheme.replaceSync(`
     --tok-meta: #6e7781;
     --tok-link: #0969da;
     --tok-url: #116329;
+    --tok-emphasis: #12701f;
     --tok-label: #8250df;
     --tok-keyword: #cf222e;
     --tok-string: #0a3069;
@@ -149,6 +150,7 @@ darkTheme.replaceSync(`
     --tok-meta: #8b949e;
     --tok-link: #58a6ff;
     --tok-url: #7ee787;
+    --tok-emphasis: #71c979;
     --tok-label: #d2a8ff;
     --tok-keyword: #ff7b72;
     --tok-string: #a5d6ff;
