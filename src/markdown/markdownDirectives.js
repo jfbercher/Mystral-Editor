@@ -510,39 +510,76 @@ class FigureExtended extends directivesDefault.image {
   }
 }
 
-class Table extends Directive {
+
+export class TableDirective extends Directive {
+  rawOptions = true;
+  required_arguments = 0;
   optional_arguments = 1;
-  has_content = true;
   final_argument_whitespace = true;
+  has_content = true;
+
+  option_spec = {
+    width: directiveOptions.length_or_percentage_or_unitless,
+    class: directiveOptions.class_option,
+    name: directiveOptions.unchanged,
+    label: directiveOptions.unchanged,
+    align: directiveOptions.create_choice(["left", "center", "right"]),
+  };
+
   run(data) {
-    const tableTokens = this.nestedParse(data.body, data.map);
-    let prefixTokens = [];
-    let suffixTokens = [];
-    if (data.args.length > 0) {
-      const openToken = this.createToken("figure_open", "figure", 1, {
-        map: data.map,
-        block: true,
-      });
-      const target = newTarget(this.state, openToken, "fig", data.args[0], data.body.trim());
-      openToken.attrJoin("class", "numbered");
-      const openCaption = this.createToken("figure_caption_open", "figcaption", 1, {
-        block: true,
-      });
-      openCaption.attrSet("style", "text-align: left");
-      if (target) {
-        openCaption.attrSet("number", `${target.number}`);
-      }
-      const captionBody = this.nestedParse(data.args[0], data.map[0]);
-      const closeCaption = this.createToken("figure_caption_close", "figcaption", -1, {
-        block: true,
-      });
-      prefixTokens = [openToken, openCaption, ...captionBody, closeCaption];
-      suffixTokens = [this.createToken("figure_close", "figure", -1, { block: true })];
+    this.assert_has_content(data);
+    const options = normalizeOptions(data.options);
+    //const classes = options.class ? [...options.class] : [];
+    const classes = [].concat(options.class ?? []).flatMap(c => String(c).split(/\s+/)).filter(Boolean);
+
+    // 1. Parser le corps pour obtenir les tokens du tableau Markdown natif
+    const bodyTokens = this.nestedParse(data.body, data.bodyMap[0]);
+
+    // Chercher le token table_open
+    const tableOpenIndex = bodyTokens.findIndex((t) => t.type === "table_open");
+
+    if (tableOpenIndex === -1) {
+      throw new DirectiveParsingError(
+        "Le contenu de la directive doit être un tableau Markdown (ex: | Header | ... |)"
+      );
     }
 
-    return [...prefixTokens, ...tableTokens, ...suffixTokens];
+    const tableOpen = bodyTokens[tableOpenIndex];
+
+    // 2. Appliquer les options sur le token table_open
+    if (data.options.align) {
+      tableOpen.attrJoin("class", `align-${data.options.align}`);
+    }
+    if (data.options.class) {
+      tableOpen.attrJoin("class", classes.join(" "));
+    }
+    if (data.options.width) {
+      tableOpen.attrSet("style", `width: ${data.options.width}`);
+    }
+
+    // 3. Générer le caption si un argument est présent
+    const captionTokens = [];
+    if (data.args.length && data.args[0]) {
+      captionTokens.push(this.createToken("table_caption_open", "caption", 1));
+      captionTokens.push(
+        this.createToken("inline", "", 0, {
+          map: [data.map[0], data.map[0]],
+          content: data.args[0],
+          children: [],
+        })
+      );
+      captionTokens.push(this.createToken("table_caption_close", "caption", -1));
+    }
+
+    // 4. Injecter la légende juste après <table_open>
+    const resultTokens = [...bodyTokens];
+    resultTokens.splice(tableOpenIndex + 1, 0, ...captionTokens);
+
+    return resultTokens;
   }
 }
+
+
 
 /* ------------------------------------------------------------------ *
  * Directives numérotées : exercices, solutions, preuves
@@ -717,6 +754,6 @@ export default {
   "figure-md": FigureMd,
   "figure-perso": FigureExtended,
   "figure": FigureExtended,
-  table: Table,
-  "tableau": Table,
+  table: TableDirective,
+  math: MathNumbered,
 };
