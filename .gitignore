@@ -11,4 +11,4 @@ docs/build/
 docs/*.pyc
 docs/*.sw*
 docs/venv/
-docs/.venv/
+docs/.venv/.vscode/
