@@ -1,7 +1,8 @@
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor } from "./editor_factory.js";
 import { config } from "./config.js";
-import { isTauri } from "./utils/local_utils/fs.js";
+import { isTauri, currentFileDir, workingDirectory } from "./utils/local_utils/fs.js";
+
 
 
 // Helper function to compare handles/paths across Web and Tauri environments
@@ -183,6 +184,11 @@ export class TabManager {
     }
 
     this.showOnlyTab(editorId);
+    // Mettre à jour currentFileDir pour le tab actif
+    const activeHandle = tabInfo.tabState.currentFileHandle;
+    currentFileDir.value = typeof activeHandle === "string"
+      ? activeHandle.split("/").slice(0, -1).join("/")
+      : null;
     localUtils.saveActiveTabId(this.activeTabId);
     
   }
@@ -205,7 +211,8 @@ export class TabManager {
       const remaining = [...this.openTabs.keys()].filter((id) => id !== editorId); // <-- correctif
       if (remaining.length > 0) {
         removeTab();
-        this.activateTab(remaining[0]);
+        const prev = remaining.sort((a, b) => (this.openTabs.get(b).lastActiveAt ?? 0) - (this.openTabs.get(a).lastActiveAt ?? 0))[0];
+        this.activateTab(prev);
       } else {
         this.openTab();
         removeTab();
@@ -321,6 +328,16 @@ export class TabManager {
       }
     }
     return null;
+  }
+
+  async openFileLinkInTab(relativeHref) {
+    const cleanHref = relativeHref.replace(/^\.\//, "");
+    const dir = currentFileDir.value
+
+    const absolutePath = `${dir.replace(/\/+$/, "")}/${cleanHref}`;
+    const targetPath = absolutePath.replaceAll("\\", "/");
+
+    await this.openFileHandleInTab(targetPath); // reuse the mechanism already in place!
   }
 
   async openFileHandleInTab(fileHandle) {
