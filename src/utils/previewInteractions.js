@@ -3,6 +3,7 @@
  */
 
 import { EditorView } from "@codemirror/view";
+import { isTauri } from "./local_utils";
 
 
 function resolveLabelToLine(label, refMap) {
@@ -20,6 +21,7 @@ export function handlePreviewInteraction(ev, root, view, refMap, headingMap) {
   if (anchorLink) {
     ev.preventDefault();
     const targetId = decodeURIComponent(anchorLink.getAttribute("href").slice(1));
+
 
 
   if (view) {

@@ -270,7 +270,7 @@ function computeBlocks() {
       el.innerHTML = this.html;
 
       el.addEventListener("click", (ev) => {
-        if (handlePreviewInteraction(ev, view.root, view, text.refMap)) {
+        if (handlePreviewInteraction(ev, view.root, view, text.refMap, null)) {
           ev.stopPropagation();
           return;
         }

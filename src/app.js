@@ -102,10 +102,13 @@ export async function initApp(options = {}) {
 
   await configReady();
   initZoom();
-  initExternalLinkHandler();
 
   const tabManager = new TabManager(options);
   await tabManager.init();
+  initExternalLinkHandler(tabManager);
+  // TabManager creates the tabs, each has its TextManager via MystState
+  // We can store the callback in a shared constant in local_utils:
+  
 
  // Handle desktop-specific interactions if running within Tauri
   if (isTauri()) {

@@ -112,7 +112,7 @@ export async function openExternalUrl(url) {
 /**
  * Intercepts clicks on external links before the webview navigates
  */
-export function initExternalLinkHandler() {
+export function initExternalLinkHandler(tabManager = null) {
   console.log("Initializing external link handler...");
 
   window.addEventListener(
@@ -132,6 +132,17 @@ export function initExternalLinkHandler() {
 
         // Détecte les vrais liens externes (http, https, mailto, etc.)
         const isExternal = /^(https?:|mailto:|tel:|\/\/)/i.test(rawHref);
+
+        // Lien relatif vers un fichier markdown : ouvrir dans un nouvel onglet
+        const isMarkdownFile = !isExternal && /\.(?:md|markdown)(?:[?#].*)?$/i.test(rawHref);
+        if (isMarkdownFile && tabManager) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          console.log("Opening markdown file in new tab:", rawHref);
+          tabManager.openFileLinkInTab(rawHref);
+          return;
+        }
 
         if (isExternal) {
           // Bloque la navigation WebKit immédiatement
