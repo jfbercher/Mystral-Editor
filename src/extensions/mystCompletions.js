@@ -108,10 +108,12 @@ const DIRECTIVES = [
   { name: "bibliography", group: "Document" },
   { name: "glossary", group: "Document" },
   { name: "include", group: "Document", arg: "path/to/file.md" },
-  { name: "toc", group: "Document" },
   { name: "embed", group: "Document", arg: "#label" },
   { name: "raw", group: "Document", arg: "html" },
   */
+  // Table of contents
+  { name: "toc", group: "Document", arg: "Title", opts: ["depth", "class", "label", "dropdown", "open"] },
+  { name: "table-of-contents", group: "Document", arg: "Title", opts: ["depth", "class", "label", "dropdown", "open"] },
 ];
 
 
@@ -140,6 +142,8 @@ const DIRECTIVE_OPTIONS = {
   include: ["start-after", "end-before", "literal"],
   bibliography: ["filter"],
   exercise: ["enumerated", "hidden"],
+  toc: ["depth", "class", "label", "dropdown", "open"],
+  "table-of-contents": ["depth", "class", "label", "dropdown", "open"],
   ...Object.fromEntries(
     ADMONITION_KINDS.map(kind => [kind, ADMONITION_OPTIONS])
   ),
@@ -149,6 +153,7 @@ const DIRECTIVE_OPTIONS = {
 const OPTION_VALUES = {
   align: ["left", "center", "right"],
   enumerated: ["true", "false"],
+  depth: ["1", "2", "3", "4", "5", "6"],
   open: ["true", "false"],
   icon: ["true", "false"],
   linenos: ["true", "false"],

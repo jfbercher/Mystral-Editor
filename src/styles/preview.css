@@ -43,3 +43,99 @@ figure > figcaption > p:first-child {
  figure > figcaption[data-number]::before {
   content: "Figure " attr(data-number) ": ";
 }
+/* Table of contents (directive toc) */
+nav.toc {
+  display: inline-block;
+  min-width: 200px;
+  margin: 1em 0;
+  padding: 0.6em 1em 0.8em 1em;
+  border: 1px solid var(--border, #ccc);
+  border-radius: var(--border-radius, 4px);
+  background: var(--panel-bg, #f8f8f8);
+  font-size: 0.92em;
+}
+
+nav.toc .toc-title {
+  font-weight: 700;
+  margin: 0 0 0.4em 0;
+}
+
+nav.toc ul {
+  margin: 0;
+  padding-left: 1.2em;
+  list-style: none;
+}
+
+nav.toc > ul {
+  padding-left: 0;
+}
+
+nav.toc li {
+  margin: 0.15em 0;
+  line-height: 1.4;
+}
+
+nav.toc .toc-number {
+  color: var(--accent-dark, #06c);
+  margin-right: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* TOC dropdown (details/summary) */
+details.toc {
+  display: inline-block;
+  min-width: 200px;
+  margin: 1em 0;
+  padding: 0;
+  border: 1px solid var(--border, #ccc);
+  border-radius: var(--border-radius, 4px);
+  background: var(--panel-bg, #f8f8f8);
+  font-size: 0.92em;
+}
+
+details.toc > summary.toc-title {
+  font-weight: 700;
+  padding: 0.5em 1em;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  border-radius: var(--border-radius, 4px);
+}
+
+details.toc > summary.toc-title::before {
+  content: "▶ ";
+  font-size: 0.75em;
+  color: var(--accent-dark, #06c);
+}
+
+details.toc[open] > summary.toc-title::before {
+  content: "▼ ";
+}
+
+details.toc[open] > summary.toc-title {
+  border-bottom: 1px solid var(--border, #ccc);
+  border-radius: var(--border-radius, 4px) var(--border-radius, 4px) 0 0;
+}
+
+details.toc ul {
+  margin: 0;
+  padding: 0.4em 1em 0.6em 1em;
+  list-style: none;
+}
+
+details.toc ul ul {
+  padding-left: 1.2em;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+details.toc li {
+  margin: 0.15em 0;
+  line-height: 1.4;
+}
+
+details.toc .toc-number {
+  color: var(--accent-dark, #06c);
+  margin-right: 0.3em;
+  font-variant-numeric: tabular-nums;
+}

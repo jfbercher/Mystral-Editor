@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions, numberedDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives, tocDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
@@ -111,7 +111,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions,  ...numberedDirectives,   ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
@@ -337,6 +337,16 @@ export class TextManager {
     const numberedHeadings = numberHeadings(this.headings.value);
     const headingByLine = flattenToLineMap(numberedHeadings, this.text.value);
     const headingMap = { byLine: headingByLine, active: numberingSectionsActive };
+
+    // Map (number|text) → pos, used by markdownHeadings.js to set id="hpos-{pos}"
+    // on headings that have no explicit (label)= anchor, and by TocDirective for href.
+    const headingPosMap = new Map();
+    (function buildPosMap(nodes) {
+      for (const n of nodes) {
+        if (!n.isTitle) headingPosMap.set(`${n.number ?? ""}|${n.text}`, n.pos);
+        if (n.children?.length) buildPosMap(n.children);
+      }
+    })(numberedHeadings);
     if (timing_debug) console.log("headings, count:", this.headings.value.length, "temps:", (performance.now() - _t3).toFixed(2), "ms");
 
     if (timing_debug) {const _t4 = performance.now();}
@@ -422,6 +432,8 @@ export class TextManager {
                       refMap,
                       docutils: { targets },
                       headingMap,
+                      numberedHeadings,
+                      headingPosMap,
                       footnoteMap,
                       citeMap, 
                       citationStyle,

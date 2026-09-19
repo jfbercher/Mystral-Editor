@@ -500,7 +500,7 @@ export class TableDirective extends Directive {
     //p if (options.label) tableOpen.attrSet("id", options.label);
     //console.log("label:", options.label, "| info:", info, "| refMap:", !!this.state?.env?.refMap);
     
-    const info = getTarget(this.state, tableOpen, data.options.name);
+    const info = getTarget(this.state, tableOpen, options.label);
 
     const captionTokens = [];
     if (data.args.length && data.args[0]) {
@@ -747,4 +747,153 @@ export default {
   table: TableDirective,
   "list-table":ListTableExtended,
   math: MathNumbered,
+};
+
+/* ----------------------------------------------------------------- - *
+
+/* ----------------------- ------------------------------------------- *
+ * toc / table-of-contents / contents directive
+ *
+ * Inserts a table of contents based on the document’s headings.
+ 
+* Supported options:
+ *   :depth: N          — maximum depth (default: all levels)
+ *   :class: …          — additional CSS classes
+ *   :label: …          — CSS ID (alias: name)
+ *   :enumerated: …     — numbers the TOC itself within the document (for {numref}, future use)
+ 
+* Optional argument   — title displayed above the list
+ *
+ * Links in the TOC:
+ *   – headings with a label (label)=  →  href="#label"
+ *   – headings without a label              →  href="#hpos-{pos}"
+ *     (corresponding ID set by markdownHeadings.js via headingPosMap)
+ 
+*
+ * pos is the same integer as data-heading-pos in the side TOC.
+ * ------------------------------------------------------------------ */
+
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Constructs a Map (number|text) → label from the “sec” entries in refMap,
+ * used to find the explicit anchor of a heading.
+ */
+function buildSectionLabelMap(refMap) {
+  const map = new Map();
+  if (!refMap?.byLabel) return map;
+  for (const [label, info] of refMap.byLabel.entries()) {
+    if (info.kind !== "sec") continue;
+    const key = `${info.number ?? ""}|${info.title ?? ""}`;
+    if (!map.has(key)) map.set(key, label);
+  }
+  return map;
+}
+
+/** Returns the href anchor for a heading node. */
+function anchorFor(node, sectionLabelMap) {
+  // Priority 1: explicit label (label)=
+  const key = `${node.number ?? ""}|${node.text ?? ""}`;
+  const label = sectionLabelMap.get(key);
+  if (label) return label;
+  // Priority 2: ID based on the pos (character offset in the source)
+  // — same value as data-heading-pos in the side TOC.
+  return `hpos-${node.pos}`;
+}
+
+/** Recursively builds the nested <ul> HTML with links. */
+function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1) {
+  if (!nodes?.length || depth > maxDepth) return "";
+  const items = nodes
+    .filter((n) => !n.isTitle)
+    .map((node) => {
+      const anchor = anchorFor(node, sectionLabelMap);
+      // Displays the section number as calculated by headingNumbering (if globally enabled).
+      const num = node.number
+        ? `<span class="toc-number">${escapeHtml(node.number)}</span> `
+        : "";
+      const children =
+        node.children?.length && depth + 1 <= maxDepth
+          ? buildTocList(node.children, maxDepth, sectionLabelMap, depth + 1)
+          : "";
+      return `<li><a href="#${escapeHtml(anchor)}">${num}${escapeHtml(node.text)}</a>${children}</li>`;
+    })
+    .join("\n");
+  return `<ul>\n${items}\n</ul>`;
+}
+
+class TocDirective extends Directive {
+  rawOptions = true;
+  required_arguments = 0;
+  optional_arguments = 1; // titre optionnel
+  final_argument_whitespace = true;
+  has_content = false;
+
+  option_spec = {
+    depth:      directiveOptions.positive_int,
+    maxdepth:   directiveOptions.positive_int,   // alias MyST
+    class:      directiveOptions.class_option,
+    label:      directiveOptions.unchanged,
+    name:       directiveOptions.unchanged,       // alias of label
+    enumerated: directiveOptions.unchanged,
+    numbered:   directiveOptions.unchanged,       // alias of enumerated
+    context:    directiveOptions.unchanged,       // ignored (page only)
+    kind:       directiveOptions.unchanged,       // alias of context
+    dropdown:   directiveOptions.unchanged,       // makes the TOC collapsible (<details>)
+    open:       directiveOptions.unchanged,       // pre-opens the dropdown
+  };
+
+  run(data) {
+    const options = normalizeOptions(data.options);
+    const maxDepth = options.depth ?? options.maxdepth ?? Infinity;
+    const classes = [].concat(options.class ?? [])
+      .flatMap((c) => String(c).split(/\s+/)).filter(Boolean);
+    const labelId = options.label ?? options.name;
+    // :enumerated: refers to the numbering of the table of contents itself, not the section numbers.
+    // Section numbers come from numberedHeadings (enabled globally).
+
+    // Dropdown: enabled if :dropdown: is present or if the “dropdown” class is in :class:const isDropdown = options.dropdown !== undefined || classes.includes("dropdown");
+    const isOpen = options.open !== undefined;
+    const title = data.args[0] ?? (isDropdown ? "Contents" : "");
+
+    const headings = this.state?.env?.numberedHeadings ?? [];
+    const sectionLabelMap = buildSectionLabelMap(this.state?.env?.refMap);
+
+    const listHtml = buildTocList(headings, maxDepth, sectionLabelMap, 1);
+
+    const classAttr = ["toc", ...classes].join(" ");
+    const idAttr = labelId ? ` id="${escapeHtml(labelId)}"` : "";
+
+    let html;
+    if (isDropdown) {
+      const openAttr = isOpen ? " open" : "";
+      const summaryHtml = `<summary class="toc-title">${escapeHtml(title)}</summary>\n`;
+      html = `<details class="${classAttr}"${idAttr}${openAttr}>\n${summaryHtml}${listHtml}\n</details>\n`;
+    } else {
+      const titleHtml = title
+        ? `<p class="toc-title">${escapeHtml(title)}</p>\n`
+        : "";
+      html = `<nav class="${classAttr}"${idAttr}>\n${titleHtml}${listHtml}\n</nav>\n`;
+    }
+    const token = this.createToken("html_block", "", 0, {
+      map: data.map,
+      block: true,
+    });
+    token.content = html;
+    return [token];
+  }
+}
+
+export const tocDirectives = {
+  toc: TocDirective,
+  "table-of-contents": TocDirective,
+  tableofcontents: TocDirective,
+  contents: TocDirective,
+  toctree: TocDirective,
 };

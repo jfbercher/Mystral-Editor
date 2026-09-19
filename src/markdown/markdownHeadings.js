@@ -47,7 +47,14 @@ const markdownItHeadings = (md) => {
       if (!info) continue;
 
       const label = labelByLine.get(absoluteLine);
-      if (label) token.attrSet("id", label);
+      if (label) {
+        token.attrSet("id", label);
+      } else if (!info.isTitle) {
+        // Heading without explicit label: use character-offset-based id (same pos as data-heading-pos)
+        const key = `${info.number ?? ""}|${info.text}`;
+        const pos = state.env.headingPosMap?.get(key);
+        if (pos != null) token.attrSet("id", `hpos-${pos}`);
+      }
 
       const inlineToken = state.tokens[k + 1];
       if (!inlineToken || inlineToken.type !== "inline") continue;
