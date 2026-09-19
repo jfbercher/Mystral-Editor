@@ -23,8 +23,8 @@ math:
 
 [Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, This project uses it to build a full-featured scientific authoring tool for local use.
 
-[Additions](./additions.md)
-[Modifications](./modifications.md)
+[Additions](additions.md)
+[Modifications](modifications.md)
 
 
 MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
