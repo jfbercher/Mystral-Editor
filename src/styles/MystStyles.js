@@ -53,6 +53,7 @@ lightTheme.replaceSync(`
     color: #333;
     color-scheme: light;
 
+    --char-col: #333;
     --accent: var(--blue-200);
     --accent-light: var(--blue-100);
     --accent-dark: var(--blue-500);
@@ -62,6 +63,8 @@ lightTheme.replaceSync(`
     --navbar-bg: var(--gray-200);
     --button-bg: white;
     --button-bg-hover: var(--gray-400);
+
+    --table-br-2: var(--gray-100);
 
     --modal-bg: white;
     --switch-bg: var(--gray-500);
@@ -73,6 +76,7 @@ lightTheme.replaceSync(`
     --icon-invert: 0;
 
     --string-fg: var(--brown-500);
+    --comment-fg: #6a737d;
     --deleted-bg: var(--red-400);
     --inserted-bg: var(--green-300);
     --text-fg: #333;
@@ -87,6 +91,13 @@ lightTheme.replaceSync(`
 
     --error-bg: var(--red-500);
 
+    /* Pyodide cell theme variables */
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f6f8fa;
+    --color-border: #d0d7de;
+    --color-foreground-primary: #1f2328;
+    --color-foreground-muted: #57606a;
+
     /* CodeMirror */
     --tok-heading: #0550ae;
     --tok-meta: #6e7781;
@@ -97,6 +108,14 @@ lightTheme.replaceSync(`
     --tok-keyword: #cf222e;
     --tok-string: #0a3069;
     --tok-comment: #6e7781;
+    --tok-number: #098658;
+    --tok-bool: #0000ff;
+    --tok-self: #0000ff;
+    --tok-function: #795e26;
+    --tok-property: #001080;
+    --tok-atom: #af00db;
+    --tok-operator: #000000;
+    --tok-classname: #267f99;
 
     --editor-title: #003366;
 
@@ -111,6 +130,7 @@ darkTheme.replaceSync(`
     color: white;
     color-scheme: dark;
 
+    --char-col: white;
     --accent: #0083e1;
     --accent-light: #82cfe6;
     --accent-dark: rgb(121, 192, 255);
@@ -120,6 +140,8 @@ darkTheme.replaceSync(`
     --navbar-bg: #1a1a1a;
     --button-bg: #333;
     --button-bg-hover: #5c5c5c;
+
+    --table-br-2: var(--gray-900);
 
     --modal-bg: #1a1a1a;
     --switch-bg: #5c5c5c;
@@ -131,6 +153,7 @@ darkTheme.replaceSync(`
     --icon-invert: 1;
 
     --string-fg: #ffa657;
+    --comment-fg: #8b949e;
     --deleted-bg: #e74a3cb2;
     --inserted-bg: #00af91b2;
     --text-fg: #ddd;
@@ -145,6 +168,13 @@ darkTheme.replaceSync(`
 
     --error-bg: #f5766e;
 
+    /* Pyodide cell theme variables */
+    --color-background-primary: #2a2a2a;
+    --color-background-secondary: #1a1a1a;
+    --color-border: #878787;
+    --color-foreground-primary: #ddd;
+    --color-foreground-muted: #8b949e;
+
     /* CodeMirror */
     --tok-heading: #79c0ff;
     --tok-meta: #8b949e;
@@ -155,6 +185,14 @@ darkTheme.replaceSync(`
     --tok-keyword: #ff7b72;
     --tok-string: #a5d6ff;
     --tok-comment: #8b949e;
+    --tok-number: #79c0ff;
+    --tok-bool: #79c0ff;
+    --tok-self: #79c0ff;
+    --tok-function: #d2a8ff;
+    --tok-property: #c9d1d9;
+    --tok-atom: #ff7b72;
+    --tok-operator: #c9d1d9;
+    --tok-classname: #7ee787;
 
     --editor-title: #79c0ff;
   }

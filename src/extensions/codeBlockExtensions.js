@@ -60,7 +60,11 @@ const codeBlocksSubeditors = (extensions, editorView, tooltipSources = {}, compl
 
           if (value.editors.some((e) => e.from == ref.from && e.to == ref.to)) return false;
           const startLine = tr.state.doc.lineAt(ref.from);
-          const lang = startLine.text.trim().replace(/[`~:]+/, "");
+          let lang = startLine.text.trim().replace(/^[`~:]+/, "");
+          // Normalize directive syntax: {code-cell} python → code-cell
+          lang = lang.replace(/^\{([^}]+)\}.*$/, "$1").trim();
+          // Take first word only (e.g. "python myfile.py" → "python")
+          lang = lang.split(/\s+/)[0];
           if (!(lang in value.extensions)) return false;
           // console.log("lang extrait:", JSON.stringify(lang), "extensions disponibles:", Object.keys(value.extensions), "match:", lang in value.extensions);
 

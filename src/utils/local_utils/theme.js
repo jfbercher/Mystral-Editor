@@ -71,6 +71,7 @@ export function applyEditorTheme(editorId, theme) {
   // Mettre à jour le Shadow DOM de l'éditeur ciblé
   const shadowRoot = document.getElementById(editorId)?.shadowRoot;
   if (!shadowRoot) return;
+  
 
   const sheets = [...shadowRoot.adoptedStyleSheets];
   const themeIndex = sheets.findIndex((sheet) => sheet === lightTheme || sheet === darkTheme);
@@ -80,6 +81,10 @@ export function applyEditorTheme(editorId, theme) {
     sheets.push(stylesheet);
   }
   shadowRoot.adoptedStyleSheets = sheets;
+
+  // Appliquer 
+  document.querySelector("#myst-css-namespace").dataset.theme = theme;
+
 }
 
 export function applyThemeToAllTabs(getAllEditorIds) {
