@@ -2,6 +2,7 @@ import MarkdownIt from "markdown-it";
 import { Directive, directivePlugin, Role, rolePlugin } from "markdown-it-docutils";
 import { escapeRE } from "markdown-it/lib/common/utils";
 import { Cite } from "../markdown/bibliography"
+import { EvalRole } from "../markdown/markdownPyodide"
 
 /**
  * @typedef {{
@@ -170,7 +171,7 @@ const useCustomRoles = (transforms, cache) => (markdownIt) => {
       roles[name] = role;
       return roles;
     }, {});
-  customRoles = { ...customRoles, ...{cite: Cite}}
+  customRoles = { ...customRoles, ...{cite: Cite, eval: EvalRole}}
 
   // Usually a markdownIt renderer rule would escape all html code. Here we create a rule
   // which explicitly does nothing so that all html returned by transforms is rendered.
