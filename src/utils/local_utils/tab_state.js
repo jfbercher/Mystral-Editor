@@ -78,7 +78,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     selectedFileHandle: null,
     currentFileName: config.defaultFileName,
     currentFilePathParam: null,
-    autoSaveEnabled: true,
+    autoSaveEnabled: config.autoSaveEnabled, //true,
     editorReady: false,
     dirty: false,
     lastSavedText: "",
