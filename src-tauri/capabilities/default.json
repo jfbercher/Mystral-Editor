@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions par défaut pour l'application",
+  "description": "Default permissions for the application",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -23,22 +23,23 @@
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        { "path": "$HOME/**" }
+        { "path": "$HOME/**" },
+        { "path": "$APPCONFIG/**" }
       ]
     },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
-        { "path": "$HOME/**" }
+        { "path": "$HOME/**" },
+        { "path": "$APPCONFIG/**" }
       ]
     },
     {
       "identifier": "fs:allow-exists",
       "allow": [
-        { "path": "$HOME/**" }
+        { "path": "$HOME/**" },
+        { "path": "$APPCONFIG/**" }
       ]
     }
   ]
 }
-
-
