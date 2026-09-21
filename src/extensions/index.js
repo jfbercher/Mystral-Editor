@@ -85,12 +85,23 @@ const syntaxHighlight = HighlightStyle.define([
   { tag: [tags.regexp, tags.escape, tags.special(tags.string)], color: "#e40" },
   { tag: tags.definition(tags.variableName), color: "#00f" },
   { tag: tags.local(tags.variableName), color: "#30a" },
-  { tag: [tags.typeName, tags.namespace], color: "#085" },
+  { tag: tags.typeName,                    color: "#085" },
   { tag: tags.className, color: "#167" },
   { tag: tags.special(tags.variableName), color: "#256" },
   { tag: tags.definition(tags.propertyName), color: "var(--accent-dark)" },
-  { tag: tags.comment, color: "var(--string-fg)" },
+  { tag: tags.comment, color: "var(--comment-fg, #6a737d)", fontStyle: "italic" },
   { tag: tags.invalid, color: "#f00" },
+  // ── Tokens Python (et autres langages) non couverts ci-dessus ────────────
+  { tag: tags.number,                       color: "var(--tok-number)" },
+  { tag: [tags.bool, tags.null],            color: "var(--tok-bool)" },
+  { tag: tags.self,                         color: "var(--tok-self)" },
+  { tag: tags.function(tags.variableName),  color: "var(--tok-function)" },
+  { tag: tags.function(tags.propertyName),  color: "var(--tok-function)" },
+  { tag: tags.atom,                         color: "var(--tok-atom)" }, // decorators @…
+  { tag: tags.propertyName,                 color: "var(--tok-property)" }, // obj.attr
+  { tag: tags.variableName,                 color: "var(--tok-property)" }, // identifiers (e.g. module names after import)
+  { tag: tags.namespace,                    color: "var(--tok-classname)" }, // module namespaces
+  { tag: tags.operator,                     color: "var(--tok-operator)" },
 ]);
 
 export const lineNumbersCompartment = new Compartment();
@@ -130,12 +141,16 @@ export class ExtensionBuilder {
   }
 
 static codeLanguage(name) {
-    if (name == "yaml") {
-      return yaml().language;
+    // Normalize directive info strings like "{code-cell} python" or "{code-cell}"
+    let lang = name.trim();
+    const directiveMatch = lang.match(/^\{[^}]*\}(?:\s+(\S+))?/);
+    if (directiveMatch) {
+      lang = directiveMatch[1] || "code-cell";
     }
-    if (name == "python") {
-      return python().language;
-    }
+    lang = lang.split(/\s+/)[0].toLowerCase();
+
+    if (lang === "yaml") return yaml().language;
+    if (lang === "python" || lang === "ipython3" || lang === "code-cell") return python().language;
   }
 
   static defaultPlugins() {
