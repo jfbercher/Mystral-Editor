@@ -18,13 +18,12 @@ math:
   '\wb': '\mathbf{wx}'
 ---
 
+:::{toc} Contents
+::: 
 
 ## Overview
 
-[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, This project uses it to build a full-featured scientific authoring tool for local use.
-
-[Additions](additions.md)
-[Modifications](modifications.md)
+[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative **editing** in web applications, This project uses it to build a full-featured scientific authoring tool for local use.
 
 
 MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
@@ -35,6 +34,11 @@ The application ships in two forms:
 
 - **Native desktop application** via Tauri (macOS, Linux, Windows) with access to the local file system
 - **Web mode** via a minimal Node.js server, usable in any browser without installation
+
+The two following files list the Additions and Modifications of the original Editor (as required by the Apache 2.0 license): 
+
+- [Additions](additions.md)
+- [Modifications](modifications.md)
 
 ## Features Inherited from Myst-Editor
 
@@ -173,11 +177,38 @@ See {ref}`fig:result` ([](#fig:result)) for details.
 
 The figure renders centered, with the automatic caption "Figure 1: Results for the experiment." The `{numref}` role resolves to the hyperlinked text "Figure 1". Tables follow the same pattern using the `list-table` directive with a `(tab:label)=` anchor above it.
 
+## Python Executable Code Cells (Pyodide)
+
+Mystral Editor integrates [Pyodide](https://pyodide.org/) — a WebAssembly port of CPython — to support live, in-browser Python execution directly in the document.
+
+A fenced code block with the `{code-cell}` directive (or ` ```{code-cell} python ` shorthand) renders as an editable Python editor cell with a **Run** button. Clicking it executes the code in the browser via Pyodide and displays stdout, return values, and errors below the cell.
+
+```md
+:::{code-cell} python
+:packages: numpy
+
+import numpy as np
+print(np.linspace(0, 1, 5))
+:::
+```
+
+Supported options:
+
+- `:packages: pkg1, pkg2` — additional packages to install via `micropip` before running
+- `:linenos:` — show line numbers in the cell editor
+- `:tags: hide-input` — cell metadata (for future filtering)
+
+**Access to local-files** in read/write mode is supported -- restricted to the Working Directory with explicit permissions (web), and the same directory as the current file (Tauri local app)). 
+
+Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables.
+
 ## Document Organization and Navigation
 
 ### Table of Contents
 
 A collapsible, resizable left side panel displays a table of contents generated dynamically from document headings. When heading numbering is enabled, numbers appear in the panel. Clicking an entry scrolls both the editor and the preview to the corresponding section.
+
+A `:::{toc}` directive (aliases: `table-of-contents`, `contents`, `toctree`) can also insert a table of contents **inline inside the document body**. It supports an optional title argument, a `:depth:` option to limit heading levels, and a `:dropdown:` flag that wraps the TOC in a collapsible `<details>/<summary>` block. When heading numbering is active, section numbers are preserved in the inline TOC links.
 
 ### Drag-and-Drop Section Reordering
 
@@ -195,7 +226,7 @@ Headings can be folded individually (chevron marker in the editor gutter) or glo
 
 Mystral Editor ships an explicit **light theme** alongside the dark theme, each defined as a full `CSSStyleSheet` with dedicated color tokens for the editor UI and CodeMirror syntax highlighting. Theme switching applies to both the main document and each editor's Shadow DOM.
 
-Users can further customize the appearance with an optional `custom.css` file (scoped to `#myst-css-namespace`) that is loaded at startup and applied on top of the built-in themes.
+Users can further customize the appearance with an optional `custom.css` file (scoped to `#myst-css-namespace`) that is loaded at startup and applied on top of the built-in themes. See [Customisation section](#customisation).
 
 CodeMirror syntax highlighting colors are driven by CSS custom properties, making them easy to override per-project. The font stack uses self-hosted Lato (regular and bold weights, Latin and Latin-ext subsets).
 
@@ -216,6 +247,51 @@ Key Tauri-specific features:
 A GitHub Actions workflow (`release.yaml`) builds and signs all platform variants on every `v*` tag push, producing installer artifacts published to GitHub Releases. A `Makefile` `release` target automates version bumping, tagging and pushing.
 
 For users who prefer a browser-based setup, a minimal Node.js server (`server.mjs`) serves the built `dist/` folder as a single-page application with `/api/file` endpoints for local file read/write, replicating the file-access layer without Tauri.
+
+(customisation)=
+## Customisation
+
+Mystral Editor can be customised through two optional files: **`config.json`** (runtime settings) and **`custom.css`** (stylesheet overrides). Neither file is required — the app runs fine without them, falling back to built-in defaults.
+
+- **`config.json`** accepts any subset of the keys defined in `config-defaults.js` (`suspendAfterMs`, `autosaveIntervalMs`, `shortcuts`, `pyodide.resetCwdOnRun`, etc.) as well as a `data_directives` object to extend or override the built-in MyST directive registry. An example of `config.json` can be seen on the public folder in the repo: [config.json](https://raw.githubusercontent.com/jfbercher/Mystral-Editor/refs/heads/main/src/public/config.json).
+
+- **`custom.css`** is injected after the application stylesheet, so any CSS variable or rule defined there takes precedence.
+
+:::{example} Css
+:label: css
+/* custom.css */
+
+/* Light theme overrides */
+#myst-css-namespace[data-theme="lightTheme"] {
+  --tok-keyword: #8b008b;
+  --tok-string: #006400;
+  /* … */
+}
+
+/* Dark theme overrides */
+#myst-css-namespace[data-theme="darkTheme"] {
+  --tok-keyword: #ff99cc;
+  --tok-string: #90ee90;
+  /* … */
+}
+
+/* Unconditional override (same value in both themes) */
+#myst-css-namespace {
+  --tok-comment: #999999;
+}
+:::
+
+Where to place these files depends on how you are running the app:
+For  **Web / dev server** — put both files in `src/public/`. Vite copies them to `dist/` at build time, where they are served alongside the application bundle.
+
+For *Tauri desktop apps*:
+| Plateform | path (`appConfigDir`) |
+|---|---|
+| macOS | `~/Library/Application Support/MystralEditor/` |
+| Linux | `~/.config/MystralEditor/` |
+| Windows | `%APPDATA%\MystralEditor\` |
+
+`appConfigDir`
 
 ## Getting Started
 
@@ -359,9 +435,9 @@ This updates the version string in `src-tauri/Cargo.toml` and `tauri.conf.json`,
 | Table of contents | Outline mode only | Collapsible side panel, numbered headings |
 | Drag-and-drop reorder | Not supported | Section drag-and-drop from TOC panel |
 | Heading numbering | Not supported | Configurable, synced to TOC and source |
-| Themes | Dark theme only | Explicit selectable Light and Dark themes, user custom.css |
-| CodeMirror syntax colors | Fixed | CSS-token-driven, overridable per project |
-| Code block languages | Markdown only | Python sub-mode (extensible) |
+| Themes | Dark theme only | Explicit selectable Light and Dark themes; user `custom.css` with `data-theme` attribute for per-theme overrides |
+| CodeMirror syntax colors | Fixed | CSS-variable-driven (`--tok-*`), shared between editor and preview, overridable per theme via `custom.css` |
+| Code block languages | Markdown only | Python sub-mode for ` ```python ` and `:::{code-cell}` fences; Pyodide live execution |
 | MyST autocompletion | Not supported | Roles, directives, cross-ref targets, BibTeX keys |
 | Section folding | Collapsible heading marker | Chevron gutter marker, frontmatter fold |
 | Desktop app | No | macOS, Linux, Windows (Tauri); file associations; auto-updater |
