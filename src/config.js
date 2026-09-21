@@ -1,96 +1,125 @@
-const BUILTIN_DIRECTIVES = {
-  // Médias
-  figure: { kind: "fig", label: "Figure", numbered: true, caption: "body" },
-  "figure-md": { kind: "fig", label: "Figure", numbered: true, caption: "body", argIsLabel: true },
-  image: { kind: "fig", label: "Image", numbered: false },
-  table: { kind: "table", label: "Table", numbered: true, caption: "both" },
-  "list-table": { kind: "table", label: "Table", numbered: true, caption: "both" },
-  "csv-table": { kind: "table", label: "Table", numbered: true, caption: "both" },
+import { BUILTIN_DIRECTIVES, DEFAULT_CONFIG } from "./config-defaults.js";
 
-  // Maths
-  math: { kind: "eq", label: "Equation", numbered: true },
-
-  // Exercices — modèle mystmd / sphinx-exercise
-  exercise: { kind: "exercise", label: "Exercise", numbered: true, caption: "arg" },
-  solution: { kind: "solution", label: "Solution", numbered: false, caption: "arg", reference: true },
-  // Syntaxe « gated » : deux fences indépendantes encadrant du contenu racine.
-  "exercise-start": { kind: "exercise", label: "Exercise", numbered: true, caption: "arg" },
-  "exercise-end": { kind: null },
-  "solution-start": { kind: "solution", label: "Solution", numbered: false, caption: "arg", reference: true },
-  "solution-end": { kind: null },
-
-  // Famille preuve
-  proof: { kind: "proof", label: "Proof", numbered: true, caption: "arg" },
-  theorem: { kind: "theorem", label: "Theorem", numbered: true, caption: "arg" },
-  lemma: { kind: "theorem", label: "Lemma", numbered: true, caption: "arg" },
-  corollary: { kind: "theorem", label: "Corollary", numbered: true, caption: "arg" },
-  definition: { kind: "definition", label: "Definition", numbered: true, caption: "arg" },
-  example: { kind: "example", label: "Example", numbered: true, caption: "arg" },
-  remark: { kind: "remark", label: "remark", numbered: true, caption: "arg" },
-  algorithm: { kind: "algorithm", label: "Algorithm", numbered: true, caption: "arg" },
-
-  // Admonitions : référençables mais non numérotées
-  admonition: { kind: "adm", label: "Admonition", numbered: false, caption: "arg" },
-  attention: { kind: "adm", label: "Attention", numbered: false, caption: "arg" },
-  caution: { kind: "adm", label: "Caution", numbered: false, caption: "arg" },
-  danger: { kind: "adm", label: "Danger", numbered: false, caption: "arg" },
-  error: { kind: "adm", label: "Error", numbered: false, caption: "arg" },
-  hint: { kind: "adm", label: "Hint", numbered: false, caption: "arg" },
-  important: { kind: "adm", label: "Important", numbered: false, caption: "arg" },
-  note: { kind: "note", label: "Note", numbered: true, caption: "arg" },
-  seealso: { kind: "adm", label: "See also", numbered: false, caption: "arg" },
-  tip: { kind: "adm", label: "Tip", numbered: false, caption: "arg" },
-  warning: { kind: "adm", label: "Warning", numbered: true, caption: "arg" },
-};
-
-
+/**
+ * Runtime configuration object — starts from defaults and is mutated by loadConfig().
+ * Deep-clone DEFAULT_CONFIG so defaults remain intact for reference.
+ */
 export const config = {
-  suspendAfterMs: 60 * 60 * 1000,
-  checkIntervalMs: 5 * 60 * 1000,
-  autosaveIntervalMs: 60 * 1000,
-
-  recentFilesMax: 10,
-  defaultFileName: "Untitled.md",
-
-  fallbackImage:
-    "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png",
-
-  shortcuts: {
-    save: "Mod-Shift-s",
-    open: "Mod-Shift-o",
-    newTab: "Mod-Shift-e",
-  },
+  ...DEFAULT_CONFIG,
+  shortcuts: { ...DEFAULT_CONFIG.shortcuts },
+  pyodide:   { ...DEFAULT_CONFIG.pyodide   },
 };
+
+/**
+ * True when the app is running inside a Tauri desktop wrapper.
+ * Used to switch between web fetch and Tauri fs-plugin reads.
+ */
+const isTauri = "__TAURI_INTERNALS__" in window;
 
 let directives = BUILTIN_DIRECTIVES;
-let customCss = "";
-let ready = null;
+let customCss  = "";
+let ready      = null;
 
+// ---------------------------------------------------------------------------
+// Web loader — uses plain fetch() relative to the app's base URL.
+// config.json and custom.css must be placed in src/public/ (copied to dist/).
+// ---------------------------------------------------------------------------
+async function loadConfigWeb() {
+  try {
+    const res = await fetch(new URL("config.json", import.meta.url));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    _applyConfigData(data);
+  } catch (err) {
+    console.warn("config.json not loaded, using defaults.", err);
+  }
+
+  try {
+    const res = await fetch("custom.css");
+    if (res.ok) {
+      customCss = await res.text();
+      console.log("custom.css loaded (web)");
+    }
+  } catch {
+    // Missing file is normal — not an error.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tauri loader — reads files from the OS app-config directory via the fs plugin.
+//
+// Platform locations (identifier = "MystralEditor"):
+//   macOS   ~/Library/Application Support/MystralEditor/
+//   Linux   ~/.config/MystralEditor/
+//   Windows %APPDATA%\MystralEditor\
+//
+// Place config.json and/or custom.css there to customise the app.
+// ---------------------------------------------------------------------------
+async function loadConfigTauri() {
+  const { appConfigDir, join } = await import("@tauri-apps/api/path");
+  const { readTextFile, exists } = await import("@tauri-apps/plugin-fs");
+
+  const dir = await appConfigDir();
+
+  // config.json
+  const configPath = await join(dir, "config.json");
+  if (await exists(configPath)) {
+    try {
+      const data = JSON.parse(await readTextFile(configPath));
+      _applyConfigData(data);
+      console.log("config.json loaded from", configPath);
+    } catch (err) {
+      console.warn("config.json could not be parsed.", err);
+    }
+  }
+
+  // custom.css
+  const cssPath = await join(dir, "custom.css");
+  if (await exists(cssPath)) {
+    try {
+      customCss = await readTextFile(cssPath);
+      console.log("custom.css loaded from", cssPath);
+    } catch (err) {
+      console.warn("custom.css could not be read.", err);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper — merges a parsed config.json object into the live config.
+// ---------------------------------------------------------------------------
+function _applyConfigData(data) {
+  const { shortcuts, data_directives, ...rest } = data;
+  Object.assign(config, rest);
+  Object.assign(config.shortcuts, shortcuts ?? {});
+  directives = { ...BUILTIN_DIRECTIVES, ...(data_directives ?? {}) };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Loads user configuration (once). Returns a promise that resolves to config.
+ * Safe to call multiple times — subsequent calls return the same promise.
+ */
 export function loadConfig() {
   ready ??= (async () => {
-    try {
-      const res = await fetch(new URL("config.json", import.meta.url));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const { shortcuts, data_directives, ...rest } = data;
-      Object.assign(config, rest);
-      Object.assign(config.shortcuts, shortcuts ?? {});
-      directives = { ...BUILTIN_DIRECTIVES, ...(data_directives ?? {}) };
-    } catch (err) {
-      console.warn("config.json non chargé, valeurs par défaut.", err);
+    if (isTauri) {
+      await loadConfigTauri();
+    } else {
+      await loadConfigWeb();
     }
-    try {
-        const res = await fetch("custom.css");
-        if (res.ok) {customCss = await res.text(); console.log("custom.css loaded")}
-      } catch {
-        // Absence de fichier : cas normal, pas une erreur.
-      }
     return config;
   })();
   return ready;
 }
 
+/** Returns the ready promise, triggering loadConfig() if not yet started. */
 export const configReady = () => ready ?? loadConfig();
 
+/** Returns the active directive map (built-in + any user overrides). */
 export const getLabelledDirectives = () => directives;
+
+/** Returns the custom CSS string (empty string if none was loaded). */
 export const getCustomCss = () => customCss;
