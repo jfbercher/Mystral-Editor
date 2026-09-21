@@ -1,11 +1,15 @@
 import { python } from "@codemirror/lang-python";
+import { syntaxHighlighting } from "@codemirror/language";
+import { pythonHighlightStyle } from "./pythonHighlightStyle";
 import { codeBlockExtensions } from "./codeBlockExtensions";
+
+const pythonExtensions = [python(), syntaxHighlighting(pythonHighlightStyle)];
 
 export const codeBlockLanguages = (editorView, linter) =>
   codeBlockExtensions({
     extensions: {
-      python: [python()],
-      // ajoute d'autres langages ici, ex: cpp: [cpp()], rust: [rust()]
+      python: pythonExtensions,
+      "code-cell": pythonExtensions,
     },
     editorView,
     tooltipSources: {},

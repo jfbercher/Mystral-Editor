@@ -1,4 +1,5 @@
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
+import IMurMurHash from "imurmurhash";
 
 // Remplace toutes les Admonitions par des MyST-like admonitions
 
@@ -858,7 +859,8 @@ class TocDirective extends Directive {
     // :enumerated: refers to the numbering of the table of contents itself, not the section numbers.
     // Section numbers come from numberedHeadings (enabled globally).
 
-    // Dropdown: enabled if :dropdown: is present or if the “dropdown” class is in :class:const isDropdown = options.dropdown !== undefined || classes.includes("dropdown");
+    // Dropdown: enabled if :dropdown: is present or if the “dropdown” class is in :class:
+    const isDropdown = options.dropdown !== undefined || classes.includes("dropdown");
     const isOpen = options.open !== undefined;
     const title = data.args[0] ?? (isDropdown ? "Contents" : "");
 
@@ -896,4 +898,64 @@ export const tocDirectives = {
   tableofcontents: TocDirective,
   contents: TocDirective,
   toctree: TocDirective,
+};
+
+// ─── CodeCellDirective ────────────────────────────────────────────────────────
+
+/** Encode le code Python en base64 UTF-8-safe pour l'attribut data-code. */
+function _encodeCode(s) {
+  return btoa(unescape(encodeURIComponent(s)));
+}
+
+/**
+ * Directive MyST pour les cellules de code exécutable Pyodide.
+ *
+ * Syntaxe :
+ *   ```{code-cell} python
+ *   :linenos:
+ *   :packages: numpy, scipy
+ *   :tags: hide-input
+ *
+ *   import numpy as np
+ *   print(np.pi)
+ *   ```
+ */
+class CodeCellDirective extends Directive {
+  required_arguments = 0;
+  optional_arguments = 1; // langage (python, etc.) — informatif
+  has_content = true;
+  option_spec = {
+    linenos:  directiveOptions.flag,         // affiche les numéros de ligne
+    packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
+    tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
+  };
+
+  run(data) {
+    const code     = (data.body ?? "").trim();
+    const linenos  = data.options?.linenos !== undefined && data.options?.linenos !== false;
+    const pkgStr   = data.options?.packages ?? "";
+    const packages = pkgStr ? pkgStr.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+    const hash    = new IMurMurHash(code, 42).result().toString(16);
+    const id      = `code-cell-${hash}`;
+    const encoded = _encodeCode(code);
+
+    const html =
+      `<div id="${id}" class="code-cell-host" ` +
+      `data-code="${encoded}" ` +
+      `data-packages='${JSON.stringify(packages)}' ` +
+      `data-linenos="${linenos}">` +
+      `</div>\n`;
+
+    const token = this.createToken("html_block", "", 0, {
+      map: data.map,
+      block: true,
+    });
+    token.content = html;
+    return [token];
+  }
+}
+
+export const codeDirectives = {
+  "code-cell": CodeCellDirective,
 };

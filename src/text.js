@@ -2,10 +2,11 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions, numberedDirectives, tocDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
+import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import markdownSourceMap from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
 import { colonFencedBlocks } from "./markdown/markdownFence";
@@ -16,6 +17,7 @@ import purify from "dompurify";
 import { StateEffect } from "@codemirror/state";
 import hljs from "highlight.js/lib/core";
 import yamlHighlight from "highlight.js/lib/languages/yaml";
+import pythonHighlight from "highlight.js/lib/languages/python";
 import { markdownCheckboxes } from "./markdown/markdownCheckboxes";
 import { criticMarkup } from "./markdown/markdownCriticMarkup";
 import { markdownFrontmatter } from "./markdown/markdownFrontmatter";
@@ -56,6 +58,7 @@ let timing_debug = false;
 
 
 hljs.registerLanguage("yaml", yamlHighlight);
+hljs.registerLanguage("python", pythonHighlight);
 
 
 // Utils 
@@ -111,12 +114,13 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
         .use(useCustomDirectives(options.customDirectives.value, cache.transform))
         .use(markdownMermaid, { lineMap: this.lineMap, parent: options.parent, theme: options.mermaidTheme.value })
+        .use(markdownPyodide, { parent: options.parent })
         .use(markdownItMath, this.options.id.value)
         .use(markdownSourceMap)
         .use(markdownItHeadings)
@@ -156,13 +160,28 @@ export class TextManager {
     effect(() => (window.myst_editor[options.id.value].text = this.text.value));
     effect(() => this.observePreview());
 
+    // Synchronise les éditions faites dans les textareas code-cell vers le source CM
+    this._pyodideEditHandler = ({ detail: { originalCode, newCode } }) => {
+      const view = this.editorView.value;
+      if (!view) return;
+      const text = view.state.doc.toString();
+      const idx  = text.indexOf(originalCode);
+      if (idx !== -1) {
+        view.dispatch({ changes: { from: idx, to: idx + originalCode.length, insert: newCode } });
+      }
+    };
+    document.addEventListener("pyodide-code-edit", this._pyodideEditHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-code-edit", this._pyodideEditHandler));
+
     const unsubscribe = cache.transform.onChange((input) => this.scheduleRender({ staleInput: input }));
+    const unsubscribeEval = evalCache.onChange(() => this.scheduleRender({ useCache: false }));
     cleanups?.push(() => {
       if (this.#renderFrame) clearTimeout(this.#renderFrame);
       // if (this.#renderFrame) cancelAnimationFrame(this.#renderFrame);
       this.#renderFrame = 0;
       this.#renderPending = null;
       unsubscribe();
+      unsubscribeEval();
     });
   }
 
@@ -214,10 +233,18 @@ export class TextManager {
         toRemove.forEach((c) => this.preview.value.removeChild(c));
         this.preview.value.innerHTML += newChunks.map((c) => `<html-chunk id="html-chunk-${c.id}">${c.html}</html-chunk>`).join("");
       } else {
+        // Save scroll position before patching: removing tall elements (code-cell hosts) can cause
+        // scrollTop to clamp to 0. We restore it via RAF, which fires after MutationObserver
+        // microtasks (which reinstate the evicted hosts) but before the browser paints.
+        const previewEl = this.preview.value;
+        const savedScrollTop = previewEl.scrollTop;
+
         // Patch only chunks whose rendered html changed (covers transform output with unchanged source).
         newChunks.forEach((chunk, idx) => {
           if (chunk.html !== this.chunks[idx].html) chunkEls[idx].innerHTML = chunk.html;
         });
+
+        requestAnimationFrame(() => { previewEl.scrollTop = savedScrollTop; });
       }
     }
 
