@@ -54,20 +54,6 @@ export function projectDir(tab) {
   return typeof wd === "string" ? wd : null;
 }
 
-/**
- * True when the document's own frontmatter declares an `exports:` section.
- *
- * Such a file carries everything myst needs and builds on its own, so it is a
- * legitimate export even with no myst.yml beside it. Matched on the frontmatter
- * block only, so an `exports:` appearing later in the prose is not mistaken for
- * a declaration.
- */
-export function hasExportsFrontmatter(tab) {
-  const src = (typeof window !== "undefined" && window.myst_editor?.[tab?.editorId]?.text) || "";
-  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
-  return front ? /^exports\s*:/m.test(front[1]) : false;
-}
-
 /** True when the project directory holds a myst.yml. */
 export async function hasMystYml(tab) {
   const dir = projectDir(tab);
@@ -120,14 +106,15 @@ export async function exportCurrentFile(tab, kind) {
     showToast("Save the document first: myst exports a file on disk.", "error", 5000);
     return;
   }
-  // A file needs either a project (myst.yml beside it) or its own `exports:`
-  // frontmatter. With neither, mystmd walks up looking for a project root, can
-  // settle on the home folder and scan all of it, failing on TCC-protected
-  // paths such as ~/Library/Accounts -- after several minutes.
-  if (!(await hasMystYml(tab)) && !hasExportsFrontmatter(tab)) {
+  // myst needs a project: a myst.yml beside the file. An `exports:` frontmatter
+  // is NOT enough -- verified from the command line. Without one, mystmd walks
+  // up looking for a project root, can settle on the home folder and scan all
+  // of it, failing on TCC-protected paths such as ~/Library/Accounts, after
+  // several minutes.
+  if (!(await hasMystYml(tab))) {
     showToast(
-      `Cannot export ${baseName(path)} because this folder has no myst.yml and the document declares no "exports:" frontmatter. ` +
-        "Run `myst init` here, or add an exports section to the document.",
+      `Cannot export ${baseName(path)} because this folder has no myst.yml, and myst needs a project to build from. ` +
+        "Run `myst init` in that folder first.",
       "error",
       0,
     );
