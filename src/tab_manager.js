@@ -162,6 +162,13 @@ export class TabManager {
       if (fileData) {
         await localUtils.addRecentFileHandle(fileHandle);
         tabInfo.savedText = typeof fileData === "string" ? fileData : await fileData.text();
+      } else {
+        // The file behind the restored handle could not be read. Falling through
+        // would mount the new-file template into a tab still pointing at that
+        // path, and the first autosave would write the template over it. Break
+        // the link instead and say so.
+        await tabInfo.tabState.detachFileHandle();
+        this.updateTabLabel(editorId);
       }
     } 
     const content = tabInfo.savedText ?? this.newFileTemplate;

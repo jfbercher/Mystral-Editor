@@ -92,6 +92,11 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     autoSaveEnabled: config.autoSaveEnabled, //true,
     editorReady: false,
     dirty: false,
+    // True only once this tab has actually read its file (or created it through
+    // "Save as"). A handle restored from storage is a claim, not a proof: until
+    // it is verified, nothing may be written to it -- see saveCurrentDoc.
+    fileLoaded: false,
+    lastLoadError: null,
     lastSavedText: "",
     ycommentsRef: null,
     pendingCommentsState: null,
@@ -211,7 +216,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   tab.setCurrentFile = async (handleOrPath) => {
     if (handleOrPath === null) {
       tab.currentFileHandle = null;
+      tab.selectedFileHandle = null;
+      tab.currentFileKey = null;
       tab.currentFileName = null;
+      tab.fileLoaded = false;
       currentFileDir.value = null;
       await tab.setSubtitle("");
       onFileChanged?.();
@@ -220,6 +228,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     tab.currentFileHandle = handleOrPath;
     tab.currentFileName = getFileName(handleOrPath);
     tab.currentFileKey = getFileKey(handleOrPath);
+    // Reached from "Save as" and from an explicit open: the file exists and is
+    // ours in both cases.
+    tab.fileLoaded = true;
+    tab.lastLoadError = null;
     await tab.setSubtitle(tab.currentFileName);
     
     if (isTauri) {
@@ -284,6 +296,8 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       if (isTauri) {
         // fileHandleOrPath est une chaîne de caractères (chemin d'accès absolu)
         const textContent = await tauriFs.readTextFile(fileHandleOrPath);
+        tab.fileLoaded = true;
+        tab.lastLoadError = null;
         tab.currentFileHandle = fileHandleOrPath;
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = getFileName(fileHandleOrPath);
@@ -309,9 +323,12 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         if (permission !== "granted") permission = await fileHandleOrPath.requestPermission(options);
         if (permission !== "granted") {
           console.warn("Permission denied for file:", fileHandleOrPath.name);
+          tab.lastLoadError = { reason: "permission", name: fileHandleOrPath.name };
           return null;
         }
         const fileData = await fileHandleOrPath.getFile();
+        tab.fileLoaded = true;
+        tab.lastLoadError = null;
         tab.currentFileHandle = fileHandleOrPath;
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = fileHandleOrPath.name;
@@ -347,8 +364,41 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       }
     } catch (error) {
       console.error("Failed to load file:", error);
+      tab.lastLoadError = {
+        reason: error && (error.name === "NotFoundError" || error.name === "NotAllowedError")
+          ? (error.name === "NotFoundError" ? "missing" : "permission")
+          : "error",
+        name: typeof fileHandleOrPath === "string" ? getFileName(fileHandleOrPath) : fileHandleOrPath?.name,
+        error,
+      };
       return null;
     }
+  };
+
+  /**
+   * Break the link between this tab and a file we could not read. Without this,
+   * a tab keeps a handle it never verified and the next autosave happily writes
+   * the document over it -- recreating a deleted file, or clobbering one that
+   * was merely unreadable for a moment. After detaching, any save becomes a
+   * "Save as", which is the same route a brand-new tab takes.
+   */
+  tab.detachFileHandle = async ({ notify = true } = {}) => {
+    const lostName = tab.currentFileName;
+    const reason = tab.lastLoadError?.reason;
+    await tab.setCurrentFile(null);
+    if (isTauri) localStorage.removeItem(`storedFileHandle:${editorId}`);
+    else await set(`storedFileHandle:${editorId}`, null);
+    tab.currentFileName = config.defaultFileName;
+    if (notify) {
+      showToast(
+        reason === "permission"
+          ? `Could not reopen "${lostName}": access was not granted. This tab is no longer linked to that file; saving will ask where to write.`
+          : `Could not reopen "${lostName}": the file is missing or unreadable. This tab is no longer linked to that file; saving will ask where to write.`,
+        "error",
+        0,
+      );
+    }
+    return lostName;
   };
 
   tab.openNewFile = async () => {
@@ -378,10 +428,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       : await get(`storedFileHandle:${editorId}`);
     if (!stored) return null;
     const fileData = await tab.loadFileFromHandle(stored);
-    if (!fileData) {
-      if (isTauri) localStorage.removeItem(`storedFileHandle:${editorId}`);
-      else await set(`storedFileHandle:${editorId}`, null);
-    }
+    if (!fileData) await tab.detachFileHandle();
     return fileData;
   };
 
@@ -411,6 +458,13 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
 
   tab.saveCurrentDoc = async ({ skipSidecar = false } = {}) => {
     const contentToSave = window.myst_editor[editorId].text;
+
+    // Never write through a handle we never managed to read: the editor would
+    // then be holding the new-file template, not that document's content.
+    if (!tab.currentFilePathParam && tab.currentFileHandle && !tab.fileLoaded) {
+      console.warn("Refusing to save to an unverified file handle:", tab.currentFileName);
+      return await tab.saveAs();
+    }
 
     if (tab.currentFilePathParam) {
       await saveFileToPathParam(tab.currentFilePathParam, contentToSave);
