@@ -238,6 +238,13 @@ const CodeEditor = styled.div`
     display: inline !important;
   }
 
+  /* ...but a multi-line block must keep one row per line: inlining them laid the
+     whole directive out side by side on a single row, with the gutter still
+     numbering each line. Higher specificity than the rule above, so it wins. */
+  .cm-line.cm-inline-source-line.cm-inline-source-multiline {
+    display: block !important;
+  }
+
   .cm-editor .cm-lintRange-error {
     background-image: none;
     text-decoration: underline var(--error-bg) 2px;

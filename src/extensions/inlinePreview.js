@@ -3,8 +3,64 @@ import { TextManager, inlineRefreshEffect } from "../text";
 import { tags } from "@lezer/highlight";
 import { EditorView } from "codemirror";
 import { Decoration, WidgetType } from "@codemirror/view";
-import { EditorSelection, EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
+import { EditorSelection, EditorState, RangeSet, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { handlePreviewInteraction } from "../utils/previewInteractions";
+
+/**
+ * Elements inside a rendered block that own their own click.
+ *
+ * Switching a block to its source is driven by the *mousedown*: CodeMirror moves
+ * the caret into the block, the widget is replaced by the raw text, and the
+ * element is gone before its own click handler ever runs.  That is why links and
+ * checkboxes are already special-cased in ignoreEvent() -- this list extends the
+ * same treatment to the rest of the interactive content.
+ *
+ * Clicking anywhere else in the block still enters edit mode as before.
+ */
+const INTERACTIVE_IN_PREVIEW = [
+  ".admonition.dropdown > header", // toggled by handlePreviewInteraction()
+  ".code-cell-host",              // code cells: nested editor, Run/Clear buttons
+  ".pyodide-wrapper",
+  ".cm-editor",                   // any nested CodeMirror instance
+  "button",
+  "select",
+  "textarea",
+  // 'details > summary' only, NOT a bare 'summary': the admonition title is a
+  // <summary> inside an <aside>, and whitelisting it stopped every click on an
+  // admonition header from entering edit mode.
+  "details > summary",
+  "[contenteditable=\"true\"]",  // NOT [contenteditable]: CodeMirror marks the
+                                //  widget wrapper contenteditable="false".
+].join(",");
+
+const atomicMark = Decoration.mark({});
+
+/**
+ * True when the click landed on an interactive element *inside* a rendered widget.
+ *
+ * The containment check is essential, not defensive.  closest() walks all the way
+ * up the document, so without it an ancestor would match for every click anywhere:
+ * `.cm-editor` is the outer editor's own root class, and the widget wrapper itself
+ * carries contenteditable="false".  Either one made every click look interactive,
+ * which stopped the editor from ever taking focus -- so blocks never switched to
+ * source and the caret ended up inside a replaced range, invisible.
+ */
+const inInteractiveElement = (target) => {
+  if (!(target instanceof Element)) return false;
+  const widgetRoot = target.closest(".cm-inline-rendered-md");
+  if (!widgetRoot) return false;
+  const match = target.closest(INTERACTIVE_IN_PREVIEW);
+  return Boolean(match) && match !== widgetRoot && widgetRoot.contains(match);
+};
+
+/**
+ * A code-cell widget is already a full editor, and it writes its changes back to
+ * the document (pyodide-code-edit -> text.js).  Replacing it with the raw source
+ * would only remove execution, highlighting and completion, so it stays rendered
+ * even when the caret is inside it.
+ */
+const isCodeCellBlock = (block) =>
+  typeof block.html === "string" && block.html.includes("code-cell-host");
 
 const focusEffect = StateEffect.define();
 
@@ -274,6 +330,10 @@ function computeBlocks() {
           ev.stopPropagation();
           return;
         }
+        // An interactive element owns its click even when handlePreviewInteraction
+        // did not claim it (a Run button, a nested editor): falling through would
+        // swap the widget for its source right under the user's pointer.
+        if (inInteractiveElement(ev.target)) return;
         // If the click was not intercepted by anything specific (link, dropdown, checkbox), 
         // force entry into edit mode on this block, even if the point is precisely clicked 
         // has no natively resolvable character position (common case with KaTeX).
@@ -310,6 +370,7 @@ function computeBlocks() {
       if (ev.type !== "mousedown" || !(ev.target instanceof Element)) return false;
       if (ev.target.tagName === "INPUT") return true;
       if (ev.target.tagName === "A" || ev.target.closest("a")) return true;
+      if (inInteractiveElement(ev.target)) return true;
       return !!options.onPreviewClick.peek()?.(ev);
     }
   }
@@ -317,6 +378,26 @@ function computeBlocks() {
   function buildDecorations(state) {
     const focused = state.field(focusedField);
     const decorations = [];
+
+    // Opt-in diagnostic: set window.__mystInlineDebug = true in the console.
+    // Printed with %s specifiers so the values stay plain text instead of
+    // collapsible objects.
+    if (typeof window !== "undefined" && window.__mystInlineDebug) {
+      const caretLine = state.doc.lineAt(state.selection.main.head).number;
+      const b = blockRanges(state).find(
+        (x) => !x.synthetic && caretLine >= x.startLine && caretLine <= x.endLine,
+      );
+      console.log(
+        "[inline] caret=%s focused=%s block=%s asSource=%s codeCell=%s multiline=%s touches=%s",
+        String(caretLine),
+        String(focused),
+        b ? `${b.startLine}-${b.endLine}` : "NONE",
+        b ? String(focused && !isCodeCellBlock(b) && selectionTouchesBlock(state.selection, b, state.doc)) : "n/a",
+        b ? String(isCodeCellBlock(b)) : "n/a",
+        b ? String(b.startLine !== b.endLine) : "n/a",
+        b ? String(selectionTouchesBlock(state.selection, b, state.doc)) : "n/a",
+      );
+    }
 
     for (const block of blockRanges(state)) {
       if (block.synthetic) {
@@ -330,13 +411,19 @@ function computeBlocks() {
         continue;
       }
 
-      if (focused && selectionTouchesBlock(state.selection, block, state.doc)) {
+      if (focused && !isCodeCellBlock(block) && selectionTouchesBlock(state.selection, block, state.doc)) {
         for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
           const line = state.doc.line(lineNo);
           const margin = sourceListMarginPx(line.text, block.listDepth);
           decorations.push(
             Decoration.line({
-              class: "cm-inline-source-line",
+              // The multiline variant re-enables display:block (see CodeMirror.jsx):
+              // the base class forces display:inline so that a one-line block's source
+              // flows inside the row with the rendered widgets around it, but applied
+              // to a multi-line block that laid all of its lines side by side on one row.
+              class: block.startLine === block.endLine
+                ? "cm-inline-source-line"
+                : "cm-inline-source-line cm-inline-source-multiline",
               ...(margin ? { attributes: { style: `margin-left: ${margin}px` } } : {}),
             }).range(line.from),
           );
@@ -423,6 +510,19 @@ function computeBlocks() {
     enterJumpedBlock,
     syntaxHighlighting(markdownHighlightStyle),
     markdownTheme,
+    // Other blocks protect the caret by turning into source as soon as it touches
+    // them.  Code cells no longer do, so their range must be atomic: otherwise
+    // arrow keys would walk the caret into a replaced range, where it is invisible
+    // and typing would corrupt the fence.  Marked atomic, the caret steps over.
+    EditorView.atomicRanges.of((view) => {
+      const ranges = [];
+      for (const block of blockRanges(view.state)) {
+        if (!block.synthetic && isCodeCellBlock(block) && block.to > block.from) {
+          ranges.push(atomicMark.range(block.from, block.to));
+        }
+      }
+      return RangeSet.of(ranges, true);
+    }),
     EditorView.focusChangeEffect.of((_, focus) => focusEffect.of(focus)),
   ];
 };
