@@ -18,3 +18,7 @@ Claude outputs/
 
 # MyST build outputs
 _build
+
+# Local archives and backups
+*.zip
+*.bak
