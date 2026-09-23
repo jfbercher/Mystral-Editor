@@ -10,6 +10,7 @@
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 import { config, loadConfig } from "../config.js";
+import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
 import { EditorView, keymap as cmKeymap, lineNumbers, drawSelection } from "@codemirror/view";
@@ -98,9 +99,9 @@ def _jedi_complete(source, line, col):
     except Exception:
         return '[]'
 `);
-        console.log('[myst] jedi chargé — complétion Tab active');
+        console.log('[myst] jedi loaded — completion Tab is active');
       } catch (_e) {
-        console.warn('[myst] jedi non disponible, Tab insérera 4 espaces', _e);
+        console.warn('[myst] jedi unavailable, Tab will insert 4 spaces', _e);
       }
 
       pyodideInstance = pyodide;
@@ -133,7 +134,43 @@ globalThis._pyodideStreamWrite = function (tag, text) {
   }
 };
 
+// ─── Namespace diagnostics ───────────────────────────────────────────────────
+// A user-visible variable disappearing between two runs is invisible from the
+// code alone: every mutation path (cell run, sidecar restore, kernel restart)
+// writes into one shared globals() dict. This log records who touched what, so
+// the question "when did x vanish, and because of whom?" is answered by data.
+const namespaceLog = [];
+
+function logNamespaceEvent(event, detail) {
+  const entry = { at: new Date().toISOString(), event, ...detail };
+  namespaceLog.push(entry);
+  if (namespaceLog.length > 200) namespaceLog.shift();
+  return entry;
+}
+
+/** Names currently bound in the Python globals (user-facing ones only). */
+function userGlobalNames(pyodide) {
+  try {
+    const json = pyodide.runPython(
+      "__import__('json').dumps(sorted(k for k in globals() if not k.startswith('_')))"
+    );
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}
+
+globalThis.__mystralNamespaceDebug = {
+  get log() { return namespaceLog; },
+  names: () => (pyodideInstance ? userGlobalNames(pyodideInstance) : null),
+  /** Every event that removed at least one name, oldest first. */
+  losses: () => namespaceLog.filter((e) => e.removed?.length),
+  dump() { console.table(namespaceLog.map(({ at, event, added, removed, failed }) =>
+    ({ at, event, added: added?.join(" ") ?? "", removed: removed?.join(" ") ?? "", failed: failed?.join(" ") ?? "" }))); },
+};
+
 async function restartKernel() {
+  logNamespaceEvent("kernel-restart", { removed: pyodideInstance ? (userGlobalNames(pyodideInstance) ?? []) : [] });
   if (pyodideInstance) {
     try {
       pyodideInstance.runPython("import sys; sys.stdout = sys.__stdout__; sys.stderr = sys.__stderr__");
@@ -338,6 +375,7 @@ async function executePython(code, packages, onStream = null) {
   }
 
   const memfsSnapshot = snapshotMemfsDir(pyodide);
+  const namesBefore = userGlobalNames(pyodide);
 
   const started = performance.now();
   let error = null;
@@ -350,6 +388,16 @@ async function executePython(code, packages, onStream = null) {
     error = String(err);
   } finally {
     globalThis._pyodideCurrentCell = null;
+  }
+
+  if (namesBefore) {
+    const namesAfter = userGlobalNames(pyodide) ?? namesBefore;
+    const removed = namesBefore.filter((n) => !namesAfter.includes(n));
+    const added = namesAfter.filter((n) => !namesBefore.includes(n));
+    if (removed.length || added.length) {
+      logNamespaceEvent("cell-run", { added, removed, errored: Boolean(error) });
+      if (removed.length) console.warn("[namespace] cell run removed:", removed.join(", "));
+    }
   }
 
   let figures = [];
@@ -615,9 +663,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
   const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
-  insertBtn.title = "Insérer une cellule code-cell vide en dessous (⌘⇧↵ / Ctrl+Shift+Enter)";
+  insertBtn.title = "Insert an empty code-cell below (⌘⇧↵ / Ctrl+Shift+Enter)";
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
-  deleteBtn.title = "Supprimer cette cellule";
+  deleteBtn.title = "Delete this cell";
 
   controls.append(runBtn, clearBtn, runAllBtn, restartBtn, insertBtn, deleteBtn);
   header.append(controls);
@@ -831,17 +879,17 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     ].join(";");
 
     const msg = document.createElement("span");
-    msg.textContent = "Supprimer cette cellule ?";
+    msg.textContent = "Delete this cell?";
     msg.style.flex = "1";
 
     const confirmOk  = document.createElement("button");
     confirmOk.type = "button";
-    confirmOk.textContent = "Supprimer";
+    confirmOk.textContent = "Delete";
     confirmOk.style.cssText = "padding:.25rem .6rem;border-radius:4px;border:1px solid #cf222e;background:#cf222e;color:#fff;font:inherit;font-size:.78rem;cursor:pointer;font-weight:600";
 
     const confirmNo  = document.createElement("button");
     confirmNo.type = "button";
-    confirmNo.textContent = "Annuler";
+    confirmNo.textContent = "Cancel";
     confirmNo.style.cssText = "padding:.25rem .6rem;border-radius:4px;border:1px solid var(--pyodide-cell-border,#c4d4e6);background:transparent;font:inherit;font-size:.78rem;cursor:pointer";
 
     bar.append(msg, confirmOk, confirmNo);
@@ -1029,7 +1077,13 @@ for _n, _v in list(globals().items()):
         _out[_n] = {"skipped": True, "reason": str(_e)}
 _json.dumps(_out)
 `);
-  return JSON.parse(result);
+  const snapshot = JSON.parse(result);
+  const skipped = Object.entries(snapshot).filter(([, e]) => e.skipped).map(([n]) => n);
+  logNamespaceEvent("snapshot", { saved: Object.keys(snapshot).length, failed: skipped });
+  if (skipped.length) {
+    console.warn(`[namespace] not persisted (unpicklable): ${skipped.join(", ")}`);
+  }
+  return snapshot;
 }
 
 /**
@@ -1040,16 +1094,40 @@ export async function restoreNamespace(snapshot) {
   if (!snapshot || Object.keys(snapshot).length === 0) return;
   const pyodide = await loadPyodideRuntime();
   pyodide.globals.set('_restore_data_json', JSON.stringify(snapshot));
-  await pyodide.runPythonAsync(`
+  // Failures used to be swallowed here, so a variable that could not be
+  // unpickled simply ceased to exist, with nothing said anywhere. Collect them
+  // instead and report them: silent data loss is the one outcome to rule out.
+  const report = await pyodide.runPythonAsync(`
 import cloudpickle as _cp, base64 as _b64, json as _json
 _data = _json.loads(_restore_data_json)
+_ok, _failed = [], {}
 for _n, _e in _data.items():
-    if not _e.get('skipped'):
-        try:
-            globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
-        except Exception:
-            pass
-for _k in ['_data', '_n', '_e', '_cp', '_b64', '_json', '_restore_data_json']:
+    if _e.get('skipped'):
+        _failed[_n] = _e.get('reason', 'not persisted')
+        continue
+    try:
+        globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
+        _ok.append(_n)
+    except Exception as _err:
+        _failed[_n] = type(_err).__name__ + ': ' + str(_err)
+_report = _json.dumps({'ok': _ok, 'failed': _failed})
+for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_restore_data_json']:
     globals().pop(_k, None)
+_report
 `);
+  const { ok, failed } = JSON.parse(report);
+  const failedNames = Object.keys(failed);
+  logNamespaceEvent("restore", { added: ok, failed: failedNames });
+  if (failedNames.length) {
+    for (const [name, reason] of Object.entries(failed)) {
+      console.warn(`[namespace] could not restore "${name}": ${reason}`);
+    }
+    showToast(
+      `${failedNames.length} variable(s) could not be restored from the saved session: ${failedNames.join(", ")}. Re-run the cells that define them.`,
+      "error",
+      0,
+    );
+  }
+  console.log(`[namespace] restored ${ok.length} variable(s)`);
+  return { ok, failed };
 }
