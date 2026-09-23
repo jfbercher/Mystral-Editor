@@ -8,6 +8,7 @@ export const config = {
   ...DEFAULT_CONFIG,
   shortcuts: { ...DEFAULT_CONFIG.shortcuts },
   pyodide:   { ...DEFAULT_CONFIG.pyodide   },
+  export:    { ...DEFAULT_CONFIG.export, templates: { ...DEFAULT_CONFIG.export.templates } },
 };
 
 /**
@@ -89,9 +90,16 @@ async function loadConfigTauri() {
 // Shared helper — merges a parsed config.json object into the live config.
 // ---------------------------------------------------------------------------
 function _applyConfigData(data) {
-  const { shortcuts, data_directives, ...rest } = data;
+  const { shortcuts, data_directives, export: exportCfg, ...rest } = data;
   Object.assign(config, rest);
   Object.assign(config.shortcuts, shortcuts ?? {});
+  // Merged key by key, not replaced: config.json usually sets a single template
+  // or the port, and a plain assign would silently drop the rest of the section.
+  if (exportCfg) {
+    const { templates, ...flat } = exportCfg;
+    Object.assign(config.export, flat);
+    Object.assign(config.export.templates, templates ?? {});
+  }
   directives = { ...BUILTIN_DIRECTIVES, ...(data_directives ?? {}) };
 }
 

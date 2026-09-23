@@ -142,7 +142,11 @@ export function frontmatterDeclares(tab, kind) {
  */
 function addExportToFrontmatter(tab, kind) {
   const src = editorText(tab);
-  const item = `  - format: ${kind}`;
+  // A template is written only when config.json names one for this format:
+  // myst ships no default template, and inventing one here would silently
+  // change how every export looks.
+  const template = (config.export?.templates?.[kind] || "").trim();
+  const item = `  - format: ${kind}` + (template ? `\n    template: ${template}` : "");
   const front = frontmatterOf(src);
 
   let next;

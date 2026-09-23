@@ -83,5 +83,14 @@ export const DEFAULT_CONFIG = {
     mystPath: "myst",
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
+    // Template written into the exports frontmatter when the editor creates the
+    // entry, per format. Empty means no `template:` line at all, which is what
+    // myst itself defaults to -- there is no built-in template for any format.
+    // Example: { "pdf": "arxiv_nips", "docx": "curvenote" }
+    templates: {
+      pdf: "",
+      docx: "",
+      tex: "",
+    },
   },
 };
