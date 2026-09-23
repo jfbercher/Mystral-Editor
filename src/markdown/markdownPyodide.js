@@ -25,6 +25,7 @@ const HASH_SEED = 42;
 export const evalCache = {
   _map: new Map(),
   _listeners: new Set(),
+  _epoch: 0,   // incremented on clear() to invalidate in-flight resolve() promises
   has(key) { return this._map.has(key); },
   get(key) { return this._map.get(key); },
   set(key, value) {
@@ -33,13 +34,19 @@ export const evalCache = {
   },
   /**
    * Kick off async evaluation if not already cached.
-   * On success/failure, stores the result and notifies listeners.
+   * Captures the current epoch: if clear() is called before the promise
+   * settles, the result is discarded (stale) rather than re-poisoning the cache.
    */
   resolve(key, promise) {
     if (this._map.has(key)) return;
+    const epoch = this._epoch;
     Promise.resolve(promise)
-      .then(result => this.set(key, result))
+      .then(result => {
+        if (this._epoch !== epoch) return;   // clear() happened — discard stale result
+        this.set(key, result);
+      })
       .catch(err => {
+        if (this._epoch !== epoch) return;   // clear() happened — discard stale error
         const msg = String(err).replace(/"/g, "&quot;");
         this.set(key, `<span class="eval-error" title="${msg}">⚠ eval error</span>`);
       });
@@ -49,8 +56,12 @@ export const evalCache = {
     this._listeners.add(fn);
     return () => this._listeners.delete(fn);
   },
-  /** Clear all cached results (e.g. on kernel restart). */
-  clear() { this._map.clear(); }
+  /** Clear all cached results and bump epoch so in-flight resolves are discarded. */
+  clear() {
+    this._epoch++;
+    this._map.clear();
+    this._listeners.forEach(fn => fn(null));
+  }
 };
 
 // Invalidate all {eval} results whenever a code-cell is executed,
