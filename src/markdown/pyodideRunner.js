@@ -12,7 +12,7 @@ import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/
 import { config, loadConfig } from "../config.js";
 
 // CM6 imports — packages déjà présents dans le projet
-import { EditorView, keymap as cmKeymap, lineNumbers } from "@codemirror/view";
+import { EditorView, keymap as cmKeymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { python } from "@codemirror/lang-python";
 import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirror/commands";
@@ -46,7 +46,7 @@ function loadScript(src) {
   });
 }
 
-async function loadPyodideRuntime(extraPackages = []) {
+export async function loadPyodideRuntime(extraPackages = []) {
   if (pyodideInstance) {
     if (extraPackages.length) await pyodideInstance.loadPackage(extraPackages);
     return pyodideInstance;
@@ -72,6 +72,7 @@ class _JsBridge(io.TextIOBase):
 
 sys.stdout = _JsBridge("stdout")
 sys.stderr = _JsBridge("stderr")
+sys._mystral_env = True
 `);
       pyodide.runPython(`import matplotlib\nmatplotlib.use("agg")`);
 
@@ -83,7 +84,7 @@ sys.stderr = _JsBridge("stderr")
       try {
         await pyodide.runPythonAsync(`
 import micropip as _micropip
-await _micropip.install('jedi', keep_going=True)
+await _micropip.install(['jedi', 'cloudpickle'], keep_going=True)
 import jedi as _jedi_mod, json as _json_mod
 
 def _jedi_complete(source, line, col):
@@ -112,7 +113,24 @@ def _jedi_complete(source, line, col):
 }
 
 globalThis._pyodideStreamWrite = function (tag, text) {
-  if (globalThis._pyodideCurrentCell) globalThis._pyodideCurrentCell[tag] += text;
+  const cell = globalThis._pyodideCurrentCell;
+  if (cell) {
+    cell[tag] += text;
+    // Let the running cell paint the text as it arrives instead of waiting for
+    // executePython() to resolve.
+    if (cell.onWrite) { try { cell.onWrite(tag, text); } catch { /* never break stdout */ } }
+  }
+  // Always mirror to the devtools console as well.  Two reasons:
+  //  1. When a print happens after the cell's runPythonAsync() has resolved
+  //     (async callback, deferred continuation), _pyodideCurrentCell is null
+  //     and the text would otherwise vanish without a trace.
+  //  2. It lets Python output be read in time order alongside JS console
+  //     messages, which is the only way to debug async JS/Python interleaving.
+  if (text && text.trim()) {
+    const line = text.replace(/\n+$/, "");
+    if (tag === "stderr") console.warn("[py]", line);
+    else console.log("[py]", line);
+  }
 };
 
 async function restartKernel() {
@@ -170,8 +188,16 @@ async function copyFileToMemfs(pyodide, relPath) {
 
 function scanFilePaths(code) {
   const paths = new Set();
+  // Match file literals in common function calls: open("f"), read_csv("f"), …
   const re = /(?:open|read_csv|read_excel|read_table|read_fwf|read_json|read_parquet|loadtxt|genfromtxt|load|savetxt)\s*\(\s*['"]([^'"\n]+)['"]/g;
   for (const m of code.matchAll(re)) {
+    const p = m[1].replace(/\\/g, "/");
+    if (!p.startsWith("/") && !/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(p)) paths.add(p);
+  }
+  // Also match variable assignments with known data-file extensions:
+  //   QUIZFILE = "intro-ds-tp.yaml"  or  CLIENT = "client_web.json"
+  const reAssign = /=\s*['"]([^'"\n]+\.(?:yaml|yml|json|csv|tsv|txt|xlsx|xls|parquet))['"]/gi;
+  for (const m of code.matchAll(reAssign)) {
     const p = m[1].replace(/\\/g, "/");
     if (!p.startsWith("/") && !/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(p)) paths.add(p);
   }
@@ -224,6 +250,7 @@ function snapshotMemfsDir(pyodide, dir = "/local") {
 async function writeFileFromMemfs(pyodide, memfsPath) {
   const wd = resolveWorkingDir();
   if (!wd) return;
+  if (wd.isReadOnlySnapshot) return;
 
   const relPath = memfsPath.slice("/local/".length);
   let bytes;
@@ -258,7 +285,15 @@ async function writeFileFromMemfs(pyodide, memfsPath) {
 }
 
 async function syncWrittenFiles(pyodide, beforeSnapshot, prestagedBytes = new Map()) {
-  if (!resolveWorkingDir()) return;
+  const wd = resolveWorkingDir();
+  if (!wd) return;
+  // Browsers without the File System Access API only give a read-only snapshot
+  // of the folder, so files a cell created cannot be written back to disk.
+  // Warn once here rather than per file.
+  if (wd.isReadOnlySnapshot) {
+    console.warn("[myst] Working folder is a read-only snapshot: files written by this cell stay in Pyodide's memory and are not saved to disk.");
+    return;
+  }
   const after = snapshotMemfsDir(pyodide);
   const toWrite = [];
   for (const [p, { size, mtime }] of after) {
@@ -288,9 +323,9 @@ const _cellExecutedListeners = [];
 /** Register a callback invoked after every successful code-cell run. */
 export function onCellExecuted(fn) { _cellExecutedListeners.push(fn); }
 
-async function executePython(code, packages) {
+async function executePython(code, packages, onStream = null) {
   const pyodide = await loadPyodideRuntime(packages);
-  const capture = { stdout: "", stderr: "" };
+  const capture = { stdout: "", stderr: "", onWrite: onStream };
   globalThis._pyodideCurrentCell = capture;
 
   pyodide.runPython(`import matplotlib.pyplot as plt\nplt.close('all')`);
@@ -357,7 +392,7 @@ const pyodideCmTheme = EditorView.theme({
     minWidth: "0",
     fontSize: "var(--pyodide-cell-font-size, 0.8rem)",
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    backgroundColor: "var(--color-background-primary, #fafbfc)",
+    backgroundColor: "var(--pyodide-cell-bg, var(--color-background-primary, #f2f6fc))",
     color: "var(--color-foreground-primary, #1f2328)",
   },
   ".cm-content": {
@@ -467,19 +502,21 @@ function ensureStyles() {
   const style = document.createElement("style");
   style.id = STYLES_ID;
   style.textContent = `
-.pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;width:100%;border:1px solid var(--color-border,#d0d7de);border-radius:6px;overflow:hidden;margin:1.25rem 0;background:var(--color-background-primary,#fff);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
-.pyodide-header,.pyodide-status-bar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--color-background-secondary,#f6f8fa);border-bottom:1px solid var(--color-border,#d0d7de);gap:.5rem}
-.pyodide-status-bar{border-top:1px solid var(--color-border,#d0d7de);border-bottom:0;min-height:1.6rem}
+.pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;width:100%;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-radius:6px;overflow:hidden;margin:1.25rem 0;background:var(--pyodide-cell-bg,#f2f6fc);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
+.pyodide-header,.pyodide-status-bar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--pyodide-cell-bg,#f2f6fc);filter:brightness(0.97);border-bottom:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));gap:.5rem}
+.pyodide-status-bar{border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-bottom:0;min-height:1.6rem}
 .pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
 .pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
 .pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}
 .pyodide-btn-runall{background:#0969da}
 .pyodide-btn-restart{color:#cf222e;font-weight:600}
+.pyodide-btn-insert{color:#6639ba;font-weight:600}
+.pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
 .pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
 .pyodide-editor-row{display:flex;position:relative;width:100%}
 .pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
-.pyodide-output{min-height:2.5rem;max-height:25rem;overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--color-border,#d0d7de);background:var(--color-background-primary,#fff);resize:vertical}
+.pyodide-output{min-height:2.5rem;max-height:25rem;overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
 .pyodide-output[hidden]{display:none}
 .pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
 .pyodide-error,.pyodide-stderr{color:#cf222e}
@@ -488,6 +525,7 @@ function ensureStyles() {
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
 .pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums}
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
+.pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}
 `;
   document.head.appendChild(style);
 }
@@ -532,6 +570,8 @@ function renderOutput(outputArea, result) {
 
 // ─── Cache inter-renders ──────────────────────────────────────────────────────
 export const cellCache = new Map();
+/** Populated from sidecar before render; consumed by initCodeCell(). */
+export const restoredOutputCache = new Map();
 
 // ─── API principale ───────────────────────────────────────────────────────────
 
@@ -574,8 +614,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const clearBtn   = mkBtn("pyodide-btn-clear",   "Clear");
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
+  const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
+  insertBtn.title = "Insérer une cellule code-cell vide en dessous (⌘⇧↵ / Ctrl+Shift+Enter)";
+  const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
+  deleteBtn.title = "Supprimer cette cellule";
 
-  controls.append(runBtn, clearBtn, runAllBtn, restartBtn);
+  controls.append(runBtn, clearBtn, runAllBtn, restartBtn, insertBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -597,11 +641,35 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   timing.className = "pyodide-timing";
   statusBar.append(statusText, timing);
 
-  // Zone de sortie
+  // Zone de sortie (widget DOM area + text/stderr/figure area)
   const outputArea = document.createElement("div");
   outputArea.className = "pyodide-output";
   outputArea.setAttribute("aria-live", "polite");
   outputArea.hidden = true;
+
+  const widgetOutputArea = document.createElement("div");
+  widgetOutputArea.className = "pyodide-widget-output";
+  const textOutputArea = document.createElement("div");
+  textOutputArea.className = "pyodide-text-output";
+  outputArea.appendChild(widgetOutputArea);
+  outputArea.appendChild(textOutputArea);
+
+  // The run handler hides outputArea for the whole duration of the cell and only
+  // reveals it once executePython() has resolved.  Anything Python renders *while*
+  // the cell is still running would therefore stay invisible until it ends -- and
+  // when the cell is blocked on an `await` waiting for the user to click that very
+  // widget (a sign-in button, a confirmation, any interactive prompt), it can never
+  // be reached at all.  Reveal the area as soon as a widget is appended.
+  new MutationObserver(() => {
+    if (widgetOutputArea.children.length > 0) outputArea.hidden = false;
+  }).observe(widgetOutputArea, { childList: true });
+
+  // Restore output from sidecar if available (populated by sidecar.js)
+  if (cacheKey && restoredOutputCache.has(cacheKey)) {
+    textOutputArea.innerHTML = restoredOutputCache.get(cacheKey);
+    outputArea.hidden = false;
+    restoredOutputCache.delete(cacheKey);
+  }
 
   wrapper.append(header, editorRow, statusBar, outputArea);
   editorRow.appendChild(editorContainer);
@@ -666,6 +734,11 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const cmExtensions = [
     python(),
     syntaxHighlighting(pythonHighlight),
+    // Draw the caret and selection ourselves.  In inline-preview mode this editor
+    // lives inside a CodeMirror widget, whose DOM is contenteditable="false";
+    // the nested contenteditable="true" still takes focus and keystrokes, but the
+    // browser paints no native caret there, so typing happened blind.
+    drawSelection(),
     history(),
     indentOnInput(),
     autocompletion({
@@ -676,9 +749,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     cmKeymap.of([
       ...completionKeymap,    // Tab accepte la complétion si popup visible
       indentWithTab,          // Tab indente sinon (4 espaces en Python)
+      // Ces deux bindings doivent être AVANT defaultKeymap pour ne pas être
+      // écrasés par insertNewlineKeepIndent (Shift-Enter dans defaultKeymap).
+      { key: "Shift-Enter",     run: (view) => { _syncToEditor(view); runBtn.click(); return true; } },
+      { key: "Mod-Shift-Enter", run: (view) => { _syncToEditor(view); insertBtn.click(); return true; } },
       ...defaultKeymap,
       ...historyKeymap,
-      { key: "Shift-Enter", run: (view) => { _syncToEditor(view); runBtn.click(); return true; } },
       { key: "ArrowDown",   run: navigateToCell(+1) },
       { key: "ArrowUp",     run: navigateToCell(-1) },
     ]),
@@ -711,7 +787,8 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   // ── Événements des boutons ────────────────────────────────────────────────
 
   clearBtn.addEventListener("click", () => {
-    outputArea.innerHTML = "";
+    widgetOutputArea.innerHTML = "";
+    textOutputArea.innerHTML = "";
     outputArea.hidden = true;
     timing.textContent = "";
     setStatus(statusText, "");
@@ -730,16 +807,68 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     runAllCells(root);
   });
 
+  // Dispatch "insert cell below" → handled in text.js
+  const _dispatchInsertBelow = () => {
+    _syncToEditor(view);
+    document.dispatchEvent(new CustomEvent("pyodide-insert-cell-below", {
+      detail: { currentCode: _currentCode }
+    }));
+  };
+  insertBtn.addEventListener("click", _dispatchInsertBelow);
+
+  deleteBtn.addEventListener("click", () => {
+    _syncToEditor(view);
+    // window.confirm() is blocked in Tauri/WKWebView — use an inline confirmation bar instead
+    if (wrapper.querySelector(".pyodide-confirm-bar")) return; // already showing
+
+    const bar = document.createElement("div");
+    bar.className = "pyodide-confirm-bar";
+    bar.style.cssText = [
+      "display:flex", "align-items:center", "gap:.5rem", "padding:.4rem .75rem",
+      "background:var(--pyodide-cell-bg,#f2f6fc)",
+      "border-top:1px solid var(--pyodide-cell-border,#c4d4e6)",
+      "font-size:.8rem"
+    ].join(";");
+
+    const msg = document.createElement("span");
+    msg.textContent = "Supprimer cette cellule ?";
+    msg.style.flex = "1";
+
+    const confirmOk  = document.createElement("button");
+    confirmOk.type = "button";
+    confirmOk.textContent = "Supprimer";
+    confirmOk.style.cssText = "padding:.25rem .6rem;border-radius:4px;border:1px solid #cf222e;background:#cf222e;color:#fff;font:inherit;font-size:.78rem;cursor:pointer;font-weight:600";
+
+    const confirmNo  = document.createElement("button");
+    confirmNo.type = "button";
+    confirmNo.textContent = "Annuler";
+    confirmNo.style.cssText = "padding:.25rem .6rem;border-radius:4px;border:1px solid var(--pyodide-cell-border,#c4d4e6);background:transparent;font:inherit;font-size:.78rem;cursor:pointer";
+
+    bar.append(msg, confirmOk, confirmNo);
+    // Insert bar just before the output area (after the status bar)
+    wrapper.insertBefore(bar, outputArea);
+
+    confirmNo.addEventListener("click", () => bar.remove());
+    confirmOk.addEventListener("click", () => {
+      bar.remove();
+      if (_currentCacheKey) cellCache.delete(_currentCacheKey);
+      document.dispatchEvent(new CustomEvent("pyodide-delete-cell", {
+        detail: { currentCode: _currentCode }
+      }));
+    });
+  });
+
   runBtn.addEventListener("click", async () => {
     runBtn.disabled = true;
     outputArea.hidden = true;
-    outputArea.innerHTML = "";
+    widgetOutputArea.innerHTML = "";
+    textOutputArea.innerHTML = "";
     timing.textContent = "";
 
     try {
       if (loadState === "idle") {
         loadState = "loading";
-        setStatus(statusText, "Chargement de Pyodide (première exécution)…", "info");
+        setStatus(statusText, "Pyodide loading (first execution)…", "info");
         try {
           await loadPyodideRuntime(packages);
           loadState = "ready";
@@ -750,30 +879,92 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
       }
 
       if (loadState === "loading") {
-        setStatus(statusText, "En attente de Pyodide…", "info");
+        setStatus(statusText, "Waiting for Pyodide…", "info");
         while (loadState === "loading") {
           await new Promise((r) => setTimeout(r, 150));
         }
       }
 
       if (loadState === "error") {
-        setStatus(statusText, `Échec du chargement : ${loadError}`, "error");
+        setStatus(statusText, `Load failed: ${loadError}`, "error");
         return;
       }
 
-      setStatus(statusText, "Exécution…", "info");
-      const result = await executePython(view.state.doc.toString(), packages);
-      renderOutput(outputArea, result);
+      setStatus(statusText, "Running...", "info");
+      globalThis.__mystral_cell_output = widgetOutputArea;
+
+      // Stream stdout/stderr into the output area while the cell runs, so a long
+      // cell shows progress instead of staying blank until it finishes.  Both
+      // blocks are created up front, in the same order renderOutput() uses, so
+      // the live view never reshuffles when the final render replaces it.
+      const mkLive = (cls) => {
+        const pre = document.createElement("pre");
+        pre.className = cls;
+        pre.hidden = true;
+        textOutputArea.appendChild(pre);
+        return pre;
+      };
+      const liveOut = mkLive("pyodide-stdout");
+      const liveErr = mkLive("pyodide-stderr");
+
+      let streaming = true;
+      let pending = { stdout: "", stderr: "" };
+      let flushQueued = false;
+      const flush = () => {
+        flushQueued = false;
+        if (!streaming) return;
+        // Measure before mutating: only follow the tail if the user has not
+        // scrolled up to read something earlier.
+        const atBottom =
+          outputArea.scrollHeight - outputArea.scrollTop - outputArea.clientHeight < 40;
+        let wrote = false;
+        for (const [tag, pre] of [["stdout", liveOut], ["stderr", liveErr]]) {
+          if (!pending[tag]) continue;
+          pre.hidden = false;
+          pre.appendChild(document.createTextNode(pending[tag]));
+          pending[tag] = "";
+          wrote = true;
+        }
+        if (wrote) {
+          textOutputArea.hidden = false;
+          outputArea.hidden = false;
+          if (atBottom) outputArea.scrollTop = outputArea.scrollHeight;
+        }
+      };
+      // Batch per animation frame: a chatty loop would otherwise append one text
+      // node per write.  Note this can only paint when Python yields to the event
+      // loop, so a tight synchronous loop still lands in one go at the end.
+      const onStream = (tag, text) => {
+        if (tag !== "stdout" && tag !== "stderr") return;
+        pending[tag] += text;
+        if (!flushQueued) { flushQueued = true; requestAnimationFrame(flush); }
+      };
+
+      let result;
+      try {
+        result = await executePython(view.state.doc.toString(), packages, onStream);
+      } finally {
+        // Stop streaming before renderOutput() wipes textOutputArea, otherwise a
+        // queued frame would append to detached nodes.
+        streaming = false;
+        pending = { stdout: "", stderr: "" };
+        // Also released here rather than after the await: on a throw it used to
+        // stay pointing at this cell, so a later widget rendered into it.
+        globalThis.__mystral_cell_output = null;
+      }
+      renderOutput(textOutputArea, result);
+      // Show outer container if either sub-area has content
+      outputArea.hidden = textOutputArea.hidden && widgetOutputArea.children.length === 0;
       timing.textContent = `run: ${result.durationMs} ms`;
       _cellExecutedListeners.forEach(fn => fn());
       if (result.error) {
-        setStatus(statusText, "Erreur", "error");
+        setStatus(statusText, "Error", "error");
       } else {
         statusText.textContent = "";
         statusText.className = "pyodide-status-text";
       }
     } catch (err) {
-      setStatus(statusText, `Erreur : ${err}`, "error");
+      setStatus(statusText, `Error : ${err}`, "error");
     } finally {
       runBtn.disabled = false;
     }
@@ -808,4 +999,57 @@ export async function runExpression(expr) {
   const result = await pyodide.runPythonAsync(expr);
   if (result === undefined || result === null) return "";
   return String(result);
+}
+
+
+// ─── Persistence helpers ─────────────────────────────────────────────────────
+
+/** True if Pyodide has been initialized and is ready to run code. */
+export function isPyodideReady() { return pyodideInstance !== null; }
+
+/**
+ * Serialize all user-facing globals to cloudpickle base64.
+ * Returns a plain JS object suitable for JSON serialization.
+ */
+export async function snapshotNamespace() {
+  const pyodide = await loadPyodideRuntime();
+  const result = await pyodide.runPythonAsync(`
+import cloudpickle as _cp, base64 as _b64, io as _io, json as _json
+_skip = frozenset({"__name__", "__doc__", "__package__", "__loader__",
+                   "__spec__", "__builtins__", "__annotations__"})
+_out = {}
+for _n, _v in list(globals().items()):
+    if _n.startswith('_') or _n in _skip:
+        continue
+    try:
+        _buf = _io.BytesIO()
+        _cp.dump(_v, _buf)
+        _out[_n] = {"data": _b64.b64encode(_buf.getvalue()).decode(), "type": type(_v).__name__}
+    except Exception as _e:
+        _out[_n] = {"skipped": True, "reason": str(_e)}
+_json.dumps(_out)
+`);
+  return JSON.parse(result);
+}
+
+/**
+ * Restore a namespace snapshot produced by snapshotNamespace().
+ * @param {Object} snapshot  — plain JS object from sidecar JSON
+ */
+export async function restoreNamespace(snapshot) {
+  if (!snapshot || Object.keys(snapshot).length === 0) return;
+  const pyodide = await loadPyodideRuntime();
+  pyodide.globals.set('_restore_data_json', JSON.stringify(snapshot));
+  await pyodide.runPythonAsync(`
+import cloudpickle as _cp, base64 as _b64, json as _json
+_data = _json.loads(_restore_data_json)
+for _n, _e in _data.items():
+    if not _e.get('skipped'):
+        try:
+            globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
+        except Exception:
+            pass
+for _k in ['_data', '_n', '_e', '_cp', '_b64', '_json', '_restore_data_json']:
+    globals().pop(_k, None)
+`);
 }
