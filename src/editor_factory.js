@@ -123,7 +123,12 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
             }
           },
         },
-      ],
+        (!isTauri ? {
+          id: "save-with-sidecar",
+          text: "💾🐍 Save with Python outputs",
+          action: async () => { await tab.saveSidecarToFile(); },
+        } : null),
+      ].filter(Boolean),
     },
     /*{
       text: h("span", { style: "font-size:1.5em" }, "💾"),
