@@ -28,6 +28,18 @@ const mystCmd = () => config.export?.mystPath || "myst";
 const sitePort = () => config.export?.sitePort ?? 3000;
 
 const baseName = (p) => String(p).split("/").pop();
+
+/**
+ * Reproduce the name myst gives an export: lowercase, accents stripped, every
+ * run of non-alphanumerics collapsed into a single dash.
+ */
+const slugify = (s) =>
+  String(s)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 const dirName = (p) => String(p).slice(0, String(p).lastIndexOf("/"));
 const stemOf = (p) => baseName(p).replace(/\.[^.]+$/, "");
 
@@ -94,6 +106,19 @@ export async function exportCurrentFile(tab, kind) {
     showToast("Save the document first: myst exports a file on disk.", "error", 5000);
     return;
   }
+  // Without a myst.yml beside the file, mystmd walks up the tree looking for a
+  // project root and can end up taking the home folder, scanning all of it and
+  // failing on TCC-protected paths such as ~/Library/Accounts. Stop before that
+  // rather than let it grind for minutes and fail obscurely.
+  if (!(await hasMystYml(tab))) {
+    showToast(
+      "No myst.yml in this folder. myst would search upwards for a project and may scan your whole home folder. Run `myst init` here first.",
+      "error",
+      0,
+    );
+    return;
+  }
+
   // Export what is on screen, not the last saved revision.
   await tab.smartSave();
 
@@ -104,8 +129,14 @@ export async function exportCurrentFile(tab, kind) {
   const res = await runMyst(`build ${shq(file)} --${kind}`, dir);
   if (res.code !== 0) return reportFailure(`myst build --${kind}`, res);
 
-  const out = `${dir}/${EXPORT_DIR}/${stemOf(path)}.${kind}`;
-  showToast(`Exported to ${EXPORT_DIR}/${stemOf(path)}.${kind}`, "success", 6000);
+  // Do not guess the name: myst slugifies it, and its exact rules are its own.
+  // Try the expected slug, then fall back to the newest file of that type.
+  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, kind, slugify(stemOf(path)));
+  if (!out) {
+    showToast(`myst reported success but no .${kind} was found in ${EXPORT_DIR}.`, "error", 0);
+    return;
+  }
+  showToast(`Exported to ${EXPORT_DIR}/${baseName(out)}`, "success", 6000);
 
   if (kind === "pdf") {
     try {
@@ -114,6 +145,29 @@ export async function exportCurrentFile(tab, kind) {
     } catch (err) {
       console.warn("[export] could not open the PDF:", err);
     }
+  }
+}
+
+/** Absolute path of the export myst just wrote, or null. */
+async function resolveExport(dir, ext, slug) {
+  const { exists, readDir, stat } = await import("@tauri-apps/plugin-fs");
+  const expected = `${dir}/${slug}.${ext}`;
+  try {
+    if (await exists(expected)) return expected;
+  } catch { /* fall through to the scan */ }
+  try {
+    const entries = await readDir(dir);
+    let best = null;
+    for (const e of entries) {
+      if (!e.isFile || !e.name.toLowerCase().endsWith(`.${ext}`)) continue;
+      const full = `${dir}/${e.name}`;
+      const when = (await stat(full)).mtime?.getTime?.() ?? 0;
+      if (!best || when > best.when) best = { full, when };
+    }
+    return best?.full ?? null;
+  } catch (err) {
+    console.warn("[export] could not list", dir, err);
+    return null;
   }
 }
 
@@ -137,20 +191,19 @@ function cssTextOf(sheets) {
  * shadow root's for the preview itself, the document's for the theme variables,
  * which are scoped to #myst-css-namespace and so need that wrapper to apply.
  */
-/** Locate the rendered preview; it lives inside the editor's shadow root. */
-function findPreview() {
-  for (const el of document.querySelectorAll("*")) {
-    if (el.shadowRoot) {
-      const found = el.shadowRoot.querySelector(".myst-preview");
-      if (found) return found;
-    }
-  }
-  return document.querySelector(".myst-preview");
+/**
+ * Locate the rendered preview of THIS tab. Scoping to the editor id matters:
+ * every open tab has its own shadow root, so picking the first .myst-preview in
+ * the page exported whichever document happened to come first in the DOM.
+ */
+function findPreview(tab) {
+  const host = tab?.editorId && document.getElementById(tab.editorId);
+  return host?.shadowRoot?.querySelector(".myst-preview") ?? null;
 }
 
 export async function exportHtml(tab) {
   const path = tab?.currentFileHandle;
-  const preview = findPreview();
+  const preview = findPreview(tab);
   if (!preview) {
     showToast("No rendered preview to export: open the preview first.", "error", 5000);
     return;
@@ -177,8 +230,9 @@ export async function exportHtml(tab) {
     const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
     const dir = `${dirName(path)}/${EXPORT_DIR}`;
     await mkdir(dir, { recursive: true }).catch(() => {});
-    await writeTextFile(`${dir}/${title}.html`, html);
-    showToast(`Exported to ${EXPORT_DIR}/${title}.html`, "success", 6000);
+    const name = `${slugify(title)}.html`;
+    await writeTextFile(`${dir}/${name}`, html);
+    showToast(`Exported to ${EXPORT_DIR}/${name}`, "success", 6000);
   } catch (err) {
     console.error("[export] HTML export failed:", err);
     showToast(`HTML export failed: ${err}`, "error", 0);
