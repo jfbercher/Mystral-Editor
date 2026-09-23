@@ -97,6 +97,10 @@ lightTheme.replaceSync(`
     --color-border: #d0d7de;
     --color-foreground-primary: #1f2328;
     --color-foreground-muted: #57606a;
+    /* Pyodide cell custom colors */
+    --pyodide-cell-bg: #f2f6fc;
+    --pyodide-cell-border: #c4d4e6;
+    --pyodide-output-bg: #e8f0f8;
 
     /* CodeMirror */
     --tok-heading: #0550ae;
@@ -174,6 +178,10 @@ darkTheme.replaceSync(`
     --color-border: #878787;
     --color-foreground-primary: #ddd;
     --color-foreground-muted: #8b949e;
+    /* Pyodide cell custom colors */
+    --pyodide-cell-bg: #1d2b3a;
+    --pyodide-cell-border: #3a5068;
+    --pyodide-output-bg: #162232;
 
     /* CodeMirror */
     --tok-heading: #79c0ff;
