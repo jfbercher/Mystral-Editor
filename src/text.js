@@ -64,7 +64,12 @@ function findFenceBlock(src, contentTrimmed) {
     while (pos < src.length) {
       const openIdx = src.indexOf(open, pos);
       if (openIdx === -1) break;
-      const codeStart = openIdx + open.length;
+      // The opening marker may carry an info string -- ":::{code-cell} python".
+      // The cell's code starts after that whole line, not after the marker, or
+      // the language ends up counted as the first line of code: the content
+      // never matches, and the caller silently falls back to "end of document".
+      const codeStart = src.indexOf("\n", openIdx + open.length);
+      if (codeStart === -1) break;
       const closeRe   = new RegExp(closeSource, "g");
       closeRe.lastIndex = codeStart;
       const closeM = closeRe.exec(src);
