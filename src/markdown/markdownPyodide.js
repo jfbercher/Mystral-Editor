@@ -155,9 +155,25 @@ function ensureObserver(parent) {
           textarea._updateCode?.(code);
           textarea.value = code;  // setter CM6 ou textarea.value
           requestAnimationFrame(() => { textarea._suppressSync = false; });
-          // Effacer la sortie (code changé, résultat périmé)
+          // Effacer la sortie (code changé, résultat périmé).
+          // Vider les sous-zones, surtout pas le conteneur : les fermetures
+          // créées par initCodeCell() gardent des références vers
+          // .pyodide-widget-output et .pyodide-text-output. Les supprimer
+          // laissait la cellule écrire dans des noeuds détachés -- l'exécution
+          // affichait alors son chronomètre mais aucune sortie, jusqu'à ce
+          // qu'un re-render reconstruise la cellule.
           const out = evictedHost.querySelector(".pyodide-output");
-          if (out) { out.innerHTML = ""; out.hidden = true; }
+          if (out) {
+            const wOut = out.querySelector(".pyodide-widget-output");
+            const tOut = out.querySelector(".pyodide-text-output");
+            if (wOut || tOut) {
+              if (wOut) wOut.innerHTML = "";
+              if (tOut) tOut.innerHTML = "";
+            } else {
+              out.innerHTML = ""; // cellule bâtie par une version antérieure
+            }
+            out.hidden = true;
+          }
           const st = evictedHost.querySelector(".pyodide-status-text");
           if (st) { st.textContent = ""; st.className = "pyodide-status-text"; }
           const ti = evictedHost.querySelector(".pyodide-timing");
