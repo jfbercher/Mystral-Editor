@@ -1146,7 +1146,8 @@ export async function snapshotNamespace() {
   const result = await pyodide.runPythonAsync(`
 import cloudpickle as _cp, base64 as _b64, io as _io, json as _json
 _skip = frozenset({"__name__", "__doc__", "__package__", "__loader__",
-                   "__spec__", "__builtins__", "__annotations__"})
+                   "__spec__", "__builtins__", "__annotations__"}
+                  | set(${JSON.stringify(RUNTIME_GLOBALS)}))
 _out = {}
 for _n, _v in list(globals().items()):
     if _n.startswith('_') or _n in _skip:
@@ -1198,6 +1199,10 @@ for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json'
 _report
 `);
   const { ok, failed } = JSON.parse(report);
+  // Sidecars written before runtime names were excluded still carry an entry
+  // for "js" (an unpicklable JsProxy). It is plumbing the bootstrap rebinds on
+  // its own, so it is not a variable the user lost.
+  for (const name of RUNTIME_GLOBALS) delete failed[name];
   const failedNames = Object.keys(failed);
   logNamespaceEvent("restore", { added: ok, failed: failedNames });
   if (failedNames.length) {
