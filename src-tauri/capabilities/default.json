@@ -17,6 +17,33 @@
     "shell:allow-open",
     "opener:default",
     "opener:allow-default-urls",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "login-shell", "cmd": "sh", "args": ["-lc", { "validator": "^[\\s\\S]+$" }] }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "login-shell", "cmd": "sh", "args": ["-lc", { "validator": "^[\\s\\S]+$" }] }
+      ]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$HOME/**" }]
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://localhost:*" }, { "url": "http://127.0.0.1:*" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$HOME/**" }]
+    },
     "fs:allow-app-write-recursive",
     "fs:allow-home-read-recursive",
     "fs:allow-home-write-recursive",

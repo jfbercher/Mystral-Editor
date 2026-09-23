@@ -74,4 +74,14 @@ export const DEFAULT_CONFIG = {
     // true  = resets os.chdir("/local") before each cell  (option A)
     resetCwdOnRun: false,
   },
+
+  // Tauri-only export menu (myst build / myst start).
+  export: {
+    // Command used to invoke mystmd. It is run through a login shell, so the
+    // plain name works as long as it is on the PATH of your shell profile;
+    // set an absolute path here if it is installed somewhere unusual.
+    mystPath: "myst",
+    // Port used by "myst start" for the local site preview.
+    sitePort: 3000,
+  },
 };

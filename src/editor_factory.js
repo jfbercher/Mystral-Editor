@@ -45,6 +45,9 @@ const collabUrl = import.meta.env.VITE_WS_URL ?? urlParams.get("collab_server");
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+import * as mystExport from "./utils/local_utils/mystExport.js";
+import { showToast } from "./utils/utils_ui.js";
+
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {
   const reducedButtons = [1, 2, 3, 4, 6].map((i) => defaultButtons[i]);
@@ -130,6 +133,64 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
         } : null),
       ].filter(Boolean),
     },
+    // Export menu — Tauri only: it shells out to `myst`, which the web build
+    // cannot do. Hidden entirely elsewhere rather than shown disabled.
+    ...(isTauri ? [{
+      id: "export-menu",
+      text: h("span", { style: "font-size:1.5em" }, "📦"),
+      tooltip: "Export / MyST build",
+      // Direct click: the most common export.
+      action: async () => { await mystExport.exportCurrentFile(tab, "pdf"); },
+      options: () => {
+        const running = mystExport.siteRunning();
+        return [
+          {
+            id: "export-pdf",
+            text: "📕 Export PDF",
+            action: async () => { await mystExport.exportCurrentFile(tab, "pdf"); },
+          },
+          {
+            id: "export-tex",
+            text: "📐 Export LaTeX",
+            action: async () => { await mystExport.exportCurrentFile(tab, "tex"); },
+          },
+          {
+            id: "export-docx",
+            text: "📘 Export Word (docx)",
+            action: async () => { await mystExport.exportCurrentFile(tab, "docx"); },
+          },
+          {
+            id: "export-html",
+            text: "🌐 Export HTML (rendered)",
+            action: async () => { await mystExport.exportHtml(tab); },
+          },
+          // ----
+          {
+            id: "myst-build",
+            text: "🏗️ myst build (whole project)",
+            action: async () => {
+              if (!(await mystExport.hasMystYml(tab))) {
+                showToast("No myst.yml in this folder: nothing for myst build to read.", "error", 6000);
+                return;
+              }
+              await mystExport.mystBuild(tab);
+            },
+          },
+          {
+            id: "myst-site",
+            text: running ? `⏹️ Stop the MyST site` : "🚀 Start the MyST site",
+            action: async () => {
+              if (mystExport.siteRunning()) { await mystExport.stopSite(); return; }
+              if (!(await mystExport.hasMystYml(tab))) {
+                showToast("No myst.yml in this folder: myst start has no site to serve.", "error", 6000);
+                return;
+              }
+              await mystExport.startSite(tab);
+            },
+          },
+        ];
+      },
+    }] : []),
     /*{
       text: h("span", { style: "font-size:1.5em" }, "💾"),
       tooltip: "Save file as..",
