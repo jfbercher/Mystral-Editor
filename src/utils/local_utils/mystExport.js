@@ -54,6 +54,20 @@ export function projectDir(tab) {
   return typeof wd === "string" ? wd : null;
 }
 
+/**
+ * True when the document's own frontmatter declares an `exports:` section.
+ *
+ * Such a file carries everything myst needs and builds on its own, so it is a
+ * legitimate export even with no myst.yml beside it. Matched on the frontmatter
+ * block only, so an `exports:` appearing later in the prose is not mistaken for
+ * a declaration.
+ */
+export function hasExportsFrontmatter(tab) {
+  const src = (typeof window !== "undefined" && window.myst_editor?.[tab?.editorId]?.text) || "";
+  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
+  return front ? /^exports\s*:/m.test(front[1]) : false;
+}
+
 /** True when the project directory holds a myst.yml. */
 export async function hasMystYml(tab) {
   const dir = projectDir(tab);
@@ -106,13 +120,14 @@ export async function exportCurrentFile(tab, kind) {
     showToast("Save the document first: myst exports a file on disk.", "error", 5000);
     return;
   }
-  // Without a myst.yml beside the file, mystmd walks up the tree looking for a
-  // project root and can end up taking the home folder, scanning all of it and
-  // failing on TCC-protected paths such as ~/Library/Accounts. Stop before that
-  // rather than let it grind for minutes and fail obscurely.
-  if (!(await hasMystYml(tab))) {
+  // A file needs either a project (myst.yml beside it) or its own `exports:`
+  // frontmatter. With neither, mystmd walks up looking for a project root, can
+  // settle on the home folder and scan all of it, failing on TCC-protected
+  // paths such as ~/Library/Accounts -- after several minutes.
+  if (!(await hasMystYml(tab)) && !hasExportsFrontmatter(tab)) {
     showToast(
-      "No myst.yml in this folder. myst would search upwards for a project and may scan your whole home folder. Run `myst init` here first.",
+      `Cannot export ${baseName(path)} because this folder has no myst.yml and the document declares no "exports:" frontmatter. ` +
+        "Run `myst init` here, or add an exports section to the document.",
       "error",
       0,
     );
@@ -138,13 +153,18 @@ export async function exportCurrentFile(tab, kind) {
   }
   showToast(`Exported to ${EXPORT_DIR}/${baseName(out)}`, "success", 6000);
 
-  if (kind === "pdf") {
-    try {
-      const { openPath } = await import("@tauri-apps/plugin-opener");
-      await openPath(out);
-    } catch (err) {
-      console.warn("[export] could not open the PDF:", err);
-    }
+  // Open the result in whatever the system uses for it. Not for .tex, which is
+  // usually an intermediate the user processes further rather than reads.
+  if (kind !== "tex") await openExported(out);
+}
+
+/** Hand a produced file to the system's default application. */
+async function openExported(path) {
+  try {
+    const { openPath } = await import("@tauri-apps/plugin-opener");
+    await openPath(path);
+  } catch (err) {
+    console.warn("[export] could not open", path, err);
   }
 }
 
@@ -233,6 +253,7 @@ export async function exportHtml(tab) {
     const name = `${slugify(title)}.html`;
     await writeTextFile(`${dir}/${name}`, html);
     showToast(`Exported to ${EXPORT_DIR}/${name}`, "success", 6000);
+    await openExported(`${dir}/${name}`);
   } catch (err) {
     console.error("[export] HTML export failed:", err);
     showToast(`HTML export failed: ${err}`, "error", 0);
