@@ -10,6 +10,7 @@ import markdownIt from "markdown-it";
 export function syncCheckboxes(ev, lineMap, editor) {
   if (ev.target.tagName != "INPUT") return;
   const id = ev.target.parentElement.getAttribute("data-line-id");
+  if (!id) return;  // Not a markdown checkbox (e.g. a widget input) — ignore
   const lineNumber = getLineById(lineMap, id);
   const line = editor.state.doc.line(lineNumber);
   const openIdx = line.text.indexOf("[");
