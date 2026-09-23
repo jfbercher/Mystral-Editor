@@ -169,6 +169,46 @@ globalThis.__mystralNamespaceDebug = {
     ({ at, event, added: added?.join(" ") ?? "", removed: removed?.join(" ") ?? "", failed: failed?.join(" ") ?? "" }))); },
 };
 
+/**
+ * Soft restart: keep the Pyodide instance, drop the user's state.
+ *
+ * A hard restart throws the interpreter away, and rebuilding it re-instantiates
+ * the WASM runtime, reloads numpy/matplotlib and reinstalls jedi and cloudpickle
+ * from PyPI -- several seconds of network, and a failure when offline. For the
+ * everyday "give me a clean namespace" this is all that is needed.
+ *
+ * What it does NOT do, by design: modules already imported stay in sys.modules,
+ * so a re-`import` does not re-execute them, and library-internal state (a
+ * matplotlib backend, a numpy error mode) persists. Use the hard restart when
+ * that matters.
+ *
+ * Names beginning with "_" are left alone: the runtime's own bridge, the jedi
+ * completion helper and micropip live there.
+ */
+export async function softRestartKernel() {
+  if (!pyodideInstance) return { softened: false, removed: [] };
+  const removed = userGlobalNames(pyodideInstance) ?? [];
+  pyodideInstance.runPython(`
+_doomed = [_k for _k in globals() if not _k.startswith('_')]
+for _n in _doomed:
+    globals().pop(_n, None)
+globals().pop('_doomed', None)
+globals().pop('_n', None)
+try:
+    import matplotlib.pyplot as _plt
+    _plt.close('all')
+    del _plt
+except Exception:
+    pass
+import os as _os
+_os.chdir('/local')
+del _os
+`);
+  logNamespaceEvent("kernel-soft-restart", { removed });
+  _cellExecutedListeners.forEach((fn) => fn());   // {eval} results are now stale
+  return { softened: true, removed };
+}
+
 async function restartKernel() {
   logNamespaceEvent("kernel-restart", { removed: pyodideInstance ? (userGlobalNames(pyodideInstance) ?? []) : [] });
   if (pyodideInstance) {
@@ -850,12 +890,33 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     setStatus(statusText, "");
   });
 
-  restartBtn.addEventListener("click", async () => {
+  restartBtn.title = "Restart the kernel: clears all variables (⌥/Alt-click to reload the whole Pyodide runtime)";
+  restartBtn.addEventListener("click", async (ev) => {
+    const hard = ev.altKey;
     restartBtn.disabled = true;
-    setStatus(statusText, "Restarting kernel…", "info");
-    await restartKernel();
-    setStatus(statusText, "Kernel restarted", "success");
-    restartBtn.disabled = false;
+    try {
+      if (hard) {
+        // Reloading takes seconds and needs the network, so do it now, with the
+        // status visible, rather than surprising the next run with it.
+        setStatus(statusText, "Reloading Pyodide runtime…", "info");
+        await restartKernel();
+        await loadPyodideRuntime();
+        setStatus(statusText, "Runtime reloaded", "success");
+      } else {
+        const { softened, removed } = await softRestartKernel();
+        setStatus(
+          statusText,
+          softened
+            ? `Kernel restarted — ${removed.length} variable(s) cleared`
+            : "Kernel not started yet",
+          "success",
+        );
+      }
+    } catch (e) {
+      setStatus(statusText, `Restart failed: ${e}`, "error");
+    } finally {
+      restartBtn.disabled = false;
+    }
   });
 
   runAllBtn.addEventListener("click", () => {
