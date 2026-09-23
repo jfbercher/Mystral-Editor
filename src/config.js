@@ -4,12 +4,32 @@ import { BUILTIN_DIRECTIVES, DEFAULT_CONFIG } from "./config-defaults.js";
  * Runtime configuration object — starts from defaults and is mutated by loadConfig().
  * Deep-clone DEFAULT_CONFIG so defaults remain intact for reference.
  */
-export const config = {
-  ...DEFAULT_CONFIG,
-  shortcuts: { ...DEFAULT_CONFIG.shortcuts },
-  pyodide:   { ...DEFAULT_CONFIG.pyodide   },
-  export:    { ...DEFAULT_CONFIG.export, templates: { ...DEFAULT_CONFIG.export.templates } },
-};
+export const config = {};
+
+/**
+ * Copy `source` into `target`, descending into plain objects instead of
+ * replacing them, and creating them along the way.
+ *
+ * Used both to clone the defaults and to apply config.json. A shallow assign
+ * would let a file naming a single key wipe out the rest of its section --
+ * setting one export template would drop mystPath, sitePort and the other
+ * templates. Arrays are replaced, not merged: a list in config.json is meant
+ * as the whole list.
+ */
+function mergeInto(target, source) {
+  for (const [key, value] of Object.entries(source ?? {})) {
+    const isPlainObject = value !== null && typeof value === "object" && !Array.isArray(value);
+    if (isPlainObject) {
+      if (target[key] === null || typeof target[key] !== "object" || Array.isArray(target[key])) target[key] = {};
+      mergeInto(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+// Deep copy, so the defaults stay intact for reference and nothing mutates them.
+mergeInto(config, DEFAULT_CONFIG);
 
 /**
  * True when the app is running inside a Tauri desktop wrapper.
@@ -90,16 +110,10 @@ async function loadConfigTauri() {
 // Shared helper — merges a parsed config.json object into the live config.
 // ---------------------------------------------------------------------------
 function _applyConfigData(data) {
-  const { shortcuts, data_directives, export: exportCfg, ...rest } = data;
-  Object.assign(config, rest);
-  Object.assign(config.shortcuts, shortcuts ?? {});
-  // Merged key by key, not replaced: config.json usually sets a single template
-  // or the port, and a plain assign would silently drop the rest of the section.
-  if (exportCfg) {
-    const { templates, ...flat } = exportCfg;
-    Object.assign(config.export, flat);
-    Object.assign(config.export.templates, templates ?? {});
-  }
+  const { data_directives, ...rest } = data;
+  // Every section merges the same way, at any depth: shortcuts, pyodide,
+  // export.templates and whatever is added later all behave alike.
+  mergeInto(config, rest);
   directives = { ...BUILTIN_DIRECTIVES, ...(data_directives ?? {}) };
 }
 
