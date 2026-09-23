@@ -235,9 +235,9 @@ async function runExport(tab, kind) {
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
   // Try the expected slug, then fall back to the newest file of that type.
-  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, kind, slugify(stemOf(path)));
+  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, OUTPUT_EXTENSIONS[kind] ?? [kind], slugify(stemOf(path)));
   if (!out) {
-    showToast(`myst reported success but no .${kind} was found in ${EXPORT_DIR}.`, "error", 0);
+    showToast(`myst reported success but no ${(OUTPUT_EXTENSIONS[kind] ?? [kind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`, "error", 0);
     return;
   }
   showToast(`Exported to ${EXPORT_DIR}/${baseName(out)}`, "success", 6000);
@@ -257,18 +257,39 @@ async function openExported(path) {
   }
 }
 
-/** Absolute path of the export myst just wrote, or null. */
-async function resolveExport(dir, ext, slug) {
+// The extension myst writes is not always the one the format is called by:
+// a docx export can land as ".doc" depending on the template in use. Look for
+// every plausible extension rather than assuming the format's own name.
+const OUTPUT_EXTENSIONS = {
+  tex: ["tex"],
+  pdf: ["pdf"],
+  docx: ["docx", "doc"],
+};
+
+/**
+ * Absolute path of the export myst just wrote, or null.
+ * @param {string[]} exts  candidate extensions, most likely first
+ */
+async function resolveExport(dir, exts, slug) {
   const { exists, readDir, stat } = await import("@tauri-apps/plugin-fs");
-  const expected = `${dir}/${slug}.${ext}`;
-  try {
-    if (await exists(expected)) return expected;
-  } catch { /* fall through to the scan */ }
+  // Several candidates may exist at once -- a stale .docx beside a fresh .doc
+  // from a run that changed template. Take the most recently written.
+  let newest = null;
+  for (const ext of exts) {
+    try {
+      const expected = `${dir}/${slug}.${ext}`;
+      if (!(await exists(expected))) continue;
+      const when = (await stat(expected)).mtime?.getTime?.() ?? 0;
+      if (!newest || when > newest.when) newest = { full: expected, when };
+    } catch { /* fall through to the scan */ }
+  }
+  if (newest) return newest.full;
   try {
     const entries = await readDir(dir);
+    const suffixes = exts.map((e) => `.${e}`);
     let best = null;
     for (const e of entries) {
-      if (!e.isFile || !e.name.toLowerCase().endsWith(`.${ext}`)) continue;
+      if (!e.isFile || !suffixes.some((sfx) => e.name.toLowerCase().endsWith(sfx))) continue;
       const full = `${dir}/${e.name}`;
       const when = (await stat(full)).mtime?.getTime?.() ?? 0;
       if (!best || when > best.when) best = { full, when };
