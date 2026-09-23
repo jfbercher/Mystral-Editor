@@ -9,7 +9,8 @@ All theme colors in myst-editor are expressed as **CSS custom properties** (vari
 | Group | Prefix | Purpose |
 |---|---|---|
 | Syntax-token colors | `--tok-*` | Code highlighting in the editor and preview |
-| UI colors | `--color-*` | Backgrounds, borders, and prose text in Pyodide cells |
+| UI colors | `--color-*` | Backgrounds, borders, and prose text across the UI, including Pyodide cells |
+| Pyodide cell chrome | `--pyodide-*` | Code-cell background, borders and output area; takes precedence over `--color-*` |
 
 ### Where values are defined
 
@@ -32,7 +33,7 @@ Changing a value in this file changes it consistently in both the editor (CM6 hi
 | `src/extensions/pythonHighlightStyle.js` | `--tok-*` — CM6 HighlightStyle for the main editor and detached sub-editors |
 | `src/extensions/index.js` → `syntaxHighlight` | `--tok-*` — CM6 HighlightStyle applied globally via `defaultPlugins()` |
 | `src/components/Preview.js` | `--tok-*` — hljs CSS rules for the rendered preview |
-| `src/markdown/pyodideRunner.js` | `--color-*` — Pyodide cell wrapper and output area styling |
+| `src/markdown/pyodideRunner.js` | `--pyodide-*`, falling back to `--color-*` — code-cell wrapper, header, status bar and output area |
 
 You only need to edit those consumer files if you want the **preview** to use different colors than the **editor**, or vice-versa. For uniform changes, editing `MystStyles.js` alone is sufficient.
 
@@ -79,6 +80,30 @@ These govern the **Pyodide code-cell** chrome (input area, output area, borders)
 | `--color-border` | `#d0d7de` | `#878787` | Cell border color |
 | `--color-foreground-primary` | `#1f2328` | `#dddddd` | Primary text color inside cells |
 | `--color-foreground-muted` | `#57606a` | `#8b949e` | Secondary / dimmed text (labels, captions) |
+
+---
+
+## `--pyodide-*` — Pyodide code-cell chrome
+
+These give the code cells their own palette, so a cell can be tinted
+independently of the rest of the editor. Each one is read with a fallback, which
+is why a theme that defines none of them still renders correct cells.
+
+| Variable | Light value | Dark value | Used for |
+|---|---|---|---|
+| `--pyodide-cell-bg` | `#f2f6fc` | `#1d2b3a` | Background of the cell wrapper, its header and its status bar, and of the CM6 editor area inside the cell. Header and status bar apply `filter: brightness(0.97)` over it, so they read slightly darker without a variable of their own. Falls back to `#f2f6fc`, or to `--color-background-primary` for the nested editor. |
+| `--pyodide-cell-border` | `#c4d4e6` | `#3a5068` | Outer border of the cell, plus the rules separating header, status bar and output area, and the outline of the inline delete-confirmation bar. Falls back to `--color-border`, then `#c4d4e6`. |
+| `--pyodide-output-bg` | `#e8f0f8` | `#162232` | Background of the output area only, so results stand apart from the code above them. Falls back to `#e8f0f8`; it has no `--color-*` equivalent. |
+
+Text inside a cell is not covered here: it keeps `--color-foreground-primary`
+and `--color-foreground-muted`, and code is highlighted with the `--tok-*`
+variables, so a cell stays consistent with the rest of the editor.
+
+A fourth knob, `--pyodide-cell-font-size`, is declared on `.pyodide-wrapper`
+itself (`0.8rem`) rather than in `MystStyles.js`, being a sizing preference
+rather than a theme color. It drives the editor, its gutter and the
+autocompletion popup inside the cell, and can be overridden from `custom.css`
+like any other variable.
 
 ---
 
