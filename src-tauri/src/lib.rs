@@ -3,6 +3,8 @@
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent, State};
 
+mod google_auth;
+
 #[derive(Default)]
 pub struct PendingFile(pub Mutex<Option<String>>);
 
@@ -19,7 +21,10 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .manage(PendingFile::default())
-        .invoke_handler(tauri::generate_handler![get_pending_file])
+        .invoke_handler(tauri::generate_handler![
+            get_pending_file,
+            google_auth::google_login
+        ])
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             println!("========== SINGLE INSTANCE (CLI) ==========");
             // Pour Windows/Linux ou instance secondaire CLI
