@@ -63,10 +63,15 @@ export async function loadPyodideRuntime(extraPackages = []) {
 import sys, io, js
 
 class _JsBridge(io.TextIOBase):
-    def __init__(self, tag):
+    # The js module is captured per instance rather than looked up in globals()
+    # on every write: a stream that stops working because a name was rebound or
+    # cleared elsewhere costs sys.stderr itself, and the error it raises can no
+    # longer be printed.
+    def __init__(self, tag, _js=js):
         self._tag = tag
+        self._js = _js
     def write(self, s):
-        js.globalThis._pyodideStreamWrite(self._tag, s)
+        self._js.globalThis._pyodideStreamWrite(self._tag, s)
         return len(s)
     def flush(self):
         pass
@@ -183,17 +188,25 @@ globalThis.__mystralNamespaceDebug = {
  * that matters.
  *
  * Names beginning with "_" are left alone: the runtime's own bridge, the jedi
- * completion helper and micropip live there.
+ * completion helper and micropip live there. So are the few plain names bound
+ * by the bootstrap, listed in RUNTIME_GLOBALS.
  */
+// Plain names the bootstrap binds and the runtime keeps using. Clearing "js"
+// broke the stdout/stderr bridge, which then could not even report its own
+// failure ("lost sys.stderr").
+const RUNTIME_GLOBALS = ["sys", "io", "js"];
+
 export async function softRestartKernel() {
   if (!pyodideInstance) return { softened: false, removed: [] };
-  const removed = userGlobalNames(pyodideInstance) ?? [];
+  const removed = (userGlobalNames(pyodideInstance) ?? []).filter((n) => !RUNTIME_GLOBALS.includes(n));
   pyodideInstance.runPython(`
-_doomed = [_k for _k in globals() if not _k.startswith('_')]
+_spared = frozenset(${JSON.stringify(RUNTIME_GLOBALS)})
+_doomed = [_k for _k in globals() if not _k.startswith('_') and _k not in _spared]
 for _n in _doomed:
     globals().pop(_n, None)
 globals().pop('_doomed', None)
 globals().pop('_n', None)
+globals().pop('_spared', None)
 try:
     import matplotlib.pyplot as _plt
     _plt.close('all')
