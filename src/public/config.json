@@ -11,7 +11,7 @@
     "open": "Mod-Shift-o",
     "newTab": "Mod-Shift-e"
   },
-  "directives": {
+  "data_directives": {
     "figure": {
       "kind": "fig",
       "label": "Figure",
@@ -123,7 +123,7 @@
     },
     "remark": {
       "kind": "remark",
-      "label": "remark",
+      "label": "Remark",
       "numbered": true,
       "caption": "arg"
     },
