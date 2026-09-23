@@ -22,3 +22,6 @@ _build
 # Local archives and backups
 *.zip
 *.bak
+
+# Pyodide cell outputs saved beside a document
+*.myst.cache.json
