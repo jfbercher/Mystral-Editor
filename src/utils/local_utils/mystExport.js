@@ -54,11 +54,23 @@ export async function hasMystYml(tab) {
   }
 }
 
-/** Run a myst command line in `cwd`, returning { code, stdout, stderr }. */
+/**
+ * Run a myst command line in `cwd`, returning { code, stdout, stderr }.
+ *
+ * The directory is changed inside the command rather than only through the
+ * spawn option: a login shell sources the user's profile, which may move the
+ * working directory, and myst then treats the home folder as the project root
+ * and walks all of it -- failing on TCC-protected paths such as
+ * ~/Library/Accounts. The explicit `cd` runs after the profile and wins.
+ */
 async function runMyst(argline, cwd) {
   const { Command } = await import("@tauri-apps/plugin-shell");
-  const cmd = Command.create(LOGIN_SHELL, ["-lc", `${mystCmd()} ${argline}`], { cwd });
-  return await cmd.execute();
+  const line = `cd ${shq(cwd)} && ${mystCmd()} ${argline}`;
+  console.log("[export] sh -lc", line, "(cwd:", cwd + ")");
+  const cmd = Command.create(LOGIN_SHELL, ["-lc", line], { cwd });
+  const res = await cmd.execute();
+  if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
+  return res;
 }
 
 /** Report a failed command, keeping the toast up so the message can be read. */
@@ -205,7 +217,9 @@ export async function startSite(tab) {
   const { Command } = await import("@tauri-apps/plugin-shell");
   // `exec` replaces the shell with myst itself, so kill() reaches the server
   // rather than a wrapper that would leave it orphaned.
-  const cmd = Command.create(LOGIN_SHELL, ["-lc", `exec ${mystCmd()} start --port ${port}`], { cwd: dir });
+  const line = `cd ${shq(dir)} && exec ${mystCmd()} start --port ${port}`;
+  console.log("[export] sh -lc", line);
+  const cmd = Command.create(LOGIN_SHELL, ["-lc", line], { cwd: dir });
   cmd.stdout.on("data", (l) => console.log("[myst start]", l));
   cmd.stderr.on("data", (l) => console.log("[myst start]", l));
   cmd.on("close", () => { siteChild = null; sitePortInUse = null; });
