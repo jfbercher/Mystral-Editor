@@ -1,13 +1,25 @@
 ---
 title: Mystral Editor
+subtitle: General presentation
 authors:
   - jfbercher
-date: Version 0.9 of 2026-09-19.
-license: GNU GPL 3.0+
+date: 2026-09-19.
+license: GPL-3.0-or-later
 github: https://github.com/jfbercher/Mystral-Editor
 bibliography: references.bib
 citation-style: author-year # or numeric
 citation-template: "{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}"
+settings:
+    myst_to_tex:
+        code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+exports:
+  - format: docx
+  - format: pdf
+    template: arxiv_nips
+    article_type: article
+    chapters: []
 numbering:
   headings: true # activate headings numbering
   equations: true 
@@ -17,6 +29,9 @@ math:
   '\dr': '\mathrm{d}#1'
   '\wb': '\mathbf{wx}'
 ---
+
+
+
 
 :::{toc} Contents
 ::: 

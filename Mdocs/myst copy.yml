@@ -1,0 +1,66 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
+  settings:
+    myst_to_tex:
+        code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+  exports:
+    - format: docx
+    - format: pdf
+      template: arxiv_nips
+      articles:
+        - Mystral Editor - Presentation.md
+        - additions.md
+        - modifications.md
+        - myst-editor-css-variables.md
+        - windows_app_installation_guide.md
+        - macos_app_installation_guide.md 
+      article_type: article
+      chapters: []
+  # title: Apprentissage automatique 1
+  # description:
+  # keywords: []
+  # authors: []
+  # github:
+  # To autogenerate a Table of Contents, run "myst init --write-toc"
+  toc:
+
+    - file: index.md
+
+    - title: Mystral Editor 
+      children:
+        - file: Mystral Editor - Presentation.md
+        - file: additions.md
+        - file: modifications.md
+
+    - title: Mystral Editor - Further notes
+      children:
+        - file: myst-editor-css-variables.md
+        - file: windows_app_installation_guide.md
+        - file: macos_app_installation_guide.md   
+
+  bibliography:
+    - references.bib
+    - paper.bib
+
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png
+  #base_url: ~bercherj/4201A/ # FAIRE export BASE_URL="/~bercherj/4201A"
+  #template: article-theme
+  title: "Mystral Editor Doc & Notes"
+  logo_text: "Mystral Editor Doc & Notes"
+  parts:
+    footer: "Mystral Editor Doc & Notes (footer)"
+    primary_sidebar_footer: "Mystral Editor Doc & Notes (footer)"
+
+# Configuration d'exclusion
+exclude:
+  # Exclut tous les dossiers et leur contenu, 
+  # SAUF le dossier courant et ses sous-dossiers spécifiés.
+  - "*/"
