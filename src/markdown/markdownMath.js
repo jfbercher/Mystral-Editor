@@ -1,5 +1,6 @@
 import texmath from "markdown-it-texmath";
 import katex from "katex";
+import renderMathInElement from "katex/dist/contrib/auto-render.mjs";
 import { getLineById } from "./markdownSourceMap";
 import { kindLabelsFrom, numberedByNameFrom } from "./scanTargets";
 import { getLabelledDirectives } from "../config";
@@ -10,6 +11,44 @@ export const katexMacros = {};
 
 // --- multitabs
 const katexMacrosByEditor = new Map(); // editorId -> objet macros mutable
+
+/**
+ * Typeset $…$ / $$…$$ inside an existing DOM subtree.
+ *
+ * Exposed on globalThis because code running in Pyodide -- the labquiz widgets,
+ * which build their own checkbox labels and feedback areas -- has no other way
+ * to reach KaTeX: it is an ES module here, invisible from the page. It works on
+ * a detached node, so a widget can typeset itself before being inserted.
+ *
+ * Delimiters mirror the texmath configuration below ('dollars', 'brackets',
+ * 'beg_end'), so a widget label reads exactly like the surrounding document.
+ * Macros of every open editor are merged: a widget carries no editorId to key
+ * on, and a quiz in practice runs in a single editor.
+ */
+export function renderMathInNode(node, options = {}) {
+  if (!node) return;
+  const macros = Object.assign({}, katexMacros);
+  for (const m of katexMacrosByEditor.values()) Object.assign(macros, m);
+  try {
+    renderMathInElement(node, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "$", right: "$", display: false },
+        { left: "\\[", right: "\\]", display: true },
+        { left: "\\(", right: "\\)", display: false },
+        { left: "\\begin{equation}", right: "\\end{equation}", display: true },
+        { left: "\\begin{align}", right: "\\end{align}", display: true },
+      ],
+      throwOnError: false,
+      macros,
+      ...options,
+    });
+  } catch (err) {
+    console.warn("[myst] renderMathInNode failed:", err);
+  }
+}
+
+globalThis.renderMathInElement = renderMathInNode;
 
 export function getKatexMacros(editorId) {
   if (!katexMacrosByEditor.has(editorId)) {
