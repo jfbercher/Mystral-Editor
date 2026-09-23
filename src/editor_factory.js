@@ -305,6 +305,7 @@ export function mountEditor(mnt_options) {
             await localUtils.applyCustomCss(editorId); 
             await localUtils.loadImageFolderOnStartup();
             await localUtils.loadWorkingFolderOnStartup();
+            await localUtils.pruneRecentFileHandlesOnce();
 
             let rawContent = initialContent || null;
             if (!rawContent) {

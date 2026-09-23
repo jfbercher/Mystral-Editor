@@ -448,6 +448,75 @@ export async function getRecentFileHandles() {
   }
 }
 
+/**
+ * Drop entries of the recent-files list that no longer point at an existing
+ * file. Under Tauri the entries are absolute paths, so existence is a cheap
+ * filesystem check. On the web they are FileSystemFileHandle objects: we only
+ * probe the ones whose permission is already granted, so that pruning never
+ * triggers a permission prompt, and we only discard a handle when the browser
+ * explicitly reports the file as missing (NotFoundError). Anything we cannot
+ * decide is kept.
+ * Returns the surviving list.
+ */
+let recentPrunePromise = null;
+
+/** Prune the recent-files list at most once per session (startup helper). */
+export function pruneRecentFileHandlesOnce() {
+  if (!recentPrunePromise) {
+    recentPrunePromise = pruneRecentFileHandles().catch((e) => {
+      console.warn("[recent] pruning failed", e);
+      return null;
+    });
+  }
+  return recentPrunePromise;
+}
+
+export async function pruneRecentFileHandles() {
+  const handles = await getRecentFileHandles();
+  if (!handles.length) return handles;
+
+  const survivors = [];
+  if (isTauri()) {
+    const { exists } = await import('@tauri-apps/plugin-fs');
+    for (const path of handles) {
+      if (typeof path !== "string" || !path) continue;
+      try {
+        if (await exists(path)) survivors.push(path);
+      } catch (e) {
+        // Unreadable location (permissions, unmounted volume): keep the entry.
+        survivors.push(path);
+      }
+    }
+    if (survivors.length !== handles.length) {
+      localStorage.setItem("recentFileHandles", JSON.stringify(survivors));
+    }
+  } else {
+    for (const handle of handles) {
+      if (!handle || typeof handle.getFile !== "function") continue;
+      let alive = true;
+      try {
+        const permission = typeof handle.queryPermission === "function"
+          ? await handle.queryPermission({ mode: "read" })
+          : "granted";
+        if (permission === "granted") {
+          await handle.getFile();
+        }
+      } catch (e) {
+        if (e && e.name === "NotFoundError") alive = false;
+      }
+      if (alive) survivors.push(handle);
+    }
+    if (survivors.length !== handles.length) {
+      await set("recentFileHandles", survivors);
+    }
+  }
+
+  if (survivors.length !== handles.length) {
+    console.log(`[recent] pruned ${handles.length - survivors.length} stale entr${handles.length - survivors.length > 1 ? "ies" : "y"}`);
+  }
+  return survivors;
+}
+
 export async function addRecentFileHandle(fileHandleOrPath) {
   if (isTauri()) {
     const recentHandles = await getRecentFileHandles();
