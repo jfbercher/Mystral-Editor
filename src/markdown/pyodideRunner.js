@@ -5,6 +5,8 @@
  * API publique :
  *   initCodeCell(el, code, { packages, linenos, hash })
  *   runAllCells(parent)
+ *   clearAllCells(parent)
+ *   softRestartKernel()
  */
 
 import IMurMurHash from "imurmurhash";
@@ -611,6 +613,7 @@ function ensureStyles() {
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
 .pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}
 .pyodide-btn-runall{background:#0969da}
+.pyodide-btn-clearall{font-weight:600}
 .pyodide-btn-restart{color:#cf222e;font-weight:600}
 .pyodide-btn-insert{color:#6639ba;font-weight:600}
 .pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
@@ -714,13 +717,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const runBtn     = mkBtn("pyodide-btn-run",     "▶ Run");
   const clearBtn   = mkBtn("pyodide-btn-clear",   "Clear");
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
+  const clearAllBtn = mkBtn("pyodide-btn-clearall", "Clear All");
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
   const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
   insertBtn.title = "Insert an empty code-cell below (⌘⇧↵ / Ctrl+Shift+Enter)";
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
   deleteBtn.title = "Delete this cell";
 
-  controls.append(runBtn, clearBtn, runAllBtn, restartBtn, insertBtn, deleteBtn);
+  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, restartBtn, insertBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -932,9 +936,16 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     }
   });
 
+  runAllBtn.title = "Run every code-cell of this document, in order";
   runAllBtn.addEventListener("click", () => {
     const root = el.closest(".myst-preview, [class*=preview], body") ?? document.body;
     runAllCells(root);
+  });
+
+  clearAllBtn.title = "Clear the output of every code-cell (variables are kept)";
+  clearAllBtn.addEventListener("click", () => {
+    const root = el.closest(".myst-preview, [class*=preview], body") ?? document.body;
+    clearAllCells(root);
   });
 
   // Dispatch "insert cell below" → handled in text.js
@@ -1115,6 +1126,17 @@ export async function runAllCells(root = document.body) {
       }, 150);
     });
   }
+}
+
+/**
+ * Clear the output of every code-cell below `root`, leaving the kernel state
+ * untouched. The counterpart of runAllCells(): it drives the per-cell Clear
+ * buttons rather than duplicating what they do, so the two stay in step.
+ */
+export function clearAllCells(root = document.body) {
+  const buttons = Array.from(root.querySelectorAll(".pyodide-btn-clear")).filter((b) => b.isConnected);
+  buttons.forEach((btn) => btn.click());
+  return buttons.length;
 }
 
 /**
