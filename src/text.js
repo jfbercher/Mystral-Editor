@@ -7,7 +7,7 @@ import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives } 
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
 import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
-import markdownSourceMap from "./markdown/markdownSourceMap";
+import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
 import { colonFencedBlocks } from "./markdown/markdownFence";
 import { markdownItMapUrls, overloadMapUrl } from "./markdown/markdownUrlMapping";
@@ -45,20 +45,21 @@ import { scanReferenceLinks, markdownItRefLinks } from "./markdown/markdownRefLi
 
 
 /**
- * Cherche dans `src` le premier bloc fence (:::{code-cell} ou ```{code-cell})
- * dont le contenu trimmé correspond à `contentTrimmed`.
- * Retourne { lineStart, codeStart, codeEnd, blockEnd } ou null.
+ * Énumère les blocs fence de type code-cell présents dans `src`.
+ * Retourne [{ lineStart, codeStart, codeEnd, blockEnd, inside }], dans l'ordre
+ * du document.
  *   lineStart : début de la ligne du marqueur d'ouverture
- *   codeStart : position du \n juste après le marqueur d'ouverture
- *   codeEnd   : position du \n qui fait partie du match de fermeture (closeM.index)
+ *   codeStart : fin de la ligne d'ouverture (le \n qui suit l'info string)
+ *   codeEnd   : position du \n qui fait partie du match de fermeture
  *   blockEnd  : fin du match de fermeture
  */
-function findFenceBlock(src, contentTrimmed) {
+function listFenceBlocks(src) {
   const patterns = [
     { open: ":::{code-cell}", closeSource: "\\n:::[^\\S\\n]*(?:\\n|$)" },
     { open: "```{code-cell}", closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
     { open: "```code-cell",   closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
   ];
+  const blocks = [];
   for (const { open, closeSource } of patterns) {
     let pos = 0;
     while (pos < src.length) {
@@ -66,25 +67,49 @@ function findFenceBlock(src, contentTrimmed) {
       if (openIdx === -1) break;
       // The opening marker may carry an info string -- ":::{code-cell} python".
       // The cell's code starts after that whole line, not after the marker, or
-      // the language ends up counted as the first line of code: the content
-      // never matches, and the caller silently falls back to "end of document".
+      // the language ends up counted as the first line of code.
       const codeStart = src.indexOf("\n", openIdx + open.length);
       if (codeStart === -1) break;
-      const closeRe   = new RegExp(closeSource, "g");
+      const closeRe = new RegExp(closeSource, "g");
       closeRe.lastIndex = codeStart;
       const closeM = closeRe.exec(src);
       if (!closeM) { pos = openIdx + 1; continue; }
-      const codeEnd  = closeM.index;
-      const blockEnd = codeEnd + closeM[0].length;
-      const inside   = src.slice(codeStart, codeEnd).trim();
-      if (inside === contentTrimmed) {
-        const lineStart = openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1;
-        return { lineStart, codeStart, codeEnd, blockEnd };
-      }
-      pos = openIdx + 1;
+      const codeEnd = closeM.index;
+      blocks.push({
+        lineStart: openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1,
+        codeStart,
+        codeEnd,
+        blockEnd: codeEnd + closeM[0].length,
+        inside: src.slice(codeStart, codeEnd).trim(),
+      });
+      pos = closeM.index + closeM[0].length;
     }
   }
-  return null;
+  return blocks.sort((a, b) => a.lineStart - b.lineStart);
+}
+
+/**
+ * Localise le bloc code-cell dont le contenu vaut `contentTrimmed`.
+ *
+ * Le contenu seul ne suffit pas : deux cellules portant le même code sont
+ * indiscernables, et c'est toujours la première qui l'emportait -- une édition
+ * ou une suppression atterrissait silencieusement sur la mauvaise cellule.
+ * `hintPos`, la position source de la cellule qui a émis l'événement (dérivée
+ * de son data-line-id), sert d'arbitre entre les candidats.
+ *
+ * @param {string} src
+ * @param {string} contentTrimmed
+ * @param {number|null} hintPos  position dans le document, ou null
+ * @returns {{lineStart:number, codeStart:number, codeEnd:number, blockEnd:number}|null}
+ */
+function findFenceBlock(src, contentTrimmed, hintPos = null) {
+  const candidates = listFenceBlocks(src).filter((b) => b.inside === contentTrimmed);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1 || hintPos == null) return candidates[0];
+  // Plusieurs cellules identiques : prendre celle qui commence le plus près de
+  // la position annoncée par le widget.
+  return candidates.reduce((best, b) =>
+    Math.abs(b.lineStart - hintPos) < Math.abs(best.lineStart - hintPos) ? b : best);
 }
 
 window.moveSectionInText = moveSectionInText;
@@ -208,11 +233,27 @@ export class TextManager {
     // Synchronise les éditions faites dans les cellules code-cell vers le source CM.
     // Utilise findFenceBlock pour localiser le bon bloc (évite les faux positifs
     // quand originalCode est court ou vide).
-    this._pyodideEditHandler = ({ detail: { originalCode, newCode } }) => {
+    // Traduit le data-line-id d'une cellule rendue en position dans le source.
+    // Renvoie null si l'id n'est plus dans la lineMap (rendu obsolète) : les
+    // appelants retombent alors sur l'appariement par contenu seul.
+    this._posFromLineId = (lineId) => {
+      if (!lineId) return null;
+      const view = this.editorView.value;
+      if (!view) return null;
+      const lineNumber = getLineById(this.lineMap, lineId);
+      if (!lineNumber || lineNumber < 1 || lineNumber > view.state.doc.lines) return null;
+      try {
+        return view.state.doc.line(lineNumber).from;
+      } catch {
+        return null;
+      }
+    };
+
+    this._pyodideEditHandler = ({ detail: { originalCode, newCode, lineId } }) => {
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
-      const found = findFenceBlock(src, originalCode.trim());
+      const found = findFenceBlock(src, originalCode.trim(), this._posFromLineId(lineId));
       if (!found) return;
       // Remplace uniquement le contenu interne (codeStart→codeEnd) en conservant les marqueurs.
       view.dispatch({ changes: { from: found.codeStart, to: found.codeEnd, insert: "\n" + newCode } });
@@ -223,14 +264,14 @@ export class TextManager {
     // Insère une cellule :::code-cell vide sous la cellule courante.
     // Utilise findFenceBlock pour localiser précisément le bloc, même si currentCode
     // est court ou identique à du texte hors-fence.
-    this._pyodideInsertBelowHandler = ({ detail: { currentCode } }) => {
+    this._pyodideInsertBelowHandler = ({ detail: { currentCode, lineId } }) => {
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
 
       let insertPos = src.length; // défaut : fin de document
 
-      const found = findFenceBlock(src, (currentCode ?? "").trim());
+      const found = findFenceBlock(src, (currentCode ?? "").trim(), this._posFromLineId(lineId));
       if (found) insertPos = found.blockEnd;
 
       view.dispatch({
@@ -241,11 +282,11 @@ export class TextManager {
     cleanups?.push(() => document.removeEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler));
 
     // Supprime la cellule code-cell dont le code est currentCode.
-    this._pyodideDeleteCellHandler = ({ detail: { currentCode } }) => {
+    this._pyodideDeleteCellHandler = ({ detail: { currentCode, lineId } }) => {
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
-      const found = findFenceBlock(src, (currentCode ?? "").trim());
+      const found = findFenceBlock(src, (currentCode ?? "").trim(), this._posFromLineId(lineId));
       if (!found) return;
       let deleteFrom = found.lineStart;
       if (deleteFrom > 0 && src[deleteFrom - 1] === "\n") deleteFrom--;

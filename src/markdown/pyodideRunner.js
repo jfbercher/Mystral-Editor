@@ -731,6 +731,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   let _currentCode    = code;
   let _currentCacheKey = cacheKey;
 
+  // Identity of a cell used to be its code alone, so two cells holding the same
+  // text were indistinguishable and the first one always won. The source-map
+  // line id, already stamped on the host for scroll sync, says *which* cell this
+  // widget renders; it travels with every event so the source side can tell
+  // duplicates apart. It is read at dispatch time because a re-render may
+  // restamp the host after an edit elsewhere in the document.
+  const _lineId = () => el.dataset.lineId ?? null;
+
   const _syncToEditor = (view) => {
     if (editorContainer._suppressSync) return;
     const newCode = view.state.doc.toString();
@@ -745,7 +753,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     _currentCacheKey = newKey;
 
     document.dispatchEvent(new CustomEvent("pyodide-code-edit", {
-      detail: { originalCode: _currentCode, newCode }
+      detail: { originalCode: _currentCode, newCode, lineId: _lineId() }
     }));
     _currentCode = newCode;
   };
@@ -859,7 +867,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const _dispatchInsertBelow = () => {
     _syncToEditor(view);
     document.dispatchEvent(new CustomEvent("pyodide-insert-cell-below", {
-      detail: { currentCode: _currentCode }
+      detail: { currentCode: _currentCode, lineId: _lineId() }
     }));
   };
   insertBtn.addEventListener("click", _dispatchInsertBelow);
@@ -901,7 +909,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
       bar.remove();
       if (_currentCacheKey) cellCache.delete(_currentCacheKey);
       document.dispatchEvent(new CustomEvent("pyodide-delete-cell", {
-        detail: { currentCode: _currentCode }
+        detail: { currentCode: _currentCode, lineId: _lineId() }
       }));
     });
   });
