@@ -13,6 +13,7 @@ import { colonFencedBlocks } from "./markdown/markdownFence";
 import { markdownItMapUrls, overloadMapUrl } from "./markdown/markdownUrlMapping";
 import { backslashLineBreakPlugin } from "./markdown/markdownLineBreak";
 import IMurMurHash from "imurmurhash";
+
 import purify from "dompurify";
 import { StateEffect } from "@codemirror/state";
 import hljs from "highlight.js/lib/core";
@@ -41,6 +42,45 @@ import {
 import { invalidatePreviewMapCache } from "./utils/previewPopup";
 import { moveSectionInText, flattenHeadingsWithLines, computeSectionRange } from "./utils/sectionReorder";
 import { scanReferenceLinks, markdownItRefLinks } from "./markdown/markdownRefLinks";
+
+
+/**
+ * Cherche dans `src` le premier bloc fence (:::{code-cell} ou ```{code-cell})
+ * dont le contenu trimmé correspond à `contentTrimmed`.
+ * Retourne { lineStart, codeStart, codeEnd, blockEnd } ou null.
+ *   lineStart : début de la ligne du marqueur d'ouverture
+ *   codeStart : position du \n juste après le marqueur d'ouverture
+ *   codeEnd   : position du \n qui fait partie du match de fermeture (closeM.index)
+ *   blockEnd  : fin du match de fermeture
+ */
+function findFenceBlock(src, contentTrimmed) {
+  const patterns = [
+    { open: ":::{code-cell}", closeSource: "\\n:::[^\\S\\n]*(?:\\n|$)" },
+    { open: "```{code-cell}", closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
+    { open: "```code-cell",   closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
+  ];
+  for (const { open, closeSource } of patterns) {
+    let pos = 0;
+    while (pos < src.length) {
+      const openIdx = src.indexOf(open, pos);
+      if (openIdx === -1) break;
+      const codeStart = openIdx + open.length;
+      const closeRe   = new RegExp(closeSource, "g");
+      closeRe.lastIndex = codeStart;
+      const closeM = closeRe.exec(src);
+      if (!closeM) { pos = openIdx + 1; continue; }
+      const codeEnd  = closeM.index;
+      const blockEnd = codeEnd + closeM[0].length;
+      const inside   = src.slice(codeStart, codeEnd).trim();
+      if (inside === contentTrimmed) {
+        const lineStart = openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1;
+        return { lineStart, codeStart, codeEnd, blockEnd };
+      }
+      pos = openIdx + 1;
+    }
+  }
+  return null;
+}
 
 window.moveSectionInText = moveSectionInText;
 window.flattenHeadingsWithLines = flattenHeadingsWithLines;
@@ -160,18 +200,54 @@ export class TextManager {
     effect(() => (window.myst_editor[options.id.value].text = this.text.value));
     effect(() => this.observePreview());
 
-    // Synchronise les éditions faites dans les textareas code-cell vers le source CM
+    // Synchronise les éditions faites dans les cellules code-cell vers le source CM.
+    // Utilise findFenceBlock pour localiser le bon bloc (évite les faux positifs
+    // quand originalCode est court ou vide).
     this._pyodideEditHandler = ({ detail: { originalCode, newCode } }) => {
       const view = this.editorView.value;
       if (!view) return;
-      const text = view.state.doc.toString();
-      const idx  = text.indexOf(originalCode);
-      if (idx !== -1) {
-        view.dispatch({ changes: { from: idx, to: idx + originalCode.length, insert: newCode } });
-      }
+      const src = view.state.doc.toString();
+      const found = findFenceBlock(src, originalCode.trim());
+      if (!found) return;
+      // Remplace uniquement le contenu interne (codeStart→codeEnd) en conservant les marqueurs.
+      view.dispatch({ changes: { from: found.codeStart, to: found.codeEnd, insert: "\n" + newCode } });
     };
     document.addEventListener("pyodide-code-edit", this._pyodideEditHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-code-edit", this._pyodideEditHandler));
+
+    // Insère une cellule :::code-cell vide sous la cellule courante.
+    // Utilise findFenceBlock pour localiser précisément le bloc, même si currentCode
+    // est court ou identique à du texte hors-fence.
+    this._pyodideInsertBelowHandler = ({ detail: { currentCode } }) => {
+      const view = this.editorView.value;
+      if (!view) return;
+      const src = view.state.doc.toString();
+
+      let insertPos = src.length; // défaut : fin de document
+
+      const found = findFenceBlock(src, (currentCode ?? "").trim());
+      if (found) insertPos = found.blockEnd;
+
+      view.dispatch({
+        changes: { from: insertPos, to: insertPos, insert: "\n\n:::{code-cell}\n\n:::" },
+      });
+    };
+    document.addEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler));
+
+    // Supprime la cellule code-cell dont le code est currentCode.
+    this._pyodideDeleteCellHandler = ({ detail: { currentCode } }) => {
+      const view = this.editorView.value;
+      if (!view) return;
+      const src = view.state.doc.toString();
+      const found = findFenceBlock(src, (currentCode ?? "").trim());
+      if (!found) return;
+      let deleteFrom = found.lineStart;
+      if (deleteFrom > 0 && src[deleteFrom - 1] === "\n") deleteFrom--;
+      view.dispatch({ changes: { from: deleteFrom, to: found.blockEnd } });
+    };
+    document.addEventListener("pyodide-delete-cell", this._pyodideDeleteCellHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-delete-cell", this._pyodideDeleteCellHandler));
 
     const unsubscribe = cache.transform.onChange((input) => this.scheduleRender({ staleInput: input }));
     const unsubscribeEval = evalCache.onChange(() => this.scheduleRender({ useCache: false }));
