@@ -100,33 +100,131 @@ function reportFailure(what, res) {
  * Export the current file through `myst build <file> --<kind>`.
  * @param {"tex"|"pdf"|"docx"} kind
  */
+/** The document's text as it currently stands in the editor. */
+const editorText = (tab) =>
+  (typeof window !== "undefined" && window.myst_editor?.[tab?.editorId]?.text) || "";
+
+/** The frontmatter block of `src`, or null. */
+const frontmatterOf = (src) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
+
+/**
+ * The `exports:` block of a frontmatter body: its key line and every indented
+ * line under it. Walked line by line rather than matched with a regex -- with
+ * the multiline flag `$` matches at every end of line, so a lazy capture stops
+ * on the key line itself and finds nothing.
+ */
+function exportsBlock(frontBody) {
+  const lines = frontBody.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^exports\s*:/.test(l));
+  if (start < 0) return null;
+  const out = [lines[start]];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\S/.test(lines[i])) break; // next top-level key
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+
+/** True when the frontmatter already declares an export of this format. */
+export function frontmatterDeclares(tab, kind) {
+  const front = frontmatterOf(editorText(tab));
+  if (!front) return false;
+  const block = exportsBlock(front[1]);
+  return block ? new RegExp(`format\\s*:\\s*${kind}\\b`).test(block) : false;
+}
+
+/**
+ * Add an `exports:` entry for `kind` to the document's frontmatter.
+ *
+ * Done in the editor rather than on disk, so it shows up as an ordinary edit
+ * the user can read and undo. myst ships no default export, so without this
+ * entry `myst build --<kind>` finds nothing to produce and quietly does nothing.
+ */
+function addExportToFrontmatter(tab, kind) {
+  const src = editorText(tab);
+  const item = `  - format: ${kind}`;
+  const front = frontmatterOf(src);
+
+  let next;
+  if (!front) {
+    next = `---\nexports:\n${item}\n---\n\n${src}`;
+  } else if (/^exports\s*:/m.test(front[1])) {
+    // Append an item to the existing list, right under its key.
+    const body = front[1].replace(/^(exports\s*:[^\n]*\n?)/m, `$1${item}\n`);
+    next = src.slice(0, front.index) + `---\n${body}\n---` + src.slice(front.index + front[0].length);
+  } else {
+    next = src.slice(0, front.index) + `---\n${front[1]}\nexports:\n${item}\n---` + src.slice(front.index + front[0].length);
+  }
+  tab.setEditorText(next);
+}
+
+/** Make the folder a MyST project, non-interactively and in place. */
+async function mystInit(dir) {
+  showToast("Creating the MyST project (myst init)…", "success", 4000);
+  const res = await runMyst("init --site --write-toc", dir);
+  if (res.code !== 0) {
+    reportFailure("myst init", res);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Export the current file through `myst build <file> --<kind>`.
+ *
+ * Two things are required and myst provides neither by default: a project
+ * (myst.yml beside the file) and an `exports:` entry for the wanted format in
+ * the document's frontmatter. Both are offered as one explicit action rather
+ * than created behind the user's back -- writing into someone's folder and
+ * document is not something to do silently.
+ *
+ * @param {"tex"|"pdf"|"docx"} kind
+ */
 export async function exportCurrentFile(tab, kind) {
   const path = tab?.currentFileHandle;
   if (typeof path !== "string" || !path) {
     showToast("Save the document first: myst exports a file on disk.", "error", 5000);
     return;
   }
-  // myst needs a project: a myst.yml beside the file. An `exports:` frontmatter
-  // is NOT enough -- verified from the command line. Without one, mystmd walks
-  // up looking for a project root, can settle on the home folder and scan all
-  // of it, failing on TCC-protected paths such as ~/Library/Accounts, after
-  // several minutes.
-  if (!(await hasMystYml(tab))) {
+
+  const needProject = !(await hasMystYml(tab));
+  const needEntry = !frontmatterDeclares(tab, kind);
+
+  if (needProject || needEntry) {
+    const missing = [
+      needProject ? "this folder has no myst.yml" : null,
+      needEntry ? `the document declares no "${kind}" export in its frontmatter` : null,
+    ]
+      .filter(Boolean)
+      .join(", and ");
     showToast(
-      `Cannot export ${baseName(path)} because this folder has no myst.yml, and myst needs a project to build from. ` +
-        "Run `myst init` in that folder first.",
+      `Cannot export ${baseName(path)} to ${kind.toUpperCase()} because ${missing}. myst has no default project or export.`,
       "error",
       0,
+      {
+        label: needProject && needEntry ? "Set both up and export" : "Set it up and export",
+        onClick: async () => {
+          if (needProject && !(await mystInit(dirName(path)))) return;
+          if (needEntry) addExportToFrontmatter(tab, kind);
+          await runExport(tab, kind);
+        },
+      },
     );
     return;
   }
 
+  await runExport(tab, kind);
+}
+
+/** Build and open; assumes the project and the frontmatter entry are in place. */
+async function runExport(tab, kind) {
+  const path = tab.currentFileHandle;
   // Export what is on screen, not the last saved revision.
   await tab.smartSave();
 
   const dir = dirName(path);
   const file = baseName(path);
-  showToast(`Exporting ${file} to ${kind.toUpperCase()}…`, "success", 4000);
+  showToast(`Exporting ${file} to ${kind.toUpperCase()}\u2026`, "success", 4000);
 
   const res = await runMyst(`build ${shq(file)} --${kind}`, dir);
   if (res.code !== 0) return reportFailure(`myst build --${kind}`, res);
