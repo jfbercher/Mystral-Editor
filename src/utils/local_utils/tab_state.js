@@ -11,12 +11,17 @@ import { effect, signal } from '@preact/signals';
 import { 
   workingDirectory, 
   currentFileDir,
+  selectWorkingFolder,
+  hasFileSystemAccess,
+  isFallbackHandle,
+  pickFileWithInput,
   getRecentFileHandles, 
   addRecentFileHandle, 
   saveFileToPathParam, 
   loadFileFromPathParam, 
   saveBackupFile
 } from './fs.js';
+import { loadSidecar, applySidecarOutputs, scheduleNamespaceRestore, saveSidecarWithNamespace, saveSidecarToFile } from "./sidecar.js";
 
 
 let timing_debug = false;
@@ -52,10 +57,16 @@ function getFileKey(fileHandleOrPath) {
   if (typeof fileHandleOrPath === 'string') {
     return fileHandleOrPath;
   }
-  if (workingDirectory.value.name) {
-    return workingDirectory.value.name + '_' + fileHandleOrPath.name || workingDirectory.value.name + '_' + config.defaultFileName;
-  }
-  return fileHandleOrPath.name || config.defaultFileName;
+  // workingDirectory stays null until the user grants a folder, which on the web
+  // is the normal state before the first showDirectoryPicker.  Reading `.name`
+  // on it threw a TypeError that loadFileFromHandle's catch turned into a silent
+  // "file loaded empty", so the document came up as the blank template.
+  const fileName = fileHandleOrPath.name || config.defaultFileName;
+  const dirName = workingDirectory.value?.name;
+  // Note the parentheses: `a + '_' + b || c` parses as `(a + '_' + b) || c`, so
+  // the previous fallback was unreachable and a nameless handle yielded
+  // "<dir>_undefined".
+  return dirName ? `${dirName}_${fileName}` : fileName;
 }
 
 // Persist the active tab ID
@@ -245,6 +256,20 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       }
       return null;
     } else {
+      if (!hasFileSystemAccess()) {
+        // Safari and Firefox have no showOpenFilePicker: open through a plain
+        // <input type="file">.  The resulting handle cannot be written back to
+        // nor persisted, which the save path and the guards below account for.
+        const fallback = await pickFileWithInput();
+        if (fallback) {
+          showToast(
+            "Opened read-only: this browser cannot write back to the file. Use Save as to download your changes.",
+            "success",
+            6000
+          );
+        }
+        return fallback;
+      }
       const [fileHandle] = await window.showOpenFilePicker({
         types: [{ description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown", ".txt"] } }],
         multiple: false,
@@ -270,6 +295,13 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         await tab.setSubtitle(tab.currentFileName);
         onFileChanged?.();
         // Simule l'objet File pour conserver la compatibilité de retour (.text())
+        // Load sidecar synchronously before returning so the next render finds
+        // restoredOutputCache already populated (no race with markdown render).
+        const _sidecar = await loadSidecar(fileHandleOrPath);
+        if (_sidecar) {
+          applySidecarOutputs(_sidecar);       // sync – populates restoredOutputCache
+          scheduleNamespaceRestore(_sidecar);  // async fire-and-forget
+        }
         return { text: async () => textContent };
       } else {
         const options = { mode: "readwrite" };
@@ -284,9 +316,33 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = fileHandleOrPath.name;
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
-        await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
+        // A fallback handle is not structured-cloneable and is only a snapshot.
+        if (!isFallbackHandle(tab.currentFileHandle)) {
+          await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
+        }
         await tab.setSubtitle(tab.currentFileName);
         onFileChanged?.();
+        // Load sidecar (web: IndexedDB) before return so restoredOutputCache is
+        // populated before the markdown renders.
+        const _sidecar = await loadSidecar(tab.currentFileKey);
+        if (_sidecar) {
+          applySidecarOutputs(_sidecar);
+          scheduleNamespaceRestore(_sidecar);
+        }
+        // On the web a FileSystemFileHandle carries no access to its parent
+        // directory -- the File System Access API deliberately withholds it.  So
+        // relative paths stay unresolvable until a working folder is granted
+        // separately: images do not display, and Python cells cannot open the
+        // data files sitting next to the document.  Tauri has no such limit, it
+        // derives currentFileDir from the path above.
+        if (!workingDirectory.value) {
+          showToast(
+            "No working folder selected: images and local files used by this document cannot be read.",
+            "error",
+            0,
+            { label: "Choose folder", onClick: () => selectWorkingFolder() }
+          );
+        }
         return fileData;
       }
     } catch (error) {
@@ -353,7 +409,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     });
   };
 
-  tab.saveCurrentDoc = async () => {
+  tab.saveCurrentDoc = async ({ skipSidecar = false } = {}) => {
     const contentToSave = window.myst_editor[editorId].text;
 
     if (tab.currentFilePathParam) {
@@ -364,17 +420,29 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     } else if (isTauri) {
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
       tab.markSaved(contentToSave);
-      await tab.saveCommentsForCurrentFile(); 
+      await tab.saveCommentsForCurrentFile();
+      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle).catch(e => console.warn('[sidecar] save failed:', e));
       console.log(`Saved (Tauri): ${tab.currentFileName}`);
+    } else if (isFallbackHandle(tab.currentFileHandle)) {
+      // <input type="file"> grants no write-back permission, so the only way to
+      // keep the changes is to download a copy.
+      return await tab.saveAs();
     } else {
       const writable = await tab.currentFileHandle.createWritable();
       await writable.write(contentToSave);
       await writable.close();
       tab.markSaved(contentToSave);
       await tab.saveCommentsForCurrentFile(); 
+      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey).catch(e => console.warn('[sidecar] save failed:', e));
+      showToast(`Save: ${tab.currentFileName} successful.`);
       console.log(`Saved: ${tab.currentFileName}`);
     }
     return true;
+  };
+
+  tab.saveSidecarToFile = async () => {
+    await saveSidecarToFile(tab.currentFileHandle, tab.currentFileName);
+    showToast(`Save: ${tab.currentFileName} with sidecar successful.`);
   };
 
   tab.autosave = async () => {
@@ -401,7 +469,12 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         }
       }
       if (tab.dirty) {
-        await tab.saveCurrentDoc();
+        await tab.saveCurrentDoc({ skipSidecar: true });
+        // Web: IDB sidecar save is cheap — piggyback on autosave
+        if (!isTauri) {
+          saveSidecarWithNamespace(tab.currentFileKey)
+            .catch(e => console.warn('[sidecar] autosave IDB failed:', e));
+        }
         console.log(`Autosave: ${tab.currentFileName}`);
       }
       else {
@@ -429,7 +502,8 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
           await tab.setCurrentFile(filePath);
           await addRecentFileHandle(filePath);
           tab.markSaved(content);
-          await tab.saveCommentsForCurrentFile(); 
+          await tab.saveCommentsForCurrentFile();
+          saveSidecarWithNamespace(filePath).catch(e => console.warn('[sidecar] saveAs failed:', e));
           showToast(`Save-as successful.`);
           return true;
         }
@@ -482,7 +556,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.smartSave = async () => {
-    if (tab.currentFileHandle || tab.currentFilePathParam) {
+    // A fallback handle looks like a file we own but cannot be written to, so it
+    // has to take the same route as "no handle at all": download a copy.
+    if (!isFallbackHandle(tab.currentFileHandle)
+        && (tab.currentFileHandle || tab.currentFilePathParam)) {
       return await tab.saveCurrentDoc();
     }
     return await tab.saveAs();

@@ -2,6 +2,7 @@ import { get, set } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { config } from "../../config.js";
 import { signal } from '@preact/signals';
+import { showToast } from '../utils_ui.js';
 
 // Helper de détection de l'environnement Tauri
 export const isTauri = () => typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
@@ -10,6 +11,176 @@ export const isTauri = () => typeof window !== "undefined" && Boolean(window.__T
 export let imagesDirectory = null;
 export const workingDirectory = signal(null); // Signal WAS let workingDirectory = null
 export const currentFileDir = signal(null); 
+
+// --- Repli pour les navigateurs sans File System Access API -----------------
+//
+// Safari et Firefox n'implementent ni showOpenFilePicker, ni showSaveFilePicker,
+// ni showDirectoryPicker.  Un <input type="file"> reste possible : il donne un
+// File lisible, mais aucune permission d'ecriture et aucun acces au dossier.
+
+/** True when the browser can hand out real FileSystemFileHandle objects. */
+export const hasFileSystemAccess = () =>
+  typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+
+/** True for a handle produced by makeFallbackFileHandle(). */
+export const isFallbackHandle = (h) => Boolean(h && h.isFallback);
+
+/**
+ * Wrap a File from <input type="file"> in an object exposing the small part of
+ * FileSystemFileHandle that this codebase actually uses.
+ *
+ * It deliberately has NO createWritable(): the browser grants no write-back
+ * permission for an <input> file, so saving has to go through the download path
+ * that tab.saveAs() already implements.  Callers test isFallbackHandle() rather
+ * than probing for the method.
+ *
+ * It carries methods, so it is not structured-cloneable and must never reach
+ * idb-keyval's set(); the persistence helpers below skip it.  That is also the
+ * honest behaviour: the File is a snapshot, and silently restoring stale content
+ * in a later session would be worse than not restoring at all.
+ */
+export function makeFallbackFileHandle(file) {
+  return {
+    kind: "file",
+    name: file.name,
+    isFallback: true,
+    getFile: async () => file,
+    queryPermission: async () => "granted",
+    requestPermission: async () => "granted",
+    isSameEntry: async (other) => isFallbackHandle(other) && other.name === file.name,
+  };
+}
+
+/**
+ * Read-only stand-in for a FileSystemDirectoryHandle, built over the flat
+ * FileList that <input webkitdirectory> returns.
+ *
+ * The codebase only ever walks a directory with getDirectoryHandle() and
+ * getFileHandle(...).getFile(), so reproducing those two methods is enough for
+ * resolveImage(), copyFileToMemfs() and prestageFiles() to work unchanged --
+ * they never learn this is not a real handle.
+ *
+ * Every mutating call ({ create: true }) throws NoModificationAllowedError, and
+ * lookups that miss throw NotFoundError, mirroring what the real API does so the
+ * existing try/catch blocks behave identically.
+ *
+ * @param {Map<string, File>} files  paths relative to the picked folder -> File
+ * @param {string} name              display name of this directory level
+ * @param {string} prefix            path of this level inside `files`
+ */
+function makeReadOnlyDirectoryHandle(files, name, prefix = "") {
+  const READ_ONLY = "This folder was read as a snapshot and cannot be written to.";
+  return {
+    kind: "directory",
+    name,
+    isReadOnlySnapshot: true,
+
+    async getDirectoryHandle(subName, options = {}) {
+      if (options.create) throw new DOMException(READ_ONLY, "NoModificationAllowedError");
+      const next = prefix ? `${prefix}/${subName}` : subName;
+      const exists = [...files.keys()].some((path) => path.startsWith(`${next}/`));
+      if (!exists) throw new DOMException(`Directory not found: ${next}`, "NotFoundError");
+      return makeReadOnlyDirectoryHandle(files, subName, next);
+    },
+
+    async getFileHandle(fileName, options = {}) {
+      if (options.create) throw new DOMException(READ_ONLY, "NoModificationAllowedError");
+      const full = prefix ? `${prefix}/${fileName}` : fileName;
+      const file = files.get(full);
+      if (!file) throw new DOMException(`File not found: ${full}`, "NotFoundError");
+      return {
+        kind: "file",
+        name: fileName,
+        isFallback: true,
+        getFile: async () => file,
+        queryPermission: async () => "granted",
+        requestPermission: async () => "granted",
+      };
+    },
+  };
+}
+
+/** True for a working directory obtained through pickDirectoryWithInput(). */
+export const isReadOnlyDirectory = (dir) => Boolean(dir && dir.isReadOnlySnapshot);
+
+/**
+ * Pick a working folder without showDirectoryPicker, via <input webkitdirectory>.
+ *
+ * The browser hands back every file of the folder and its subfolders in one flat
+ * list, each carrying a webkitRelativePath such as "myFolder/data/quiz.yaml".
+ * The first segment is the folder itself, so it is stripped to get paths
+ * relative to it.  The result is a frozen, read-only snapshot.
+ *
+ * Resolves to a read-only directory handle, or null when the user cancels.
+ */
+export function pickDirectoryWithInput() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.webkitdirectory = true;
+    input.setAttribute("webkitdirectory", "");
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(value);
+    };
+
+    input.addEventListener("change", () => {
+      const list = Array.from(input.files || []);
+      if (!list.length) return settle(null);
+      const rootName = (list[0].webkitRelativePath || list[0].name).split("/")[0];
+      const files = new Map();
+      for (const file of list) {
+        const relative = (file.webkitRelativePath || file.name).split("/").slice(1).join("/");
+        if (relative) files.set(relative, file);
+      }
+      settle(makeReadOnlyDirectoryHandle(files, rootName));
+    }, { once: true });
+    input.addEventListener("cancel", () => settle(null), { once: true });
+    window.addEventListener("focus", () => setTimeout(() => settle(null), 400), { once: true });
+
+    input.click();
+  });
+}
+
+/**
+ * Open a local document through a transient <input type="file">.
+ * Resolves to a fallback handle, or null when the user cancels.
+ */
+export function pickFileWithInput(accept = ".md,.markdown,.txt,.yml,.yaml") {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(value);
+    };
+
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      settle(file ? makeFallbackFileHandle(file) : null);
+    }, { once: true });
+    // 'cancel' is recent (Chrome 113, Safari 16.4, Firefox 109); the focus
+    // fallback covers older engines so the promise can never hang forever.
+    input.addEventListener("cancel", () => settle(null), { once: true });
+    window.addEventListener("focus", () => setTimeout(() => settle(null), 400), { once: true });
+
+    input.click();
+  });
+}
 
 
 const imageExtensions = new Set([
@@ -103,6 +274,24 @@ export async function selectWorkingFolder() {
         console.log("Working folder selected and saved (Web):", workingDirectory.value.name);
       } catch (err) {
         if (err.name !== 'AbortError') console.error("Error selecting working folder (Web):", err);
+      }
+    } else {
+      // Safari and Firefox have no showDirectoryPicker.  <input webkitdirectory>
+      // still opens a native folder picker, but yields only a read-only snapshot.
+      const snapshot = await pickDirectoryWithInput();
+      if (snapshot) {
+        workingDirectory.value = snapshot;
+        // Deliberately not persisted: it carries methods (not structured-
+        // cloneable) and is a frozen snapshot, so restoring it later would serve
+        // stale content.  The folder has to be picked again each session.
+        console.log("Working folder read as a snapshot (Web, no FS Access API):", snapshot.name);
+        showToast(
+          "Folder read in snapshot mode: images and data files are readable, but this browser cannot write anything back, will not see later changes on disk, and will ask for the folder again next session. Use Chrome or Edge for full access.",
+          "error",
+          // 0 = stays until dismissed: a structural limitation worth reading in
+          // full, rather than a timer racing the user.
+          0
+        );
       }
     }
   }
@@ -267,6 +456,9 @@ export async function addRecentFileHandle(fileHandleOrPath) {
     localStorage.setItem("recentFileHandles", JSON.stringify(filtered));
     return filtered;
   } else {
+    // A fallback handle carries methods (not structured-cloneable) and is only a
+    // snapshot, so it never joins the persisted recent list.
+    if (isFallbackHandle(fileHandleOrPath)) return await getRecentFileHandles();
     const recentHandles = await getRecentFileHandles();
     // Filtrage pour éviter les doublons avec les FileSystemHandle Web
     const filtered = [];
@@ -341,8 +533,12 @@ export async function saveBackupFile(currentHandleOrPath, content) {
         const originalName = currentHandleOrPath.name;
         const backupName = originalName.replace(/\.[^/.]+$/, "") + ".bak";
 
-        // 1. Primary approach: write inside workingDirectory if available
-        if (workingDirectory.value && typeof workingDirectory.value.getFileHandle === 'function') {
+        // 1. Primary approach: write inside workingDirectory if available.
+        //    A snapshot directory has getFileHandle() but cannot create anything,
+        //    so skip straight to the showSaveFilePicker/download path below.
+        if (workingDirectory.value
+            && !isReadOnlyDirectory(workingDirectory.value)
+            && typeof workingDirectory.value.getFileHandle === 'function') {
           const backupHandle = await workingDirectory.value.getFileHandle(backupName, { create: true });
           const writable = await backupHandle.createWritable();
           await writable.write(content);

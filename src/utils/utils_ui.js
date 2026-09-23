@@ -1,12 +1,36 @@
 // Petit utilitaire de notification Toast
-export function showToast(message, type = "success", duration = 2000) {
+//
+// Un toast est "persistant" -- il attend un geste de l'utilisateur au lieu de
+// s'effacer seul -- dans deux cas :
+//   * `action` vaut { label, onClick } : un bouton est ajouté, et le faire
+//     disparaître tout seul risquerait de le laisser passer inaperçu ;
+//   * `duration` vaut 0 : pour un avertissement structurel, long à lire, dont
+//     on veut être sûr qu'il a été vu.
+// Dans les deux cas une croix de fermeture est ajoutée, et la touche Échap
+// ferme le toast.  Avec une durée non nulle et sans action, le comportement
+// d'origine est inchangé.
+export function showToast(message, type = "success", duration = 2000, action = null) {
   // Supprime un éventuel toast déjà présent
   const existingToast = document.getElementById("app-toast");
   if (existingToast) existingToast.remove();
 
+  const persistent = Boolean(action) || duration === 0;
+
   const toast = document.createElement("div");
   toast.id = "app-toast";
-  toast.textContent = message;
+  if (persistent) {
+    toast.setAttribute("role", "alert");
+    toast.style.display = "flex";
+    toast.style.alignItems = "flex-start";
+    toast.style.gap = "12px";
+    toast.style.maxWidth = "min(30rem, calc(100vw - 40px))";
+    const label = document.createElement("span");
+    label.textContent = message;
+    label.style.flex = "1";
+    toast.appendChild(label);
+  } else {
+    toast.textContent = message;
+  }
 
   // Styles de base intégrés
   Object.assign(toast.style, {
@@ -26,7 +50,47 @@ export function showToast(message, type = "success", duration = 2000) {
     transition: "all 0.25s ease-in-out",
   });
 
-  
+  // Registered below for persistent toasts; dismiss() unhooks it so a closed
+  // toast never leaves a stray keydown listener behind.
+  let onKey = null;
+  const dismiss = () => {
+    if (onKey) { document.removeEventListener("keydown", onKey); onKey = null; }
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(10px)";
+    setTimeout(() => toast.remove(), 450);
+  };
+
+  if (persistent) {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "\u2715";
+    close.setAttribute("aria-label", "Dismiss");
+    Object.assign(close.style, {
+      border: "0", background: "transparent", font: "inherit", fontSize: "14px",
+      lineHeight: "1.4", cursor: "pointer", color: "inherit", padding: "0 0 0 2px",
+    });
+    close.addEventListener("click", dismiss);
+
+    // Échap ferme aussi : un toast persistant ne doit jamais rester coincé.
+    onKey = (e) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+
+    if (action) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = action.label;
+      Object.assign(button.style, {
+        padding: ".3rem .7rem", borderRadius: "4px", border: "1px solid rgba(0,0,0,.35)",
+        background: "rgba(255,255,255,.75)", font: "inherit", fontSize: "13px",
+        fontWeight: "600", cursor: "pointer", whiteSpace: "nowrap",
+      });
+      button.addEventListener("click", () => { dismiss(); action.onClick(); });
+      toast.appendChild(button);
+    }
+
+    toast.appendChild(close);
+  }
+
   document.body.appendChild(toast);
 
   // Animation d'entrée
@@ -35,12 +99,8 @@ export function showToast(message, type = "success", duration = 2000) {
     toast.style.transform = "translateY(0)";
   });
 
-  // Animation de sortie et suppression
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(10px)";
-    setTimeout(() => toast.remove(), 450);
-  }, duration);
+  // Animation de sortie et suppression (sauf si le toast attend l'utilisateur)
+  if (!persistent) setTimeout(dismiss, duration);
 }
 
 /**
