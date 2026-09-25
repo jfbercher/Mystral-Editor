@@ -11,12 +11,12 @@
 
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
-import { config, loadConfig } from "../config.js";
+import { config, loadConfig, configReady } from "../config.js";
 import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
 import { EditorView, keymap as cmKeymap, lineNumbers, drawSelection } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Compartment } from "@codemirror/state";
 import { python } from "@codemirror/lang-python";
 import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -571,6 +571,28 @@ export async function deleteVariables(names, { unloadModules = false } = {}) {
   return removed;
 }
 
+/**
+ * Turn config.pyodide.keys into CodeMirror bindings.
+ *
+ * An action with an empty string simply has no shortcut. A binding CodeMirror
+ * cannot parse is reported once and dropped: a typo in a configuration file
+ * should cost that one shortcut, not the cell's whole keymap.
+ */
+function cellKeyBindings(actions) {
+  const configured = config.pyodide?.keys ?? {};
+  const bindings = [];
+  for (const [action, handler] of Object.entries(actions)) {
+    const key = (configured[action] ?? "").trim();
+    if (!key) continue;
+    if (!/^([A-Za-z0-9]+-)*[A-Za-z0-9]+$/.test(key.replace(/\s+/g, ""))) {
+      console.warn(`[cells] ignoring the shortcut configured for "${action}": "${key}" is not a CodeMirror key name`);
+      continue;
+    }
+    bindings.push({ key, preventDefault: true, run: (view) => { handler(view); return true; } });
+  }
+  return bindings;
+}
+
 async function executePython(code, packages, onStream = null) {
   const pyodide = await loadPyodideRuntime(packages);
   const capture = { stdout: "", stderr: "", onWrite: onStream };
@@ -982,6 +1004,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     _currentCode = newCode;
   };
 
+  // ── Raccourcis clavier configurables ─────────────────────────────────────
+  const keysCompartment = new Compartment();
+  const cellActions = {
+    run:         (view) => { _syncToEditor(view); runBtn.click(); },
+    insertBelow: (view) => { _syncToEditor(view); insertBtn.click(); },
+    inspect:     () => { openVarInspector(); },
+    clear:       () => { clearBtn.click(); },
+    runAll:      () => { runAllBtn.click(); },
+    clearAll:    () => { clearAllBtn.click(); },
+    restart:     () => { restartBtn.click(); },
+    deleteCell:  (view) => { _syncToEditor(view); deleteBtn.click(); },
+  };
+
   // ── Extensions CM6 ───────────────────────────────────────────────────────
 
   const navigateToCell = (dir) => (view) => {
@@ -1029,16 +1064,22 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     cmKeymap.of([
       ...completionKeymap,    // Tab accepte la complétion si popup visible
       indentWithTab,          // Tab indente sinon (4 espaces en Python)
-      // Ces deux bindings doivent être AVANT defaultKeymap pour ne pas être
-      // écrasés par insertNewlineKeepIndent (Shift-Enter dans defaultKeymap).
-      { key: "Shift-Enter",     run: (view) => { _syncToEditor(view); runBtn.click(); return true; } },
-      { key: "Mod-Shift-Enter", run: (view) => { _syncToEditor(view); insertBtn.click(); return true; } },
+    ]),
+    // The configured bindings sit between the two: after completion, so Tab
+    // still accepts a suggestion, and before defaultKeymap, whose
+    // insertNewlineKeepIndent would otherwise swallow Shift-Enter.
+    // config.json is fetched asynchronously and a cell can be built before it
+    // arrives, so they live in a compartment and are reapplied once the
+    // configuration is in -- otherwise a shortcut set there would take effect
+    // or not depending on which finished first.
+    keysCompartment.of(cmKeymap.of(cellKeyBindings(cellActions))),
+    cmKeymap.of([
       ...defaultKeymap,
       ...historyKeymap,
-      { key: "Alt-v", run: () => { openVarInspector(); return true; } },
       { key: "ArrowDown",   run: navigateToCell(+1) },
       { key: "ArrowUp",     run: navigateToCell(-1) },
     ]),
+
     EditorView.domEventHandlers({
       blur(_, view) { _syncToEditor(view); },
     }),
@@ -1050,6 +1091,10 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
 
   const cmState = EditorState.create({ doc: code, extensions: cmExtensions });
   const view    = new EditorView({ state: cmState, parent: editorContainer });
+
+  configReady().then(() => {
+    view.dispatch({ effects: keysCompartment.reconfigure(cmKeymap.of(cellKeyBindings(cellActions))) });
+  }).catch((e) => console.warn("[cells] could not apply the configured shortcuts", e));
 
   // ── API de compatibilité (utilisée par markdownPyodide.js) ───────────────
   editorContainer._cmView       = view;

@@ -73,6 +73,25 @@ export const DEFAULT_CONFIG = {
     // false = notebook behaviour: CWD persists across cells (option B)
     // true  = resets os.chdir("/local") before each cell  (option A)
     resetCwdOnRun: false,
+
+    // Keyboard shortcuts of a code-cell editor, in CodeMirror notation:
+    // "Mod" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and
+    // a key name ("Enter", "ArrowUp", "k"). An empty string means no shortcut;
+    // a binding that CodeMirror does not understand is reported in the console
+    // and ignored, so a typo costs a shortcut rather than the whole cell.
+    // They apply inside a cell editor only, and win over the editor's own
+    // bindings, so rebinding one to a key the editor already uses (for
+    // instance "Mod-s") shadows it while the cursor is in a cell.
+    keys: {
+      run:         "Shift-Enter",       // run this cell
+      insertBelow: "Mod-Shift-Enter",   // insert an empty cell below
+      inspect:     "Alt-v",             // open the variable window
+      clear:       "",                  // clear this cell's output
+      runAll:      "",                  // run every cell of the document
+      clearAll:    "",                  // clear every output
+      restart:     "",                  // restart the kernel (clears variables)
+      deleteCell:  "",                  // delete this cell
+    },
   },
 
   // Tauri-only export menu (myst build / myst start).
