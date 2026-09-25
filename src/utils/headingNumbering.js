@@ -67,6 +67,25 @@ const lineAt = (starts, offset) => {
   return lo + 1;
 };
 
+/**
+ * Annotate every heading with the 1-based source line it sits on.
+ *
+ * Nodes carry a character offset; a line is what the rest of the pipeline
+ * speaks -- the source map keys its ids by line, and a directive knows its own
+ * position as a line. The toc needs to compare the two to tell which section
+ * contains it.
+ */
+export function annotateHeadingLines(nodes, fullText) {
+  const starts = computeLineStarts(fullText);
+  const visit = (list) =>
+    list.map((node) => ({
+      ...node,
+      line: lineAt(starts, node.pos),
+      children: visit(node.children ?? []),
+    }));
+  return visit(nodes);
+}
+
 export function flattenToLineMap(nodes, fullText, map = new Map()) {
   const starts = computeLineStarts(fullText);
 

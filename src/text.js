@@ -26,7 +26,7 @@ import markdownItMath from "./markdown/markdownMath";
 import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./markdown/scanTargets";
 import { extractFrontmatter } from "./markdown/frontmatterUtils";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
-import { numberHeadings, flattenToLineMap } from "./utils/headingNumbering";
+import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import { getNumberingConfig } from "./markdown/markdownMath";
 import { scanFootnotes, markdownItFootnoteRefs, markdownItFootnoteDefs, renderFootnotesSection } from "./markdown/markdownFootnotes";
@@ -483,7 +483,7 @@ export class TextManager {
     // for headings numbering
     if (timing_debug) {const _t3 = performance.now();}
     const numberingSectionsActive = this.userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
-    const numberedHeadings = numberHeadings(this.headings.value);
+    const numberedHeadings = annotateHeadingLines(numberHeadings(this.headings.value), this.text.value);
     const headingByLine = flattenToLineMap(numberedHeadings, this.text.value);
     const headingMap = { byLine: headingByLine, active: numberingSectionsActive };
 

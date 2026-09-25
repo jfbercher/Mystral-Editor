@@ -821,6 +821,44 @@ function anchorFor(node, sectionLabelMap) {
   return `hpos-${node.pos}`;
 }
 
+/**
+ * The headings a {toc} should list, given where it sits.
+ *
+ * "page" is the whole document. "section" keeps only the section containing
+ * the directive: the last heading starting at or before it, whose children
+ * become the list. Numbers are untouched -- they stay the full page numbers
+ * ("1.1", "1.1.1"), as mystmd does.
+ *
+ * "children" and "project" describe a multi-page project, which a single
+ * document does not have; they fall back to the page and say so once.
+ *
+ * @param {Array} tree      numbered headings, annotated with their line
+ * @param {string} context  page | section | children | project
+ * @param {number|null} line  1-based source line of the directive
+ */
+function tocScope(tree, context, line) {
+  if (context === "children" || context === "project") {
+    console.warn(`[toc] :context: ${context} needs a multi-page project; listing the page instead`);
+    return tree;
+  }
+  if (context !== "section" || line == null) return tree;
+
+  // Walk in document order and keep the last heading that starts before the
+  // directive: that is the section it is written in.
+  let enclosing = null;
+  const visit = (nodes) => {
+    for (const node of nodes) {
+      if (node.line != null && node.line <= line) {
+        enclosing = node;
+        visit(node.children ?? []);
+      }
+    }
+  };
+  visit(tree);
+  if (!enclosing) return tree;   // written before any heading
+  return enclosing.children ?? [];
+}
+
 /** Recursively builds the nested <ul> HTML with links. */
 function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1) {
   if (!nodes?.length || depth > maxDepth) return "";
@@ -847,7 +885,10 @@ class TocDirective extends Directive {
   required_arguments = 0;
   optional_arguments = 1; // titre optionnel
   final_argument_whitespace = true;
-  has_content = false;
+  // The directive has nothing to say in its body, but writing ":::{toc}" and
+  // pressing Enter leaves a blank line there, and refusing content turned that
+  // into an error. Accept a body and ignore it.
+  has_content = true;
 
   option_spec = {
     depth:      positiveInt,
@@ -857,7 +898,7 @@ class TocDirective extends Directive {
     name:       directiveOptions.unchanged,       // alias of label
     enumerated: directiveOptions.unchanged,
     numbered:   directiveOptions.unchanged,       // alias of enumerated
-    context:    directiveOptions.unchanged,       // ignored (page only)
+    context:    directiveOptions.unchanged,       // page | section | children | project
     kind:       directiveOptions.unchanged,       // alias of context
     dropdown:   directiveOptions.unchanged,       // makes the TOC collapsible (<details>)
     open:       directiveOptions.unchanged,       // pre-opens the dropdown
@@ -880,7 +921,18 @@ class TocDirective extends Directive {
     const headings = this.state?.env?.numberedHeadings ?? [];
     const sectionLabelMap = buildSectionLabelMap(this.state?.env?.refMap);
 
-    const listHtml = buildTocList(headings, maxDepth, sectionLabelMap, 1);
+    // Absolute line of the directive, computed as markdownSourceMap does: the
+    // token map is relative to the chunk being parsed.
+    const env = this.state?.env ?? {};
+    const tocLine = data.map
+      ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0)
+      : null;
+    const context = String(options.context ?? options.kind ?? "page").trim().toLowerCase();
+    const scoped = tocScope(headings, context, tocLine);
+
+    // Depth counts levels below the context, so a sectioned toc with :depth: 1
+    // lists that section's direct subsections.
+    const listHtml = buildTocList(scoped, maxDepth, sectionLabelMap, 1);
 
     const classAttr = ["toc", ...classes].join(" ");
     const idAttr = labelId ? ` id="${escapeHtml(labelId)}"` : "";
