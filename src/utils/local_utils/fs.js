@@ -299,6 +299,14 @@ export async function getStoredFileHandle(editorId) {
 
 export async function setStoredFileHandle(editorId, handleOrPath) {
   const key = `storedFileHandle:${editorId}`;
+  // null means "this tab no longer has a file". Without this branch the
+  // localStorage entry survived, so a Tauri tab kept its old path: the helper
+  // could set a handle but not clear one.
+  if (handleOrPath == null) {
+    localStorage.removeItem(key);
+    await set(key, null);
+    return;
+  }
   if (typeof handleOrPath === 'string') {
     localStorage.setItem(key, handleOrPath);
   }

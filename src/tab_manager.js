@@ -359,17 +359,34 @@ export class TabManager {
       return;
     }
 
+    // A tab per saved id, except when two of them claim the same file. That
+    // could happen through paths that bypassed the duplicate check, and once
+    // stored the duplicate came back at every start: restoring is where it has
+    // to be broken, since nothing else revisits the saved order.
+    const seen = new Map();   // file key → editorId that kept it
     for (const editorId of savedOrder) {
-
+      const stored = await localUtils.getStoredFileHandle(editorId);
+      const key = typeof stored === "string" ? stored : stored?.name ?? null;
+      if (key && seen.has(key)) {
+        console.warn(`[tabs] ${editorId} held the same file as ${seen.get(key)} (${key}); dropping the duplicate`);
+        await localUtils.setStoredFileHandle(editorId, null);
+        continue;
+      }
+      if (key) seen.set(key, editorId);
       this.createTabShell(editorId);
-      const tabInfo = this.openTabs.get(editorId);
       await this.prefillTabLabel(editorId);
     }
+    if (this.openTabs.size === 0) {
+      this.openTab();
+      return;
+    }
+    if (seen.size !== savedOrder.length) await this.persistTabOrder();
     if (lastActiveTabId && this.openTabs.has(lastActiveTabId)) {
       // console.log("Restoring last active tab:", lastActiveTabId);
       this.activateTab(lastActiveTabId);
     } else {
-      this.activateTab(savedOrder[0]);
+      // Not savedOrder[0]: that id may be one of the duplicates just dropped.
+      this.activateTab([...this.openTabs.keys()][0]);
     }
     
   }

@@ -282,7 +282,15 @@ export function mountEditor(mnt_options) {
       },
       appKeymap: [
         { key: config.shortcuts.save, preventDefault: true, run: () => { tab.smartSave();  return true; } },
-        { key: config.shortcuts.open, preventDefault: true, run: () => { tab.openNewFile(); return true; } },
+        // Goes through openFileHandleInTab, like the toolbar button: opening
+        // straight into this tab is what let the same file end up in two.
+        { key: config.shortcuts.open, preventDefault: true, run: () => {
+          (async () => {
+            const handle = await tab.selectMarkdownFile();
+            if (handle) await openFileHandleInTab(handle);
+          })().catch((err) => console.error("Open file error:", err));
+          return true;
+        } },
         { key: config.shortcuts.newTab, preventDefault: true, run: () => { setTimeout(() => openTab(), 0);  return true; } },
       ],
       getBibliographyDirectory: () => localUtils.getWorkingDirectory().value,
