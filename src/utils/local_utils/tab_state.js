@@ -476,6 +476,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       tab.markSaved(contentToSave);
       await tab.saveCommentsForCurrentFile();
       if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle).catch(e => console.warn('[sidecar] save failed:', e));
+      showToast(`Save: ${tab.currentFileName} successful.`);
       console.log(`Saved (Tauri): ${tab.currentFileName}`);
     } else if (isFallbackHandle(tab.currentFileHandle)) {
       // <input type="file"> grants no write-back permission, so the only way to
