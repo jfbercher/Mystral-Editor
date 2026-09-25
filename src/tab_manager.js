@@ -83,8 +83,85 @@ export class TabManager {
     btn.appendChild(closeBtn);
 
     btn.addEventListener("click", () => this.activateTab(editorId));
+    this.makeTabDraggable(btn, editorId);
     this.tabsBarEl.appendChild(btn);
     return btn;
+  }
+
+  /**
+   * Let a tab be dragged to another position in the bar.
+   *
+   * The conventions are those of the table of contents: "move" effect, a
+   * text/plain payload that WebKit requires to accept the drag at all, and a
+   * drop-before / drop-after class marking where the tab would land.
+   */
+  makeTabDraggable(btn, editorId) {
+    btn.draggable = true;
+
+    const clearMarks = () => {
+      for (const el of this.tabsBarEl.querySelectorAll(".myst-tab-button")) {
+        el.classList.remove("drop-before", "drop-after");
+      }
+    };
+
+    btn.addEventListener("dragstart", (ev) => {
+      this.draggedTabId = editorId;
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", editorId);  // required by WebKit
+      btn.classList.add("dragging");
+    });
+
+    btn.addEventListener("dragover", (ev) => {
+      if (!this.draggedTabId || this.draggedTabId === editorId) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "move";
+      const rect = btn.getBoundingClientRect();
+      const before = ev.clientX - rect.left < rect.width / 2;
+      clearMarks();
+      btn.classList.add(before ? "drop-before" : "drop-after");
+    });
+
+    btn.addEventListener("dragleave", () => btn.classList.remove("drop-before", "drop-after"));
+
+    btn.addEventListener("drop", (ev) => {
+      if (!this.draggedTabId || this.draggedTabId === editorId) return;
+      ev.preventDefault();
+      // Recomputed from the pointer rather than read back from the class: a
+      // dragleave fired just before the drop would have cleared it.
+      const rect = btn.getBoundingClientRect();
+      const before = ev.clientX - rect.left < rect.width / 2;
+      const dragged = this.openTabs.get(this.draggedTabId)?.buttonEl;
+      clearMarks();
+      if (!dragged) return;
+      btn.parentNode.insertBefore(dragged, before ? btn : btn.nextSibling);
+      this.syncTabOrderFromDom();
+    });
+
+    btn.addEventListener("dragend", () => {
+      btn.classList.remove("dragging");
+      clearMarks();
+      this.draggedTabId = null;
+    });
+  }
+
+  /**
+   * Take the bar's order as the truth and align the rest on it.
+   *
+   * persistTabOrder() writes the keys of openTabs, which is insertion order,
+   * not what is on screen: moving a button without rebuilding that Map would
+   * store the old order and the tabs would jump back at the next start.
+   */
+  syncTabOrderFromDom() {
+    const ids = [...this.tabsBarEl.querySelectorAll(".myst-tab-button")]
+      .map((el) => el.dataset.editorId)
+      .filter((id) => this.openTabs.has(id));
+    const reordered = new Map();
+    for (const id of ids) reordered.set(id, this.openTabs.get(id));
+    // Anything the bar does not show keeps its place at the end, so a tab can
+    // never be lost by a reordering.
+    for (const [id, info] of this.openTabs) if (!reordered.has(id)) reordered.set(id, info);
+    this.openTabs = reordered;
+    this.persistTabOrder();
   }
 
   updateTabLabel = (editorId) => {

@@ -67,3 +67,18 @@
 #new-tab-button:hover {
   background-color: var(--button-bg-hover, #5c5c5c);
 }
+/* Reordering by drag & drop. Same vocabulary as the table of contents:
+   the dragged tab fades, and an inset edge shows where it would land —
+   vertical here, since tabs are laid out in a row. */
+.myst-tab-button[draggable="true"] {
+  -webkit-user-drag: element;
+}
+.myst-tab-button.dragging {
+  opacity: 0.4;
+}
+.myst-tab-button.drop-before {
+  box-shadow: inset 2px 0 0 0 var(--accent-dark, #06c);
+}
+.myst-tab-button.drop-after {
+  box-shadow: inset -2px 0 0 0 var(--accent-dark, #06c);
+}
