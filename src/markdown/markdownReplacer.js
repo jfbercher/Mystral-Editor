@@ -218,14 +218,52 @@ const useCustomDirectives = (transforms, cache) => (markdownIt) => {
 
 /**
 Removes MyST-style % comment lines before MarkdownIt parses the document.
-This must run before the block parser so that comment lines cannot interfere
-with Markdown syntax on subsequent lines.
+
+It runs before the block parser so that a comment cannot interfere with the
+Markdown syntax of the following lines -- which means it works on raw text,
+with no idea of what is code and what is prose. A plain regex over the whole
+source therefore also deleted "%" lines inside fenced blocks and directives:
+a code-cell containing "%whos" lost that line before Python ever saw it, and
+any document quoting a percent-first line in an example lost it too.
+
+So the scan tracks fences (```, ~~~ and :::) and leaves their contents alone.
+Lines are blanked rather than removed, to keep line numbers -- the source map
+pairs rendered elements with source lines by counting them.
+
+A literal "%" at the start of a line is written "\%", which CommonMark renders
+as "%" on its own; it is enough here that such a line is not taken for a
+comment.
+
+Known limitation: an indented code block (four spaces, no fence) is not
+detected, so a "%" line inside one is still treated as a comment.
+
 Usage: markdownIt.use(mystComments);
 */
+export function stripMystComments(src) {
+  const lines = src.split("\n");
+  let fence = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const marker = /^[ \t]*(`{3,}|~{3,}|:{3,})(.*)$/.exec(line);
+    if (marker) {
+      const [, ticks, rest] = marker;
+      const char = ticks[0];
+      if (!fence) {
+        fence = { char, len: ticks.length };
+      } else if (char === fence.char && ticks.length >= fence.len && rest.trim() === "") {
+        fence = null;   // a closing fence carries no info string
+      }
+      continue;         // a fence line is never a comment
+    }
+    if (fence) continue;
+    if (/^[ \t]*%/.test(line)) lines[i] = "";
+  }
+  return lines.join("\n");
+}
 
 const mystComments = markdownIt => {
   markdownIt.core.ruler.before("block", "myst_comments", state => {
-    state.src = state.src.replace(/^[ \t]*%.*(?=\n|$)/gm, "");
+    state.src = stripMystComments(state.src);
   });
 };
 

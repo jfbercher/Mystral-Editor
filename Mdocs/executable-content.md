@@ -188,11 +188,13 @@ rather than trusting `sys.getsizeof`, which would only measure the wrapper.
 
 The same information is available as text, from inside a cell:
 
+```python
+-%whos      # table: name, type, size, shape, value
+- %who       # names only
+- %whos -a   # include modules, functions and classes
 ```
-%whos      # table: name, type, size, shape, value
-%who       # names only
-%whos -a   # include modules, functions and classes
-```
+
+
 
 These are the only two magics this runtime understands. Pyodide runs plain
 Python, where `%whos` is a syntax error, so the two lines are rewritten into
@@ -200,6 +202,12 @@ calls before execution; any other `%` line is left to fail as Python, rather
 than being silently swallowed. Their output is text in the cell, so it stays in
 the document and in the saved outputs — which the window, being transient,
 does not.
+
+A word on the percent sign itself: in MyST, a line beginning with `%` is a
+comment and disappears from the rendered document. That rule stops at fences,
+so `%whos` inside a code cell or a code block is left alone. In ordinary prose,
+a line that has to *start* with a visible percent sign is written `\%`, which
+renders as `%`; anywhere else on the line no escape is needed.
 
 ## Appearance
 
