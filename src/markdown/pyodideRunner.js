@@ -161,6 +161,23 @@ def _mystral_whos(include_all=False):
         if i == 0:
             print('  '.join('-' * w for w in widths))
 
+def _mystral_delete(names, unload=False):
+    # Removing the name is all that is needed for data. For a module, dropping
+    # it from sys.modules too is what actually lets it be re-imported fresh --
+    # but any object still referencing it keeps the old module alive, so this
+    # frees memory only when nothing else holds on.
+    import types as _t_del
+    removed = []
+    for _n_del in names:
+        if _n_del not in globals():
+            continue
+        _v_del = globals()[_n_del]
+        del globals()[_n_del]
+        removed.append(_n_del)
+        if unload and isinstance(_v_del, _t_del.ModuleType):
+            _sys_vi.modules.pop(getattr(_v_del, '__name__', ''), None)
+    return _json_vi.dumps(removed)
+
 def _mystral_who(include_all=False):
     names = [r['name'] for r in _mystral_varlist(include_all)]
     print('  '.join(names) if names else 'No variables defined.')
@@ -533,6 +550,25 @@ export async function inspectNamespace(includeAll = false) {
     console.warn("[vars] could not read the namespace", e);
     return [];
   }
+}
+
+/**
+ * Remove variables from the namespace.
+ * @param {string[]} names
+ * @param {boolean} unloadModules  also drop modules from sys.modules
+ * @returns {Promise<string[]>} the names actually removed
+ */
+export async function deleteVariables(names, { unloadModules = false } = {}) {
+  if (!pyodideInstance || !names.length) return [];
+  pyodideInstance.globals.set("_mystral_del_json", JSON.stringify(names));
+  const removed = JSON.parse(pyodideInstance.runPython(
+    `_mystral_delete(_json_vi.loads(_mystral_del_json), ${unloadModules ? "True" : "False"})`,
+  ));
+  pyodideInstance.runPython("globals().pop('_mystral_del_json', None)");
+  logNamespaceEvent("delete", { removed });
+  // {eval} expressions may have been reading what just went away.
+  _cellExecutedListeners.forEach((fn) => fn());
+  return removed;
 }
 
 async function executePython(code, packages, onStream = null) {

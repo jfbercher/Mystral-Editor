@@ -2,16 +2,17 @@
  * varInspectorUi.js — the "Vars" window of a code-cell.
  *
  * Shows what the Python namespace currently holds: one row per user variable,
- * with its type, memory footprint, shape and a short repr. It is a snapshot
- * taken when it opens, refreshable on demand -- not a live panel, so it costs
- * nothing while it is closed.
+ * with its type, memory footprint, shape and a short repr, and a button to
+ * remove it. It is a snapshot taken when it opens: nothing can change the
+ * namespace while the window is up, so there is no refresh button -- the list
+ * is re-read after each deletion and when the filter on kinds changes.
  *
  * Owes its column set and its size heuristics to the Jupyter varInspector
  * nbextension (ipython-contrib), whose approach of asking arrays and frames
  * for their own footprint rather than trusting sys.getsizeof is reused here.
  */
 
-import { inspectNamespace } from "./pyodideRunner";
+import { inspectNamespace, deleteVariables } from "./pyodideRunner";
 
 const OVERLAY_ID = "mystral-vars-overlay";
 
@@ -56,10 +57,10 @@ export async function showVarInspector() {
       <label style="display:flex; align-items:center; gap:4px; font-size:.85rem; white-space:nowrap;">
         <input class="vars-all" type="checkbox" /> modules &amp; functions
       </label>
-      <button class="vars-refresh" style="padding:4px 10px; cursor:pointer;">Refresh</button>
       <button class="vars-close" style="padding:4px 10px; cursor:pointer;">Close</button>
     </div>
     <div class="vars-body" style="overflow:auto; font-size:.86rem;">Reading the namespace…</div>
+    <div class="vars-total" style="font-size:.8rem; opacity:.75;"></div>
   `;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -72,6 +73,7 @@ export async function showVarInspector() {
   document.addEventListener("keydown", onKey);
 
   const body = box.querySelector(".vars-body");
+  const total = box.querySelector(".vars-total");
   const filter = box.querySelector(".vars-filter");
   const allBox = box.querySelector(".vars-all");
   let rows = [];
@@ -92,16 +94,23 @@ export async function showVarInspector() {
 
     if (!rows.length) {
       body.innerHTML = `<p style="opacity:.7;">The namespace is empty — run a cell first.</p>`;
+      total.textContent = "";
       return;
     }
     const arrow = (k) => (sortKey === k ? (sortAsc ? " ▲" : " ▼") : "");
-    const head = ["name", "type", "size", "shape", "preview"]
+    const head = `<th style="width:1.6em;"></th>` + ["name", "type", "size", "shape", "preview"]
       .map((k) => `<th data-key="${k}" style="text-align:left; cursor:pointer; padding:4px 8px;
                      border-bottom:1px solid currentColor; white-space:nowrap;">${
                      k === "preview" ? "Value" : k[0].toUpperCase() + k.slice(1)}${arrow(k)}</th>`)
       .join("");
     const cells = shown
       .map((r) => `<tr>
+        <td style="padding:3px 2px;"><button class="vars-del" data-name="${escapeHtml(r.name)}"
+            data-module="${r.type === "module" ? "1" : ""}"
+            title="${r.type === "module"
+              ? "Unload this module: removes the name and drops it from sys.modules (memory is freed only if nothing else references it)"
+              : "Delete this variable"}"
+            style="border:none; background:none; cursor:pointer; opacity:.55; font-size:1rem; line-height:1;">×</button></td>
         <td style="padding:3px 8px; font-family:monospace;">${escapeHtml(r.name)}</td>
         <td style="padding:3px 8px; opacity:.85;">${escapeHtml(r.type)}</td>
         <td style="padding:3px 8px; text-align:right; white-space:nowrap;">${humanSize(r.size)}</td>
@@ -113,6 +122,21 @@ export async function showVarInspector() {
     body.innerHTML = `<table style="border-collapse:collapse; width:100%;">
         <thead><tr>${head}</tr></thead><tbody>${cells}</tbody></table>
       ${shown.length === rows.length ? "" : `<p style="opacity:.7; margin:.6em 0 0;">${shown.length} of ${rows.length} shown.</p>`}`;
+
+    const bytes = shown.reduce((sum, r) => sum + (r.size > 0 ? r.size : 0), 0);
+    const unknown = shown.filter((r) => !(r.size > 0)).length;
+    total.textContent =
+      `${shown.length} variable${shown.length === 1 ? "" : "s"}, ` +
+      `about ${humanSize(bytes)} in total` +
+      (unknown ? ` (${unknown} of unknown size)` : "") +
+      ". Containers report their own footprint, not that of what they hold, and a shared object is counted once per name.";
+
+    body.querySelectorAll(".vars-del").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        await deleteVariables([btn.dataset.name], { unloadModules: Boolean(btn.dataset.module) });
+        await load();
+      }));
 
     body.querySelectorAll("th[data-key]").forEach((th) =>
       th.addEventListener("click", () => {
@@ -127,6 +151,7 @@ export async function showVarInspector() {
     const list = await inspectNamespace(allBox.checked);
     if (list === null) {
       body.innerHTML = `<p style="opacity:.7;">Python has not started yet — run a cell first.</p>`;
+      total.textContent = "";
       rows = [];
       return;
     }
@@ -135,7 +160,6 @@ export async function showVarInspector() {
   };
 
   box.querySelector(".vars-close").addEventListener("click", close);
-  box.querySelector(".vars-refresh").addEventListener("click", load);
   allBox.addEventListener("change", load);
   filter.addEventListener("input", render);
   filter.focus();
