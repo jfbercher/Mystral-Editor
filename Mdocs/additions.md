@@ -1,3 +1,7 @@
+---
+numbering:
+  headings: true
+---
 # Files Added in This Fork (vs. `upstream/main`)
 
 This document lists every file that exists in this fork ("Mystral Editor") but not in the upstream `antmicro/myst-editor` repository, based on `git diff --name-status upstream/main...HEAD` (merge-base comparison, so it reflects only what this fork introduced, ignoring unrelated upstream-only changes since the fork point).
@@ -67,18 +71,12 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 
 # New markdown-processing modules
 
-:::{toc} title
-:depth: 
-:class: 
-:label: 
-:dropdown: 
-:open: 
-:::
 - `src/markdown/bibliography.js` — Loads and parses a BibTeX (`.bib`) file per editor tab (Tauri filesystem or Web File System Access API), and provides markdown-it plugins to render `[@key]` citation groups and a `[bibliography]` marker into a formatted reference list, including a `Cite` role, numeric/author-year citation styles, and hover-preview metadata.
 - `src/markdown/frontmatterUtils.js` — `extractFrontmatter(fullText)` parses the leading YAML frontmatter block using `js-yaml` and returns the parsed object plus the line number where it ends.
 - `src/markdown/markdownFootnotes.js` — Pre-scans a document for footnote definitions/references, numbers them by first-reference order, and provides markdown-it plugins to render inline footnote markers (with backrefs and hover preview) and the generated footnotes section.
 - `src/markdown/markdownHeadings.js` — A markdown-it core-rule plugin that assigns anchor IDs to headings from resolved section labels, strips `(label)=` marker paragraphs once consumed, and injects heading numbers into rendered heading tokens.
 - `src/markdown/markdownMath.js` — Sets up KaTeX/`markdown-it-texmath` math rendering per editor (with per-editor macro maps), computes numbering/label configuration for numbered targets (equations, figures, tables, sections), renders `@label` auto-references and numbered equation blocks, and resolves `[](#label)`/`{ref}`/`{eq}`/`{numref}` link text and placeholders.
+- `src/markdown/markdownInclude.js` — Implements the `{include}` (and `literalinclude`) directive: pulls another file into the document, parsed as MyST by default or shown as a code block with `:literal:`/`:lang:`. Reading a file is asynchronous while markdown-it renders synchronously, so it uses the same pattern as the `{eval}` role — a cache that renders a placeholder on a miss and triggers a re-render when the content arrives. Supports the selection options `:lines:`, `:start-line:`, `:end-line:`, `:start-at:`, `:start-after:`, `:end-at:`, `:end-before:`, plus `:caption:`, `:filename:`, `:label:` and `:class:`. Guards against a file that includes itself. Left aside for now, with a console warning when used: `:linenos:`, `:lineno-start:`, `:number-lines:`, `:lineno-match:` and `:emphasize-lines:`. Two limitations worth knowing: the frontmatter of an included file is stripped and ignored (mystmd promotes its math macros and abbreviations, which is not done here), and headings inside an included file do not reach the heading tree, so they are absent from the outline, the numbering and the `{toc}`.
 - `src/markdown/markdownRefLinks.js` — Adds support for Markdown reference-style links (`[text][ref]`, `[ref]`) with a global scan collecting `[label]: url "title"` definitions, plus markdown-it plugins to skip the definition lines and resolve reference-style link usages.
 - `src/markdown/markdownTitledAdmonitions.js` — Extends `markdown-it-docutils`' admonition directive classes to accept an optional title argument, and adds an `open` flag option so admonitions can render pre-expanded/collapsible.
 - `src/markdown/markdownPyodide.js` — markdown-it plugin that activates Pyodide-powered executable code cells in the preview. It intercepts both backtick-fenced ` ```{code-cell} ` blocks (processed as a fence rule) and `.code-cell-host` placeholder divs emitted by `CodeCellDirective`, installs a `MutationObserver` on the preview container that fires `initCodeCell()` whenever a new placeholder appears, and handles widget eviction and reuse across incremental re-renders so that cell state (user edits, outputs) survives paragraph re-renders of adjacent content.

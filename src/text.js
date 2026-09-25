@@ -7,6 +7,7 @@ import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives } 
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
 import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
+import { includeDirectives, includeCache } from "./markdown/markdownInclude";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
 import { colonFencedBlocks } from "./markdown/markdownFence";
@@ -184,7 +185,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...includeDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
@@ -297,6 +298,9 @@ export class TextManager {
 
     const unsubscribe = cache.transform.onChange((input) => this.scheduleRender({ staleInput: input }));
     const unsubscribeEval = evalCache.onChange(() => this.scheduleRender({ useCache: false }));
+    // An {include} resolves asynchronously; when its file arrives, render again
+    // so the directive finds it in the cache this time.
+    const unsubscribeInclude = includeCache.onChange(() => this.scheduleRender({ useCache: false }));
     cleanups?.push(() => {
       if (this.#renderFrame) clearTimeout(this.#renderFrame);
       // if (this.#renderFrame) cancelAnimationFrame(this.#renderFrame);
@@ -304,6 +308,7 @@ export class TextManager {
       this.#renderPending = null;
       unsubscribe();
       unsubscribeEval();
+      unsubscribeInclude();
     });
   }
 

@@ -117,7 +117,7 @@ function wrapFencedLinesInSpan(/** @type {markdownIt} */ md) {
     }
     const token = tokens[idx];
     // Some markdown-it extensions use the `fence` rule for other things than code blocks (eg. mermaid graphs) so we don't want to modify those
-    if (defaultOutput.includes("mermaid") || defaultOutput.includes("code-cell-host")) {
+    if (defaultOutput.includes("mermaid") || defaultOutput.includes("code-cell-host") || defaultOutput.includes("include-literal")) {
       return defaultOutput;
     }
 

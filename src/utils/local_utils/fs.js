@@ -481,6 +481,37 @@ export async function resolveImage(path) {
   }
 }
 
+/**
+ * Read a text file named relatively to the document, for {include}.
+ *
+ * Resolution follows what images already do: under Tauri, relative to the
+ * folder of the current file; on the web, through the working folder handle,
+ * which also covers the read-only snapshot since it mimics the same API.
+ *
+ * Throws with a message meant to be shown, rather than returning a fallback:
+ * an include that cannot find its file has to say so.
+ */
+export async function readTextRelative(path) {
+  const clean = String(path).replace(/^\.?\//, "").replaceAll("\\", "/");
+  if (!clean) throw new Error("no path given");
+
+  if (isTauri()) {
+    const dir = currentFileDir.value;
+    if (!dir) throw new Error("the document has no folder yet — save it first");
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+    return await readTextFile(`${dir.replace(/\/$/, "")}/${clean}`);
+  }
+
+  const wd = workingDirectory.value;
+  if (!wd) throw new Error("no working folder selected");
+  const parts = clean.split("/").filter(Boolean);
+  const fileName = parts.pop();
+  let directory = wd;
+  for (const part of parts) directory = await directory.getDirectoryHandle(part);
+  const handle = await directory.getFileHandle(fileName);
+  return await (await handle.getFile()).text();
+}
+
 export function resolveImageSync(path) {
   return resolveImage(path)
 }

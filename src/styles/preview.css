@@ -139,3 +139,26 @@ details.toc .toc-number {
   margin-right: 0.3em;
   font-variant-numeric: tabular-nums;
 }
+
+/* {include} — states of a file being pulled in, and the frame around a
+   literal include carrying a caption or its filename. */
+.include-pending {
+  opacity: .6;
+  font-style: italic;
+}
+.include-error {
+  color: var(--error-fg, #cf222e);
+  border-left: 3px solid currentColor;
+  padding: .3rem .6rem;
+  margin: .6rem 0;
+  font-size: .9em;
+}
+.include-figure {
+  margin: 1rem 0;
+}
+.include-figure .include-filename {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .8em;
+  opacity: .75;
+  margin-bottom: .2rem;
+}
