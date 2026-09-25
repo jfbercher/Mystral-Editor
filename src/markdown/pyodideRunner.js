@@ -829,6 +829,16 @@ export const restoredOutputCache = new Map();
  * @param {string} code     — code Python initial
  * @param {{ packages?: string[], linenos?: boolean, hash: string }} opts
  */
+// "+ Cell" inserts text in the source; the cell itself only exists after the
+// preview has been re-rendered, in another module, so the button cannot focus
+// what it creates. It records the moment of the request instead, and the next
+// empty cell built shortly after takes the cursor. An empty cell appearing
+// within that window and not coming from the button would be a coincidence;
+// the window is short enough, and the cost of being wrong is a caret in the
+// wrong empty cell.
+let pendingEmptyCellFocus = 0;
+const FOCUS_REQUEST_TTL_MS = 3000;
+
 export function initCodeCell(el, code, { packages = [], linenos = false, hash } = {}) {
   const cacheKey = hash ? hash + (linenos ? "-ln" : "") : null;
   if (cacheKey && cellCache.has(cacheKey)) {
@@ -1056,6 +1066,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const cmState = EditorState.create({ doc: code, extensions: cmExtensions });
   const view    = new EditorView({ state: cmState, parent: editorContainer });
 
+  if (!code.trim() && pendingEmptyCellFocus
+      && performance.now() - pendingEmptyCellFocus < FOCUS_REQUEST_TTL_MS) {
+    pendingEmptyCellFocus = 0;
+    // After the frame that inserts the cell in the DOM, or focus() lands on a
+    // view the browser has not laid out yet.
+    requestAnimationFrame(() => view.focus());
+  }
+
   configReady().then(() => {
     view.dispatch({ effects: keysCompartment.reconfigure(cmKeymap.of(cellKeyBindings(cellActions))) });
   }).catch((e) => console.warn("[cells] could not apply the configured shortcuts", e));
@@ -1128,6 +1146,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   // Dispatch "insert cell below" → handled in text.js
   const _dispatchInsertBelow = () => {
     _syncToEditor(view);
+    pendingEmptyCellFocus = performance.now();
     document.dispatchEvent(new CustomEvent("pyodide-insert-cell-below", {
       detail: { currentCode: _currentCode, lineId: _lineId() }
     }));
