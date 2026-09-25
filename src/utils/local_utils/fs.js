@@ -1,4 +1,4 @@
-import { get, set } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
+import { get, set, del } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { config } from "../../config.js";
 import { signal } from '@preact/signals';
@@ -21,6 +21,56 @@ export const currentFileDir = signal(null);
 /** True when the browser can hand out real FileSystemFileHandle objects. */
 export const hasFileSystemAccess = () =>
   typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+
+export const hasDirectoryPicker = () =>
+  typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
+
+/**
+ * Tell a user cancelling a picker apart from a picker that never opened.
+ *
+ * Both surface as AbortError, but a human needs time to decide: a rejection
+ * that comes back in a few milliseconds means no dialog was ever shown -- a
+ * desktop portal missing in a bare VM, a blocked permission, an environment
+ * where the API exists but cannot work. Treating those as "the user changed
+ * their mind" is what makes a button look dead.
+ */
+const CANCEL_FLOOR_MS = 300;
+export const looksLikeUserCancel = (err, elapsedMs) =>
+  err?.name === "AbortError" && elapsedMs >= CANCEL_FLOOR_MS;
+
+/**
+ * Print what this browser actually offers. Call window.__mystralEnvReport()
+ * from the console of a machine where file access misbehaves: it answers in one
+ * line the questions that otherwise cost a round-trip -- secure context or not,
+ * which pickers exist, and whether IndexedDB really accepts a write.
+ */
+export async function envReport() {
+  const report = {
+    origin: typeof location !== "undefined" ? location.origin : null,
+    secureContext: typeof window !== "undefined" ? window.isSecureContext : null,
+    tauri: isTauri(),
+    showOpenFilePicker: hasFileSystemAccess(),
+    showDirectoryPicker: hasDirectoryPicker(),
+    indexedDB: "unknown",
+    persisted: null,
+    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+  };
+  try {
+    const probe = `__mystral_probe_${Date.now()}`;
+    await set(probe, { t: Date.now() });
+    const back = await get(probe);
+    await del(probe);
+    report.indexedDB = back ? "read/write OK" : "write accepted but read back empty";
+  } catch (e) {
+    report.indexedDB = `unavailable: ${e?.name ?? e}`;
+  }
+  try {
+    report.persisted = (await navigator.storage?.persisted?.()) ?? null;
+  } catch { /* not supported */ }
+  console.log("[env]", report);
+  return report;
+}
+if (typeof window !== "undefined") window.__mystralEnvReport = envReport;
 
 /** True for a handle produced by makeFallbackFileHandle(). */
 export const isFallbackHandle = (h) => Boolean(h && h.isFallback);
@@ -266,33 +316,60 @@ export async function selectWorkingFolder() {
       console.log("Working folder selected and saved (Tauri):", workingDirectory.value);
     }
   } else {
-    if ('showDirectoryPicker' in window) {
-      try {
-        const handle = await window.showDirectoryPicker();
-        workingDirectory.value = handle;                       
-        await set("workingDirHandle", handle);
-        console.log("Working folder selected and saved (Web):", workingDirectory.value.name);
-      } catch (err) {
-        if (err.name !== 'AbortError') console.error("Error selecting working folder (Web):", err);
-      }
-    } else {
-      // Safari and Firefox have no showDirectoryPicker.  <input webkitdirectory>
-      // still opens a native folder picker, but yields only a read-only snapshot.
+    // <input webkitdirectory> opens a native folder picker but yields a frozen,
+    // read-only snapshot. Used when the browser has no showDirectoryPicker
+    // (Firefox, Safari) and when it has one that does not deliver.
+    const snapshotFallback = async (why) => {
       const snapshot = await pickDirectoryWithInput();
-      if (snapshot) {
-        workingDirectory.value = snapshot;
-        // Deliberately not persisted: it carries methods (not structured-
-        // cloneable) and is a frozen snapshot, so restoring it later would serve
-        // stale content.  The folder has to be picked again each session.
-        console.log("Working folder read as a snapshot (Web, no FS Access API):", snapshot.name);
-        showToast(
-          "Folder read in snapshot mode: images and data files are readable, but this browser cannot write anything back, will not see later changes on disk, and will ask for the folder again next session. Use Chrome or Edge for full access.",
-          "error",
-          // 0 = stays until dismissed: a structural limitation worth reading in
-          // full, rather than a timer racing the user.
-          0
-        );
-      }
+      if (!snapshot) return;
+      workingDirectory.value = snapshot;
+      // Deliberately not persisted: it carries methods (not structured-
+      // cloneable) and is a frozen snapshot, so restoring it later would serve
+      // stale content.  The folder has to be picked again each session.
+      console.log("Working folder read as a snapshot (Web):", snapshot.name, why ?? "");
+      showToast(
+        (why ? why + " " : "") +
+        "Folder read in snapshot mode: images and data files are readable, but this browser cannot write anything back, will not see later changes on disk, and will ask for the folder again next session. Use Chrome or Edge for full access.",
+        "error",
+        // 0 = stays until dismissed: a structural limitation worth reading in
+        // full, rather than a timer racing the user.
+        0
+      );
+    };
+
+    if (!hasDirectoryPicker()) {
+      await snapshotFallback(null);
+      return;
+    }
+
+    let handle = null;
+    const started = performance.now();
+    try {
+      handle = await window.showDirectoryPicker();
+    } catch (err) {
+      const elapsed = performance.now() - started;
+      if (looksLikeUserCancel(err, elapsed)) return;   // the user said no
+      // The API is there but did not deliver. Say so and offer the fallback,
+      // rather than leaving a button that appears to do nothing.
+      console.error(`Error selecting working folder (Web, after ${Math.round(elapsed)} ms):`, err);
+      await snapshotFallback(`This browser has a folder picker but it failed (${err?.name ?? err}).`);
+      return;
+    }
+
+    workingDirectory.value = handle;
+    try {
+      await set("workingDirHandle", handle);
+      // Read it back: storage that silently refuses the write is exactly what
+      // makes a folder come back unknown at the next session.
+      if (!(await get("workingDirHandle"))) throw new Error("written but read back empty");
+      console.log("Working folder selected and saved (Web):", handle.name);
+    } catch (err) {
+      console.error("Working folder selected but not persisted:", err);
+      showToast(
+        `Folder "${handle.name}" works for now, but this browser would not store it (${err?.name ?? err}). It will be asked for again next session — check that site data is not blocked for this site.`,
+        "error",
+        0,
+      );
     }
   }
 }
