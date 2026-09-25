@@ -67,6 +67,27 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | Key | Default | Meaning |
 |---|---|---|
 | `pyodide.resetCwdOnRun` | `false` | `false` keeps notebook behaviour: the working directory persists from one cell to the next, so a cell may `os.chdir()` and the following ones stay there. `true` resets to `/local` before every run, which makes each cell reproducible in isolation at the cost of that continuity. |
+| `pyodide.keys.run` | `"Shift-Enter"` | Run the current cell. |
+| `pyodide.keys.insertBelow` | `"Mod-Shift-Enter"` | Insert an empty cell below the current one. |
+| `pyodide.keys.inspect` | `"Alt-v"` | Open the variable window. |
+| `pyodide.keys.clear` | `""` | Clear the current cell's output. |
+| `pyodide.keys.runAll` | `""` | Run every cell of the document. |
+| `pyodide.keys.clearAll` | `""` | Clear every output. |
+| `pyodide.keys.restart` | `""` | Restart the kernel, clearing all variables. |
+| `pyodide.keys.deleteCell` | `""` | Delete the current cell. |
+
+These shortcuts apply only while the cursor is inside a code-cell editor, and
+they take precedence there over the editor's own bindings: giving one a key the
+editor already uses, `"Mod-s"` for instance, shadows it inside cells. An empty
+string means the action has no shortcut. A binding CodeMirror cannot parse is
+reported in the browser console and dropped, so a typo costs that one shortcut
+rather than the cell's whole keymap.
+
+`Tab`, which accepts a completion or indents, and the arrow keys that move
+between cells are not configurable.
+
+[executable-content](executable-content.md) describes what each action does,
+and the rest of the code-cell machinery.
 
 ---
 

@@ -85,6 +85,9 @@ These govern the **Pyodide code-cell** chrome (input area, output area, borders)
 
 ## `--pyodide-*` — Pyodide code-cell chrome
 
+The cells these variables paint are described in
+[executable-content](executable-content.md).
+
 These give the code cells their own palette, so a cell can be tinted
 independently of the rest of the editor. Each one is read with a fallback, which
 is why a theme that defines none of them still renders correct cells.
