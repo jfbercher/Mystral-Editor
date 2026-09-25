@@ -797,6 +797,19 @@ function buildSectionLabelMap(refMap) {
   return map;
 }
 
+/**
+ * A strictly positive integer.
+ *
+ * docutils has positive_int, markdown-it-docutils does not, so
+ * directiveOptions.positive_int was undefined: the option had no validator at
+ * all, and ":depth:" was rejected as unknown rather than parsed.
+ */
+const positiveInt = (value) => {
+  const n = directiveOptions.int(value);
+  if (n < 1) throw new directiveOptions.OptionSpecError(`Value "${value}" must be a positive integer`);
+  return n;
+};
+
 /** Returns the href anchor for a heading node. */
 function anchorFor(node, sectionLabelMap) {
   // Priority 1: explicit label (label)=
@@ -837,8 +850,8 @@ class TocDirective extends Directive {
   has_content = false;
 
   option_spec = {
-    depth:      directiveOptions.positive_int,
-    maxdepth:   directiveOptions.positive_int,   // alias MyST
+    depth:      positiveInt,
+    maxdepth:   positiveInt,                      // alias MyST
     class:      directiveOptions.class_option,
     label:      directiveOptions.unchanged,
     name:       directiveOptions.unchanged,       // alias of label

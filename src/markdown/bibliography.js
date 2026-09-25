@@ -1,5 +1,4 @@
 import { BibtexParser } from "bibtex-js-parser";
-import { readTextFile } from '@tauri-apps/plugin-fs';
 import { currentFileDir } from "../utils/local_utils";
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -50,6 +49,7 @@ export async function ensureBibliographyLoaded(editorId, path, getDirectoryHandl
         return;
       }
       const cleanPath = path.replace(/^\.?\//, '').replaceAll('\\', '/');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
       text = await readTextFile(`${fileDir}/${cleanPath}`);
     } else {
       // Web : comportement inchangé
@@ -109,6 +109,7 @@ export async function ensureBibliographyLoadedOld(editorId, path, getDirectoryHa
       // Nettoyage et construction du chemin absolu pour Tauri
       const cleanRelativePath = path.replace(/^\.?\//, '').replaceAll('\\', '/');
       const absolutePath = `${dirHandle}/${cleanRelativePath}`;
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
       text = await readTextFile(absolutePath);
     } else {
       const fileHandle = await dirHandle.getFileHandle(path);
