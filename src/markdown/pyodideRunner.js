@@ -778,8 +778,22 @@ function jediCompletionSource(context) {
 
 const STYLES_ID = "pyodide-cell-styles";
 
-function ensureStyles() {
-  if (document.getElementById(STYLES_ID)) return;
+/**
+ * Inject the cell stylesheet into the tree that actually holds the cell.
+ *
+ * It used to go into document.head unconditionally. The preview lives in a
+ * shadow root, which document styles do not cross, so the whole sheet was
+ * inert there: the cell wrapper had no background at all, in either theme,
+ * and every rule below was decoration nobody saw. The element is asked for
+ * its own root, and the sheet is placed there -- once per root, since an
+ * editor may be mounted in several.
+ *
+ * @param {Element} el  the placeholder the cell is being built in
+ */
+function ensureStyles(el) {
+  const root = el?.getRootNode?.() ?? document;
+  const scope = root instanceof ShadowRoot ? root : document;
+  if (scope.getElementById(STYLES_ID)) return;
   const style = document.createElement("style");
   style.id = STYLES_ID;
   style.textContent = `
@@ -813,7 +827,7 @@ function ensureStyles() {
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
 .pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}
 `;
-  document.head.appendChild(style);
+  (root instanceof ShadowRoot ? root : document.head).appendChild(style);
 }
 
 // ─── Helpers UI ───────────────────────────────────────────────────────────────
@@ -874,7 +888,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     return;
   }
 
-  ensureStyles();
+  ensureStyles(el);
 
   // ── Construction de l'UI ──────────────────────────────────────────────────
 
