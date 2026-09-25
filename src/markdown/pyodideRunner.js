@@ -1166,13 +1166,20 @@ export function isPyodideReady() { return pyodideInstance !== null; }
 export async function snapshotNamespace() {
   const pyodide = await loadPyodideRuntime();
   const result = await pyodide.runPythonAsync(`
-import cloudpickle as _cp, base64 as _b64, io as _io, json as _json
+import cloudpickle as _cp, base64 as _b64, io as _io, json as _json, types as _types
 _skip = frozenset({"__name__", "__doc__", "__package__", "__loader__",
                    "__spec__", "__builtins__", "__annotations__"}
                   | set(${JSON.stringify(RUNTIME_GLOBALS)}))
 _out = {}
 for _n, _v in list(globals().items()):
     if _n.startswith('_') or _n in _skip:
+        continue
+    # A module is not user data. cloudpickle stores it as a reference whose
+    # unpickling re-imports it, which fails in a fresh runtime whenever the
+    # package is not loaded yet -- that is what made "np" and "pd" look lost.
+    # Record the name instead and let the restore import it properly.
+    if isinstance(_v, _types.ModuleType):
+        _out[_n] = {"module": _v.__name__}
         continue
     try:
         _buf = _io.BytesIO()
@@ -1198,12 +1205,29 @@ _json.dumps(_out)
 export async function restoreNamespace(snapshot) {
   if (!snapshot || Object.keys(snapshot).length === 0) return;
   const pyodide = await loadPyodideRuntime();
+
+  // Modules were saved by name. Their packages have to be in the runtime before
+  // the import can succeed, and in a fresh session only the default ones are:
+  // ask Pyodide to fetch whatever else the snapshot mentions. Best effort -- a
+  // package it does not know about is reported by the import below.
+  const moduleNames = Object.values(snapshot)
+    .map((e) => e?.module)
+    .filter(Boolean);
+  if (moduleNames.length) {
+    const roots = [...new Set(moduleNames.map((m) => m.split(".")[0]))];
+    try {
+      await pyodide.loadPackagesFromImports(roots.map((r) => `import ${r}`).join("\n"));
+    } catch (e) {
+      console.warn("[namespace] could not preload packages for", roots, e);
+    }
+  }
+
   pyodide.globals.set('_restore_data_json', JSON.stringify(snapshot));
   // Failures used to be swallowed here, so a variable that could not be
   // unpickled simply ceased to exist, with nothing said anywhere. Collect them
   // instead and report them: silent data loss is the one outcome to rule out.
   const report = await pyodide.runPythonAsync(`
-import cloudpickle as _cp, base64 as _b64, json as _json
+import cloudpickle as _cp, base64 as _b64, json as _json, importlib as _il
 _data = _json.loads(_restore_data_json)
 _ok, _failed = [], {}
 for _n, _e in _data.items():
@@ -1211,12 +1235,15 @@ for _n, _e in _data.items():
         _failed[_n] = _e.get('reason', 'not persisted')
         continue
     try:
-        globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
+        if 'module' in _e:
+            globals()[_n] = _il.import_module(_e['module'])
+        else:
+            globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
         _ok.append(_n)
     except Exception as _err:
         _failed[_n] = type(_err).__name__ + ': ' + str(_err)
 _report = _json.dumps({'ok': _ok, 'failed': _failed})
-for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_restore_data_json']:
+for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_il', '_restore_data_json']:
     globals().pop(_k, None)
 _report
 `);
