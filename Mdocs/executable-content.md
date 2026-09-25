@@ -3,8 +3,11 @@
 Mystral Editor runs Python inside the document. A `code-cell` block becomes a
 small editor with its own toolbar; running it executes the code in a Python
 interpreter living in the page, and the result appears underneath. All the
-cells of a session share one interpreter, so a variable defined in one is
-visible from the next, as in a notebook.
+cells share one interpreter, so a variable defined in one is visible from the
+next, as in a notebook — and that interpreter is shared by **every open tab**,
+not one per document. Two documents opened side by side see each other's
+variables and can overwrite them, which is worth knowing before naming a
+variable `data` in both.
 
 This page covers writing and running cells, what the Python side can and
 cannot do, the variable inspector, and the settings that govern all of it.
@@ -160,6 +163,14 @@ of a session therefore needs the network, and so does a hard restart.
 Alongside a document, the editor writes a sidecar file holding the outputs of
 its cells and a snapshot of the namespace, so reopening it shows the results
 without re-running everything, and the variables come back.
+
+The single shared interpreter shows through here. The snapshot is taken of the
+whole namespace, so a document's sidecar records variables created by the cells
+of any other document open at the time; reopening it then reports them as
+unrestorable, the packages they need not being loaded. The message is accurate
+and the sidecar holds what it was asked to record — it is the pairing of one
+kernel with per-document snapshots that does not hold as soon as two Python
+documents are open.
 
 The snapshot has limits worth knowing. Values are serialised with
 `cloudpickle`, and what it cannot pickle is not saved — an open file, a
