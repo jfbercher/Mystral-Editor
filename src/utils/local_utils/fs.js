@@ -163,6 +163,30 @@ export const isReadOnlyDirectory = (dir) => Boolean(dir && dir.isReadOnlySnapsho
  *
  * Resolves to a read-only directory handle, or null when the user cancels.
  */
+/**
+ * Watch for a native file dialog that never opened.
+ *
+ * Opening one takes the focus away from the page within milliseconds. If, well
+ * after the click, the page still has the focus and nothing has happened, the
+ * dialog is not there -- which is what Chrome does on a Linux box with no
+ * working file dialog. Without this the promise simply never settles and the
+ * button looks dead, exactly the symptom the fallback was meant to cure.
+ *
+ * Returns a cancel function, to be called once the pick settles.
+ */
+const NO_DIALOG_AFTER_MS = 3000;
+const DIALOG_MISSING_MESSAGE =
+  "This browser could not open a file dialog. On Linux this usually means Chrome has no working one (try Firefox, or install the desktop portal); check whether any other site can open a file chooser.";
+
+function watchForMissingDialog(onMissing) {
+  const timer = setTimeout(() => {
+    if (typeof document === "undefined") return;
+    if (!document.hasFocus() || document.visibilityState !== "visible") return;
+    onMissing();
+  }, NO_DIALOG_AFTER_MS);
+  return () => clearTimeout(timer);
+}
+
 export function pickDirectoryWithInput() {
   return new Promise((resolve) => {
     const input = document.createElement("input");
@@ -174,9 +198,11 @@ export function pickDirectoryWithInput() {
     document.body.appendChild(input);
 
     let settled = false;
+    let stopWatch = () => {};
     const settle = (value) => {
       if (settled) return;
       settled = true;
+      stopWatch();
       input.remove();
       resolve(value);
     };
@@ -195,6 +221,12 @@ export function pickDirectoryWithInput() {
     input.addEventListener("cancel", () => settle(null), { once: true });
     window.addEventListener("focus", () => setTimeout(() => settle(null), 400), { once: true });
 
+    stopWatch = watchForMissingDialog(() => {
+      console.error("[fs] the folder dialog never opened (the browser could not show it)");
+      showToast(DIALOG_MISSING_MESSAGE, "error", 0);
+      settle(null);
+    });
+
     input.click();
   });
 }
@@ -212,9 +244,11 @@ export function pickFileWithInput(accept = ".md,.markdown,.txt,.yml,.yaml") {
     document.body.appendChild(input);
 
     let settled = false;
+    let stopWatch = () => {};
     const settle = (value) => {
       if (settled) return;
       settled = true;
+      stopWatch();
       input.remove();
       resolve(value);
     };
@@ -227,6 +261,12 @@ export function pickFileWithInput(accept = ".md,.markdown,.txt,.yml,.yaml") {
     // fallback covers older engines so the promise can never hang forever.
     input.addEventListener("cancel", () => settle(null), { once: true });
     window.addEventListener("focus", () => setTimeout(() => settle(null), 400), { once: true });
+
+    stopWatch = watchForMissingDialog(() => {
+      console.error("[fs] the file dialog never opened (the browser could not show it)");
+      showToast(DIALOG_MISSING_MESSAGE, "error", 0);
+      settle(null);
+    });
 
     input.click();
   });
