@@ -239,15 +239,6 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
         action: async () => localUtils.selectWorkingFolder(),
       } : {}),
     {
-      id: "autosave",
-      text: h("span", { style: "font-size:1.5em" }, "📌"),
-      tooltip: "Auto-save (each minute)",
-      action: () => {
-        const enabled = tab.toggleAutoSave();
-        console.log("AutoSave:", enabled);
-      },
-    },
-    {
       id: "stats",
       text: "📊",
       tooltip: "Text statistics",
@@ -359,6 +350,12 @@ export function mountEditor(mnt_options) {
           effect(() => {
             const currentText = state.text.text.value;
             tab.checkDirty(currentText);
+          });
+          // Auto-save is a user setting now, not a toolbar button: the toggle
+          // is the single source of truth, and each tab follows it.
+          effect(() => {
+            const setting = state.userSettings.value.find((s) => s.id === "autosave");
+            if (setting) tab.autoSaveEnabled = setting.enabled;
           });
           effect(() => {
             const ycomments = state.collab.value?.ycomments;

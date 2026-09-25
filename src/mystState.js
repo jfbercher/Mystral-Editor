@@ -10,6 +10,7 @@ import { CollaborationClient } from "./collaboration";
 import { CodeMirror as VimCM, vim } from "@replit/codemirror-vim";
 import { collabClientFacet, lineNumbersCompartment } from "./extensions";
 import { TextManager } from "./text";
+import { config } from "./config";
 import { TransformCache } from "./markdown/markdownReplacer";
 import Templates from "./components/Templates";
 import { yRemoteAnnotation } from "./extensions/collab";
@@ -71,6 +72,13 @@ const defaultUserSettings = [
     id: "number-headers",
     title: "Number headers",
     enabled: false,
+  },
+  {
+    id: "autosave",
+    title: "Auto-save (each minute)",
+    // Seeded from config.json; the toggle then overrides it and is remembered
+    // per browser, like the other settings.
+    enabled: config.autoSaveEnabled !== false,
   },
   {
     id: "links-new-tab",

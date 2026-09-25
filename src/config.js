@@ -122,6 +122,54 @@ function _applyConfigData(data) {
 // ---------------------------------------------------------------------------
 
 /**
+ * A starter config.json, written when the user asks to open one that does not
+ * exist yet. The values are the current defaults, so the file changes nothing
+ * until it is edited -- JSON has no comments, so a few real keys are the only
+ * way to show the shape.
+ */
+const STARTER_CONFIG = {
+  autoSaveEnabled: true,
+  maxRecentFiles: 10,
+  pyodide: { resetCwdOnRun: false, keys: { run: "Shift-Enter" } },
+};
+
+/**
+ * Open the configuration file of the platform in use.
+ *
+ * Under Tauri it lives in the OS app-config directory; it is created from a
+ * starter if absent, since the system cannot open a file that is not there,
+ * and handed to whatever application opens .json files.
+ *
+ * On the web it is served with the application and cannot be written from the
+ * browser: it opens in a tab, for reading. Changing it means editing the file
+ * on the server.
+ *
+ * @returns {Promise<{path: string, created: boolean, editable: boolean}>}
+ */
+export async function openConfigFile() {
+  if (!isTauri) {
+    const url = new URL("config.json", import.meta.url).href;
+    window.open(url, "_blank", "noopener");
+    return { path: url, created: false, editable: false };
+  }
+
+  const { appConfigDir, join } = await import("@tauri-apps/api/path");
+  const { exists, writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  const { openPath } = await import("@tauri-apps/plugin-opener");
+
+  const dir = await appConfigDir();
+  const path = await join(dir, "config.json");
+  let created = false;
+  if (!(await exists(path))) {
+    try { await mkdir(dir, { recursive: true }); } catch { /* already there */ }
+    await writeTextFile(path, JSON.stringify(STARTER_CONFIG, null, 2) + "\n");
+    created = true;
+  }
+  await openPath(path);
+  return { path, created, editable: true };
+}
+
+/**
  * Loads user configuration (once). Returns a promise that resolves to config.
  * Safe to call multiple times — subsequent calls return the same promise.
  */

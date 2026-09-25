@@ -3,6 +3,8 @@ import styled from "styled-components";
 import { MystState } from "../mystState";
 import { Compartment } from "@codemirror/state";
 import { useSignalEffect } from "@preact/signals";
+import { openConfigFile } from "../config";
+import { showToast } from "../utils/utils_ui";
 
 const SettingsList = styled.div`
   width: 240px;
@@ -34,6 +36,30 @@ const SettingsList = styled.div`
 
   p {
     margin: 0;
+  }
+
+  .settings-config {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border, #ccc);
+  }
+
+  .settings-config button {
+    font: inherit;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border, #ccc);
+    background: transparent;
+    color: inherit;
+    width: 100%;
+    text-align: left;
+  }
+
+  .settings-config small {
+    display: block;
+    margin-top: 6px;
+    opacity: .7;
   }
 `;
 
@@ -107,6 +133,24 @@ const Settings = () => {
           </li>
         ))}
       </ul>
+      <div className="settings-config">
+        <button
+          type="button"
+          title="Open the configuration file of this installation"
+          onClick={async () => {
+            try {
+              const { path, created, editable } = await openConfigFile();
+              if (created) showToast(`Created ${path} — it holds the current defaults, edit and reload.`, "success", 8000);
+              else if (!editable) showToast("config.json is served with the application; this tab shows it read-only.", "success", 6000);
+            } catch (err) {
+              showToast(`Could not open the configuration file: ${err?.message ?? err}`, "error", 0);
+            }
+          }}
+        >
+          Open config.json
+        </button>
+        <small>Settings above are per browser. config.json holds the rest, and applies at start-up.</small>
+      </div>
     </SettingsList>
   );
 };

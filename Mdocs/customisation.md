@@ -22,6 +22,19 @@ Mystral Editor reads two optional files at startup. Neither is required: without
 
 The defaults live in `src/config-defaults.js`, which is the reference for every key below.
 
+The **Settings** panel has an *Open config.json* button that opens the file for
+the installation in use, so the paths above rarely need to be typed. In the
+desktop build it creates the file from a starter holding the current defaults
+when it does not exist yet — the system cannot open a file that is not there —
+and hands it to whatever application opens `.json`. In the web build the file is
+served with the application and cannot be written from the browser: it opens in
+a tab for reading, and changing it means editing the file on the server.
+
+The panel's toggles are a different thing: they are remembered per browser, in
+`localStorage`, and take effect immediately. `config.json` is read once at
+start-up. **Auto-save** appears among the toggles, seeded from
+`autoSaveEnabled` below and overriding it once touched.
+
 ### How values are merged
 
 `config.json` may contain **any subset** of the keys. It is merged into the defaults *recursively*, so a file naming a single nested key keeps everything else in its section:
