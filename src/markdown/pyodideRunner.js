@@ -785,7 +785,10 @@ function ensureStyles() {
   style.textContent = `
 .pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;width:100%;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-radius:6px;overflow:hidden;margin:1.25rem 0;background:var(--pyodide-cell-bg,#f2f6fc);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
 .pyodide-header,.pyodide-status-bar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--pyodide-cell-bg,#f2f6fc);filter:brightness(0.97);border-bottom:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));gap:.5rem}
-.pyodide-status-bar{border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-bottom:0;min-height:1.6rem}
+.pyodide-status-bar{border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-bottom:0;min-height:1.6rem;flex-wrap:wrap;row-gap:.15rem}
+/* While a cell runs, redefining --pyodide-cell-bg on the wrapper tints the
+   whole cell at once: header, editor and status bar all read that variable. */
+.pyodide-wrapper.pyodide-running{--pyodide-cell-bg:var(--pyodide-cell-running-bg,#fdeeec)}
 .pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
 .pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -804,9 +807,9 @@ function ensureStyles() {
 .pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
 .pyodide-error,.pyodide-stderr{color:#cf222e}
 .pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0}
-.pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a)}
+.pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
-.pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums}
+.pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
 .pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}
 `;
@@ -1214,10 +1217,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
 
   runBtn.addEventListener("click", async () => {
     runBtn.disabled = true;
+    wrapper.classList.add("pyodide-running");
     outputArea.hidden = true;
     widgetOutputArea.innerHTML = "";
     textOutputArea.innerHTML = "";
     timing.textContent = "";
+    // A message left by something else -- a restart, an earlier error -- has
+    // nothing to say about this run, and would end up glued to its timing.
+    setStatus(statusText, "");
 
     try {
       if (loadState === "idle") {
@@ -1320,6 +1327,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     } catch (err) {
       setStatus(statusText, `Error : ${err}`, "error");
     } finally {
+      wrapper.classList.remove("pyodide-running");
       runBtn.disabled = false;
     }
   });

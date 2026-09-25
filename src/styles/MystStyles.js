@@ -101,6 +101,7 @@ lightTheme.replaceSync(`
     --pyodide-cell-bg: #f2f6fc;
     --pyodide-cell-border: #c4d4e6;
     --pyodide-output-bg: #e8f0f8;
+    --pyodide-cell-running-bg: #fdeeec;
 
     /* CodeMirror */
     --tok-heading: #0550ae;
@@ -182,6 +183,7 @@ darkTheme.replaceSync(`
     --pyodide-cell-bg: #1d2b3a;
     --pyodide-cell-border: #3a5068;
     --pyodide-output-bg: #162232;
+    --pyodide-cell-running-bg: #33232a;
 
     /* CodeMirror */
     --tok-heading: #79c0ff;

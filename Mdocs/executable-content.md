@@ -45,7 +45,9 @@ is re-evaluated whenever a cell runs, so it follows the state of the session.
 Each cell carries the same buttons, acting on that cell or on the whole
 document.
 
-**Run** executes the cell. **Clear** empties its output without touching the
+**Run** executes the cell; its background warms to a light red for as long as
+it runs, which is what tells a cell still working apart from one merely
+selected. **Clear** empties its output without touching the
 interpreter. **Run All** runs every cell of the document in order, waiting for
 each to finish. **Clear All** empties every output.
 
@@ -211,9 +213,9 @@ renders as `%`; anywhere else on the line no escape is needed.
 
 ## Appearance
 
-The look of a cell is governed by three CSS variables — `--pyodide-cell-bg`,
-`--pyodide-cell-border` and `--pyodide-output-bg` — plus a font-size knob,
-`--pyodide-cell-font-size`. They take precedence over the general `--color-*`
+The look of a cell is governed by four CSS variables — `--pyodide-cell-bg`,
+`--pyodide-cell-border`, `--pyodide-output-bg` and `--pyodide-cell-running-bg`
+— plus a font-size knob, `--pyodide-cell-font-size`. They take precedence over the general `--color-*`
 variables so cells can be set apart from the rest of the page, and they have
 separate light and dark values. [myst-editor-css-variables](myst-editor-css-variables.md)
 documents each one, and [customisation](customisation.md) explains where to

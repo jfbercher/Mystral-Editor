@@ -97,6 +97,7 @@ is why a theme that defines none of them still renders correct cells.
 | `--pyodide-cell-bg` | `#f2f6fc` | `#1d2b3a` | Background of the cell wrapper, its header and its status bar, and of the CM6 editor area inside the cell. Header and status bar apply `filter: brightness(0.97)` over it, so they read slightly darker without a variable of their own. Falls back to `#f2f6fc`, or to `--color-background-primary` for the nested editor. |
 | `--pyodide-cell-border` | `#c4d4e6` | `#3a5068` | Outer border of the cell, plus the rules separating header, status bar and output area, and the outline of the inline delete-confirmation bar. Falls back to `--color-border`, then `#c4d4e6`. |
 | `--pyodide-output-bg` | `#e8f0f8` | `#162232` | Background of the output area only, so results stand apart from the code above them. Falls back to `#e8f0f8`; it has no `--color-*` equivalent. |
+| `--pyodide-cell-running-bg` | `#fdeeec` | `#33232a` | Background of a cell while it runs — the standard background warmed with a little red. It is applied by redefining `--pyodide-cell-bg` on the wrapper, so header, editor and status bar follow together; set it to the same value as `--pyodide-cell-bg` to suppress the effect. Falls back to `#fdeeec`. |
 
 Text inside a cell is not covered here: it keeps `--color-foreground-primary`
 and `--color-foreground-muted`, and code is highlighted with the `--tok-*`

@@ -65,8 +65,15 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 - `src/extensions/mystComments.js` — Implements MyST-style line comments (`%` at column 0): exports `toggleMystComment` (a CodeMirror command) and `mystComments()`, a keymap binding `Mod-/`, `Mod-:` (AZERTY), and `Mod-Shift-/`.
 - `src/extensions/mystCompletions.js` — Implements the MyST-aware autocompletion source for CodeMirror: snippet completions for roles (`{ref}`, `{eq}`, etc.) and directives, cross-reference targets, and bibliography-key citations.
 
-## New markdown-processing modules
+# New markdown-processing modules
 
+:::{toc} title
+:depth: 
+:class: 
+:label: 
+:dropdown: 
+:open: 
+:::
 - `src/markdown/bibliography.js` — Loads and parses a BibTeX (`.bib`) file per editor tab (Tauri filesystem or Web File System Access API), and provides markdown-it plugins to render `[@key]` citation groups and a `[bibliography]` marker into a formatted reference list, including a `Cite` role, numeric/author-year citation styles, and hover-preview metadata.
 - `src/markdown/frontmatterUtils.js` — `extractFrontmatter(fullText)` parses the leading YAML frontmatter block using `js-yaml` and returns the parsed object plus the line number where it ends.
 - `src/markdown/markdownFootnotes.js` — Pre-scans a document for footnote definitions/references, numbers them by first-reference order, and provides markdown-it plugins to render inline footnote markers (with backrefs and hover preview) and the generated footnotes section.
