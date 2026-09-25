@@ -71,7 +71,7 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
           if (err.name !== "AbortError") console.error("Open file error:", err);
         }
       },
-      options: () => tab.getRecentFileOptions(10, openFileHandleInTab),
+      options: () => tab.getRecentFileOptions(config.recentFilesMax, openFileHandleInTab),
     },
     {
       text: h("span", { style: "font-size:1.5em" }, "📄"),

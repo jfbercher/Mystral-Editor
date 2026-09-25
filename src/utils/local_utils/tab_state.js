@@ -432,7 +432,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     return fileData;
   };
 
-  tab.getRecentFileOptions = async (maxFiles = config.maxRecentFiles, onOpenHandle = null) => {
+  tab.getRecentFileOptions = async (maxFiles = config.recentFilesMax, onOpenHandle = null) => {
     const handles = await getRecentFileHandles();
     return handles.slice(0, maxFiles).map((handleOrPath) => {
       const fileName = getFileName(handleOrPath);

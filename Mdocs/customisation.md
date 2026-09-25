@@ -24,9 +24,14 @@ The defaults live in `src/config-defaults.js`, which is the reference for every 
 
 The **Settings** panel has an *Open config.json* button that opens the file for
 the installation in use, so the paths above rarely need to be typed. In the
-desktop build it creates the file from a starter holding the current defaults
-when it does not exist yet — the system cannot open a file that is not there —
-and hands it to whatever application opens `.json`. In the web build the file is
+desktop build it creates the file when it does not exist yet — the system cannot
+open a file that is not there — and hands it to whatever application opens
+`.json`. The file it writes is the **complete** set of defaults, directive
+registry included: JSON takes no comments, so a full file is the only way for it
+to document itself. Nothing changes until a value is edited. The counterpart is
+that those values are pinned — a default changed in a later version will not
+reach a file that names it — so deleting a key is how you go back to following
+the default. In the web build the file is
 served with the application and cannot be written from the browser: it opens in
 a tab for reading, and changing it means editing the file on the server.
 

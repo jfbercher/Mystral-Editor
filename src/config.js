@@ -122,16 +122,21 @@ function _applyConfigData(data) {
 // ---------------------------------------------------------------------------
 
 /**
- * A starter config.json, written when the user asks to open one that does not
- * exist yet. The values are the current defaults, so the file changes nothing
- * until it is edited -- JSON has no comments, so a few real keys are the only
- * way to show the shape.
+ * The config.json written when the user asks to open one that does not exist.
+ *
+ * It is the complete set of defaults, including the directive registry: JSON
+ * takes no comments, so a full file is the only way for it to document itself
+ * -- every key that can be set is there, with the value the application would
+ * use anyway, and the file changes nothing until it is edited.
+ *
+ * The cost is that it pins those values: a default changed in a later version
+ * will not reach anyone holding a file that names it. Deleting a key is how you
+ * go back to following the default.
  */
-const STARTER_CONFIG = {
-  autoSaveEnabled: true,
-  maxRecentFiles: 10,
-  pyodide: { resetCwdOnRun: false, keys: { run: "Shift-Enter" } },
-};
+const starterConfig = () => ({
+  ...structuredClone(DEFAULT_CONFIG),
+  data_directives: structuredClone(BUILTIN_DIRECTIVES),
+});
 
 /**
  * Open the configuration file of the platform in use.
@@ -162,7 +167,7 @@ export async function openConfigFile() {
   let created = false;
   if (!(await exists(path))) {
     try { await mkdir(dir, { recursive: true }); } catch { /* already there */ }
-    await writeTextFile(path, JSON.stringify(STARTER_CONFIG, null, 2) + "\n");
+    await writeTextFile(path, JSON.stringify(starterConfig(), null, 2) + "\n");
     created = true;
   }
   await openPath(path);
