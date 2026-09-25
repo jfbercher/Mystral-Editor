@@ -82,6 +82,90 @@ sys.stdout = _JsBridge("stdout")
 sys.stderr = _JsBridge("stderr")
 sys._mystral_env = True
 `);
+      // Namespace introspection, used by the variable inspector and by %whos.
+      // Every name starts with "_" so that a soft restart spares it.
+      pyodide.runPython(`
+import sys as _sys_vi, json as _json_vi
+
+_MYSTRAL_HIDDEN_TYPES = ('module', 'function', 'builtin_function_or_method',
+                         'method', 'type', 'ufunc', '_Feature', 'classmethod',
+                         'staticmethod', 'JsProxy')
+
+def _mystral_size(x):
+    # sys.getsizeof lies about arrays and frames: it reports the wrapper, not
+    # the buffer. Ask the object itself when it knows better.
+    t = type(x).__name__
+    try:
+        if t in ('ndarray', 'Series'):
+            return int(x.nbytes)
+        if t == 'DataFrame':
+            return int(x.memory_usage(deep=False).sum())
+        return _sys_vi.getsizeof(x)
+    except Exception:
+        return -1
+
+def _mystral_shape(x):
+    try:
+        s = getattr(x, 'shape', None)
+        if s is not None:
+            return ' x '.join(str(d) for d in s)
+        if isinstance(x, (list, tuple, dict, set, frozenset, str, bytes)):
+            return str(len(x))
+    except Exception:
+        pass
+    return ''
+
+def _mystral_preview(x, limit=200):
+    try:
+        text = repr(x)
+    except Exception as e:
+        return '<unrepresentable: %s>' % type(e).__name__
+    text = ' '.join(text.split())
+    return text if len(text) <= limit else text[:limit - 3] + '...'
+
+def _mystral_varlist(include_all=False):
+    out = []
+    for _k, _v in list(globals().items()):
+        if _k.startswith('_'):
+            continue
+        t = type(_v).__name__
+        if not include_all and t in _MYSTRAL_HIDDEN_TYPES:
+            continue
+        out.append({'name': _k, 'type': t, 'size': _mystral_size(_v),
+                    'shape': _mystral_shape(_v), 'preview': _mystral_preview(_v)})
+    out.sort(key=lambda d: d['name'].lower())
+    return out
+
+def _mystral_varlist_json(include_all=False):
+    return _json_vi.dumps(_mystral_varlist(include_all))
+
+def _mystral_human_size(n):
+    if n is None or n < 0:
+        return '?'
+    for unit in ('B', 'kB', 'MB', 'GB'):
+        if n < 1024 or unit == 'GB':
+            return ('%d %s' % (n, unit)) if unit == 'B' else ('%.1f %s' % (n, unit))
+        n /= 1024.0
+
+def _mystral_whos(include_all=False):
+    rows = _mystral_varlist(include_all)
+    if not rows:
+        print('No variables defined.')
+        return
+    head = ('Variable', 'Type', 'Size', 'Shape', 'Value')
+    cells = [head] + [(r['name'], r['type'], _mystral_human_size(r['size']),
+                       r['shape'], r['preview'][:60]) for r in rows]
+    widths = [max(len(c[i]) for c in cells) for i in range(len(head))]
+    for i, row in enumerate(cells):
+        print('  '.join(v.ljust(widths[j]) for j, v in enumerate(row)).rstrip())
+        if i == 0:
+            print('  '.join('-' * w for w in widths))
+
+def _mystral_who(include_all=False):
+    names = [r['name'] for r in _mystral_varlist(include_all)]
+    print('  '.join(names) if names else 'No variables defined.')
+`);
+
       pyodide.runPython(`import matplotlib\nmatplotlib.use("agg")`);
 
       // Préparer /local dans MEMFS et y positionner le CWD initial
@@ -415,6 +499,42 @@ const _cellExecutedListeners = [];
 /** Register a callback invoked after every successful code-cell run. */
 export function onCellExecuted(fn) { _cellExecutedListeners.push(fn); }
 
+/**
+ * Expand the two IPython-style magics this runtime understands.
+ *
+ * Pyodide runs plain Python: "%whos" is a syntax error there. Rewriting the
+ * line into a call keeps the familiar spelling without pretending to be
+ * IPython -- only these two are recognised, anything else is left to fail on
+ * its own terms rather than being silently swallowed.
+ *   %whos [-a]   tabular listing      %who [-a]   names only
+ * With -a (or "all"), modules, functions and classes are listed too.
+ */
+export function expandMystralMagics(code) {
+  return code.replace(
+    /^([ \t]*)%(whos|who)([ \t]+[-\w]+)?[ \t]*$/gm,
+    (_m, indent, name, arg) => {
+      const all = /^[ \t]*(-a|--all|all)$/.test(arg ?? "") ? "True" : "False";
+      return `${indent}_mystral_${name}(${all})`;
+    },
+  );
+}
+
+/**
+ * The namespace as the inspector shows it: one row per user variable.
+ * Returns null when no kernel has been started yet -- there is nothing to
+ * inspect, which is not the same as an empty namespace.
+ */
+export async function inspectNamespace(includeAll = false) {
+  if (!pyodideInstance) return null;
+  try {
+    const json = pyodideInstance.runPython(`_mystral_varlist_json(${includeAll ? "True" : "False"})`);
+    return JSON.parse(json);
+  } catch (e) {
+    console.warn("[vars] could not read the namespace", e);
+    return [];
+  }
+}
+
 async function executePython(code, packages, onStream = null) {
   const pyodide = await loadPyodideRuntime(packages);
   const capture = { stdout: "", stderr: "", onWrite: onStream };
@@ -437,7 +557,7 @@ async function executePython(code, packages, onStream = null) {
   let returnValue = null;
 
   try {
-    const value = await pyodide.runPythonAsync(code);
+    const value = await pyodide.runPythonAsync(expandMystralMagics(code));
     if (value !== undefined && value !== null) returnValue = String(value);
   } catch (err) {
     error = String(err);
@@ -614,6 +734,7 @@ function ensureStyles() {
 .pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}
 .pyodide-btn-runall{background:#0969da}
 .pyodide-btn-clearall{font-weight:600}
+.pyodide-btn-vars{font-weight:600}
 .pyodide-btn-restart{color:#cf222e;font-weight:600}
 .pyodide-btn-insert{color:#6639ba;font-weight:600}
 .pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
@@ -718,13 +839,23 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const clearBtn   = mkBtn("pyodide-btn-clear",   "Clear");
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
   const clearAllBtn = mkBtn("pyodide-btn-clearall", "Clear All");
+  const varsBtn     = mkBtn("pyodide-btn-vars",     "Vars");
+  varsBtn.title = "List the variables currently defined (\u2325V) \u2014 or run %whos in a cell";
+  // Declared here, before the keymap that calls it. Imported on demand: the
+  // window needs this module and this module needs the window, and a static
+  // import each way would be a cycle.
+  const openVarInspector = async () => {
+    const { showVarInspector } = await import("./varInspectorUi.js");
+    await showVarInspector();
+  };
+  varsBtn.addEventListener("click", openVarInspector);
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
   const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
   insertBtn.title = "Insert an empty code-cell below (⌘⇧↵ / Ctrl+Shift+Enter)";
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
   deleteBtn.title = "Delete this cell";
 
-  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, restartBtn, insertBtn, deleteBtn);
+  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -868,6 +999,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
       { key: "Mod-Shift-Enter", run: (view) => { _syncToEditor(view); insertBtn.click(); return true; } },
       ...defaultKeymap,
       ...historyKeymap,
+      { key: "Alt-v", run: () => { openVarInspector(); return true; } },
       { key: "ArrowDown",   run: navigateToCell(+1) },
       { key: "ArrowUp",     run: navigateToCell(-1) },
     ]),
