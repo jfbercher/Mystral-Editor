@@ -1,4 +1,22 @@
 import { BUILTIN_DIRECTIVES, DEFAULT_CONFIG } from "./config-defaults.js";
+// Statically imported, deliberately, where everything else in this codebase
+// loads Tauri lazily.
+//
+// These modules cannot be code-split anyway: @tauri-apps/api/path is imported
+// statically by plugin-fs, and core/event/window by webview and window, so the
+// bundler reports every dynamic import of them as ineffective and keeps them in
+// the main chunk. What the dynamic import did change was the ORDER of the
+// module bodies inside that chunk, and this file runs the very first thing the
+// application does. When nothing else pulled path.js in eagerly, its body was
+// emitted after the code calling it, and appConfigDir() read BaseDirectory
+// before the enum existed -- "undefined is not an object" at start-up, in the
+// built app only, where the dev server was fine.
+//
+// A static import states the dependency instead of hoping for an order. In a
+// browser these modules only define functions; nothing touches Tauri until one
+// is called, which isTauri guards.
+import { appConfigDir, join } from "@tauri-apps/api/path";
+import { readTextFile, exists, writeTextFile, mkdir } from "@tauri-apps/plugin-fs";
 
 /**
  * Runtime configuration object — starts from defaults and is mutated by loadConfig().
@@ -77,9 +95,6 @@ async function loadConfigWeb() {
 // Place config.json and/or custom.css there to customise the app.
 // ---------------------------------------------------------------------------
 async function loadConfigTauri() {
-  const { appConfigDir, join } = await import("@tauri-apps/api/path");
-  const { readTextFile, exists } = await import("@tauri-apps/plugin-fs");
-
   const dir = await appConfigDir();
 
   // config.json
@@ -158,8 +173,8 @@ export async function openConfigFile() {
     return { path: url, created: false, editable: false };
   }
 
-  const { appConfigDir, join } = await import("@tauri-apps/api/path");
-  const { exists, writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  // The opener is still lazy: it is only reached by a click, long after
+  // everything has been evaluated.
   const { openPath } = await import("@tauri-apps/plugin-opener");
 
   const dir = await appConfigDir();
@@ -180,10 +195,18 @@ export async function openConfigFile() {
  */
 export function loadConfig() {
   ready ??= (async () => {
-    if (isTauri) {
-      await loadConfigTauri();
-    } else {
-      await loadConfigWeb();
+    // Never reject. app.js awaits this before building the first tab, so a
+    // configuration that cannot be read used to take the whole application
+    // down with it -- an empty window and nothing in the interface to say why.
+    // Defaults are a working application; a warning is enough.
+    try {
+      if (isTauri) {
+        await loadConfigTauri();
+      } else {
+        await loadConfigWeb();
+      }
+    } catch (err) {
+      console.error("Configuration could not be loaded; using defaults.", err);
     }
     return config;
   })();
