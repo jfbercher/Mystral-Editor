@@ -1,7 +1,3 @@
----
-numbering:
-  headings: true
----
 # Files Added in This Fork (vs. `upstream/main`)
 
 This document lists every file that exists in this fork ("Mystral Editor") but not in the upstream `antmicro/myst-editor` repository, based on `git diff --name-status upstream/main...HEAD` (merge-base comparison, so it reflects only what this fork introduced, ignoring unrelated upstream-only changes since the fork point).
