@@ -1,5 +1,5 @@
 // Gère l'état et la manipulation d'un onglet ou d'un fichier ouvert.
-import { get, set, del } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
+import { get, set, del } from "idb-keyval";
 import { applyThemeAtStartup, applyCodeMirrorTheme } from './theme.js';
 import { showStatsPopup } from './stats.js';
 import { config } from "../../config.js";

@@ -1,4 +1,4 @@
-import { get, set, del } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
+import { get, set, del } from "idb-keyval";
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { config } from "../../config.js";
 import { signal } from '@preact/signals';

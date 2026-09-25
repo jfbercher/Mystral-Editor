@@ -45,6 +45,7 @@
     "dompurify": "^3.2.6",
     "events": "^3.3.0",
     "highlight.js": "^11.11.1",
+    "idb-keyval": "^6.2.2",
     "imurmurhash": "^0.1.4",
     "js-yaml": "^5.2.3",
     "katex": "^0.18.1",

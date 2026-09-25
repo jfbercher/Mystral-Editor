@@ -3,7 +3,7 @@
  * Tauri: sidecar file co-located with .md  (<name>.myst.cache.json)
  * Web:   IndexedDB entry keyed by stable fileKey (workspaceName_fileName)
  */
-import { get as idbGet, set as idbSet } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
+import { get as idbGet, set as idbSet } from "idb-keyval";
 import { isTauri, workingDirectory } from "./fs.js";
 import {
   cellCache,

@@ -1,4 +1,4 @@
-import { get, set, del } from "https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm";
+import { get, set, del } from "idb-keyval";
 
 function commentsKey(filePath) {
   return `comments:${filePath}`;

@@ -1,7 +1,7 @@
 // Manages the application of themes (Light / Dark) 
 // in the global document as well as in the Shadow DOM of editor instances.
 
-import { get, set } from 'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm';
+import { get, set } from "idb-keyval";
 import { darkTheme, lightTheme } from "../../MystEditor.jsx";
 import { getCustomCss } from "../../config.js"
 
