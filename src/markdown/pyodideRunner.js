@@ -1226,6 +1226,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     // nothing to say about this run, and would end up glued to its timing.
     setStatus(statusText, "");
 
+    // Let the browser paint the running state before the interpreter seizes
+    // the thread. Pyodide runs here, on the main thread, so from the first
+    // line of Python until the last nothing is rendered: without this the
+    // class would be added and removed between two frames and the tint would
+    // never appear. Two frames, because the first callback still runs before
+    // the paint it belongs to.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
     try {
       if (loadState === "idle") {
         loadState = "loading";
