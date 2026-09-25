@@ -16,6 +16,7 @@ import frontmatterCss from "./styles/frontmatter.css?inline";
 import footnotesCss from "./styles/footnotes.css?inline";
 import bibliographyCss from "./styles/biblio.css?inline";
 import editorTabsCss from "./styles/editor-tabs.css?inline";
+import pyodideCellsCss from "./styles/pyodide-cells.css?inline";
 import katexCss from "katex/dist/katex.min.css?inline";
 
 // WorkingDirectory
@@ -33,6 +34,7 @@ const katexStyle = localUtils.makeStyleSheet(katexCssPlus);
 const editorTabsStyle = localUtils.makeStyleSheet(editorTabsCss);
 const footnotesStyle = localUtils.makeStyleSheet(footnotesCss);
 const bibliographyStyle = localUtils.makeStyleSheet(bibliographyCss);
+const pyodideCellsStyle = localUtils.makeStyleSheet(pyodideCellsCss);
 
 const usercolors = ["#30bced", "#60c771", "#e6aa3a", "#cbb63e", "#ee6352", "#9ac2c9", "#8acb88", "#14b2c4"];
 const urlParams = new URLSearchParams(window.location.search);
@@ -372,7 +374,7 @@ export function mountEditor(mnt_options) {
             }
           });
       },
-      additionalStyles: [codeMirrorStyle, katexStyle, previewStyle, frontmatterStyle, footnotesStyle, bibliographyStyle],
+      additionalStyles: [codeMirrorStyle, katexStyle, previewStyle, frontmatterStyle, footnotesStyle, bibliographyStyle, pyodideCellsStyle],
       /*mapUrl: (tag, url) => {
             if (tag !== "img") return url;
             

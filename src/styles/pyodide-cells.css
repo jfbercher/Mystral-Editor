@@ -1,0 +1,40 @@
+/*
+ * Chrome of the executable code cells (:::{code-cell}) and of the widgets
+ * their output may contain.
+ *
+ * Adopted by the editor alongside the other sheets rather than injected as a
+ * <style>: the preview lives in a shadow root, which document styles do not
+ * cross, and an adopted sheet is also what the HTML export serialises.
+ *
+ * Colours come from the --pyodide-* variables, documented in
+ * Mdocs/myst-editor-css-variables.md.
+ */
+.pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;width:100%;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-radius:6px;overflow:hidden;margin:1.25rem 0;background:var(--pyodide-cell-bg,#f2f6fc);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
+.pyodide-header,.pyodide-status-bar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--pyodide-cell-bg,#f2f6fc);filter:brightness(0.97);border-bottom:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));gap:.5rem}
+.pyodide-status-bar{border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-bottom:0;min-height:1.6rem;flex-wrap:wrap;row-gap:.15rem}
+/* While a cell runs, redefining --pyodide-cell-bg on the wrapper tints the
+   whole cell at once: header, editor and status bar all read that variable. */
+.pyodide-wrapper.pyodide-running{--pyodide-cell-bg:var(--pyodide-cell-running-bg,#fdeeec)}
+.pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
+.pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
+.pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
+.pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}
+.pyodide-btn-runall{background:#0969da}
+.pyodide-btn-clearall{font-weight:600}
+.pyodide-btn-vars{font-weight:600}
+.pyodide-btn-restart{color:#cf222e;font-weight:600}
+.pyodide-btn-insert{color:#6639ba;font-weight:600}
+.pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
+.pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
+.pyodide-editor-row{display:flex;position:relative;width:100%}
+.pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
+.pyodide-output{min-height:2.5rem;max-height:25rem;overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
+.pyodide-output[hidden]{display:none}
+.pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
+.pyodide-error,.pyodide-stderr{color:#cf222e}
+.pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0}
+.pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
+.pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
+.eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
+.pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}
