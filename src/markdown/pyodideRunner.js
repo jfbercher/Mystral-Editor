@@ -1659,7 +1659,13 @@ for _n, _e in _data.items():
             _ns_target[_n] = _cp.loads(_b64.b64decode(_e['data']))
         _ok.append(_n)
     except Exception as _err:
-        _failed[_n] = type(_err).__name__ + ': ' + str(_err)
+        # An import that fails here is not lost data: the module was installed
+        # or written by this document's own cells, which have not run yet in
+        # this fresh runtime. Running them brings it back. The same goes for an
+        # object whose class lives in such a module. That is a note, not the
+        # alarm raised for a value that really could not be rebuilt.
+        _kind = 'import' if isinstance(_err, ImportError) else 'error'
+        _failed[_n] = {'reason': type(_err).__name__ + ': ' + str(_err), 'kind': _kind}
 
 # cloudpickle rebuilds a function with a private copy of the globals it reads,
 # so a restored function stops following the namespace it came from: after a
@@ -1688,7 +1694,7 @@ for _n_rl in _ok:
 
 _report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked,
                        'never_saved': _never_saved})
-for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_never_saved', '_cp', '_b64', '_json', '_il',
+for _k in ['_data', '_n', '_e', '_err', '_kind', '_ok', '_failed', '_never_saved', '_cp', '_b64', '_json', '_il',
            '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl',
            '_ns_target']:
     globals().pop(_k, None)
@@ -1707,14 +1713,29 @@ _report
   // for "js" (an unpicklable JsProxy). It is plumbing the bootstrap rebinds on
   // its own, so it is not a variable the user lost.
   for (const name of RUNTIME_GLOBALS) delete failed[name];
-  const failedNames = Object.keys(failed);
-  logNamespaceEvent("restore", { added: ok, failed: failedNames, space });
-  if (failedNames.length) {
-    for (const [name, reason] of Object.entries(failed)) {
-      console.warn(`[namespace] could not restore "${name}": ${reason}`);
-    }
+
+  const entries = Object.entries(failed).map(([name, info]) =>
+    // Sidecars written before the reason carried a kind stored a bare string.
+    typeof info === "string" ? [name, { reason: info, kind: "error" }] : [name, info],
+  );
+  const missingImports = entries.filter(([, i]) => i.kind === "import");
+  const reallyLost = entries.filter(([, i]) => i.kind !== "import");
+
+  logNamespaceEvent("restore", { added: ok, failed: entries.map(([n]) => n), space });
+
+  for (const [name, info] of entries) {
+    console.warn(`[namespace] could not restore "${name}": ${info.reason}`);
+  }
+  if (missingImports.length) {
+    console.info(
+      `[namespace] waiting on this document's own imports: ${missingImports.map(([n]) => n).join(", ")}` +
+        " — running the cells that install or define them brings them back.",
+    );
+  }
+  if (reallyLost.length) {
     showToast(
-      `${failedNames.length} variable(s) could not be restored from the saved session: ${failedNames.join(", ")}. Re-run the cells that define them.`,
+      `${reallyLost.length} variable(s) could not be restored from the saved session: ` +
+        `${reallyLost.map(([n]) => n).join(", ")}. Re-run the cells that define them.`,
       "error",
       0,
     );
