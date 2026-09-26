@@ -123,9 +123,13 @@ def _mystral_preview(x, limit=200):
     text = ' '.join(text.split())
     return text if len(text) <= limit else text[:limit - 3] + '...'
 
-def _mystral_varlist(include_all=False):
+def _mystral_varlist(include_all=False, ns=None):
+    # ns is the namespace to look at. Defaulting to globals() here means
+    # __main__, since this function is defined there -- which is exactly the
+    # shared namespace, so an unqualified call keeps its old meaning.
+    ns = globals() if ns is None else ns
     out = []
-    for _k, _v in list(globals().items()):
+    for _k, _v in list(ns.items()):
         if _k.startswith('_'):
             continue
         t = type(_v).__name__
@@ -136,8 +140,8 @@ def _mystral_varlist(include_all=False):
     out.sort(key=lambda d: d['name'].lower())
     return out
 
-def _mystral_varlist_json(include_all=False):
-    return _json_vi.dumps(_mystral_varlist(include_all))
+def _mystral_varlist_json(include_all=False, ns=None):
+    return _json_vi.dumps(_mystral_varlist(include_all, ns))
 
 def _mystral_human_size(n):
     if n is None or n < 0:
@@ -147,8 +151,8 @@ def _mystral_human_size(n):
             return ('%d %s' % (n, unit)) if unit == 'B' else ('%.1f %s' % (n, unit))
         n /= 1024.0
 
-def _mystral_whos(include_all=False):
-    rows = _mystral_varlist(include_all)
+def _mystral_whos(include_all=False, ns=None):
+    rows = _mystral_varlist(include_all, ns)
     if not rows:
         print('No variables defined.')
         return
@@ -161,25 +165,26 @@ def _mystral_whos(include_all=False):
         if i == 0:
             print('  '.join('-' * w for w in widths))
 
-def _mystral_delete(names, unload=False):
+def _mystral_delete(names, unload=False, ns=None):
     # Removing the name is all that is needed for data. For a module, dropping
     # it from sys.modules too is what actually lets it be re-imported fresh --
     # but any object still referencing it keeps the old module alive, so this
     # frees memory only when nothing else holds on.
     import types as _t_del
+    ns = globals() if ns is None else ns
     removed = []
     for _n_del in names:
-        if _n_del not in globals():
+        if _n_del not in ns:
             continue
-        _v_del = globals()[_n_del]
-        del globals()[_n_del]
+        _v_del = ns[_n_del]
+        del ns[_n_del]
         removed.append(_n_del)
         if unload and isinstance(_v_del, _t_del.ModuleType):
             _sys_vi.modules.pop(getattr(_v_del, '__name__', ''), None)
     return _json_vi.dumps(removed)
 
-def _mystral_who(include_all=False):
-    names = [r['name'] for r in _mystral_varlist(include_all)]
+def _mystral_who(include_all=False, ns=None):
+    names = [r['name'] for r in _mystral_varlist(include_all, ns)]
     print('  '.join(names) if names else 'No variables defined.')
 `);
 
@@ -319,17 +324,23 @@ export function getNamespace(key = SHARED_SPACE, pyodide = pyodideInstance) {
   pyodide.globals.set("_ns_module_name", spaceModuleName(key));
   const ns = pyodide.runPython(`
 import sys as _ns_sys, io as _ns_io, js as _ns_js
-_ns_created = {
+# Everything the bootstrap installed under a leading underscore comes along:
+# the introspection helpers behind %whos, the jedi completion, micropip. They
+# are hidden from the variable list and spared by a restart wherever they live,
+# so a cell finds the same toolbox in any namespace.
+_ns_created = {_k: _v for _k, _v in globals().items()
+               if _k.startswith("_") and not _k.startswith("__")}
+_ns_created.update({
     "__name__": _ns_module_name,
     "__doc__": None,
     "__package__": None,
     "__builtins__": __builtins__,
     "sys": _ns_sys, "io": _ns_io, "js": _ns_js,
-}
+})
 _ns_created
 `);
   pyodide.runPython(
-    "for _k in ['_ns_module_name', '_ns_created', '_ns_sys', '_ns_io', '_ns_js']:\n"
+    "for _k in ['_ns_module_name', '_ns_created', '_ns_sys', '_ns_io', '_ns_js', '_v']:\n"
     + "    globals().pop(_k, None)\n"
     + "globals().pop('_k', None)\n"
   );
@@ -645,7 +656,9 @@ export function expandMystralMagics(code) {
     /^([ \t]*)%(whos|who)([ \t]+[-\w]+)?[ \t]*$/gm,
     (_m, indent, name, arg) => {
       const all = /^[ \t]*(-a|--all|all)$/.test(arg ?? "") ? "True" : "False";
-      return `${indent}_mystral_${name}(${all})`;
+      // globals() is the cell's own namespace, whichever it is, so the
+      // magic tells the truth in an isolated document as in a shared one.
+      return `${indent}_mystral_${name}(${all}, globals())`;
     },
   );
 }
@@ -655,10 +668,12 @@ export function expandMystralMagics(code) {
  * Returns null when no kernel has been started yet -- there is nothing to
  * inspect, which is not the same as an empty namespace.
  */
-export async function inspectNamespace(includeAll = false) {
+export async function inspectNamespace(includeAll = false, space = SHARED_SPACE) {
   if (!pyodideInstance) return null;
   try {
-    const json = pyodideInstance.runPython(`_mystral_varlist_json(${includeAll ? "True" : "False"})`);
+    pyodideInstance.globals.set("_ns_target", getNamespace(space));
+    const json = pyodideInstance.runPython(`_mystral_varlist_json(${includeAll ? "True" : "False"}, _ns_target)`);
+    pyodideInstance.runPython("globals().pop('_ns_target', None)");
     return JSON.parse(json);
   } catch (e) {
     console.warn("[vars] could not read the namespace", e);
@@ -672,14 +687,15 @@ export async function inspectNamespace(includeAll = false) {
  * @param {boolean} unloadModules  also drop modules from sys.modules
  * @returns {Promise<string[]>} the names actually removed
  */
-export async function deleteVariables(names, { unloadModules = false } = {}) {
+export async function deleteVariables(names, { unloadModules = false, space = SHARED_SPACE } = {}) {
   if (!pyodideInstance || !names.length) return [];
   pyodideInstance.globals.set("_mystral_del_json", JSON.stringify(names));
+  pyodideInstance.globals.set("_ns_target", getNamespace(space));
   const removed = JSON.parse(pyodideInstance.runPython(
-    `_mystral_delete(_json_vi.loads(_mystral_del_json), ${unloadModules ? "True" : "False"})`,
+    `_mystral_delete(_json_vi.loads(_mystral_del_json), ${unloadModules ? "True" : "False"}, _ns_target)`,
   ));
-  pyodideInstance.runPython("globals().pop('_mystral_del_json', None)");
-  logNamespaceEvent("delete", { removed });
+  pyodideInstance.runPython("globals().pop('_mystral_del_json', None); globals().pop('_ns_target', None)");
+  logNamespaceEvent("delete", { removed, space });
   // {eval} expressions may have been reading what just went away.
   _cellExecutedListeners.forEach((fn) => fn());
   return removed;
@@ -1486,15 +1502,16 @@ export function isPyodideReady() { return pyodideInstance !== null; }
  * Serialize all user-facing globals to cloudpickle base64.
  * Returns a plain JS object suitable for JSON serialization.
  */
-export async function snapshotNamespace() {
+export async function snapshotNamespace(space = SHARED_SPACE) {
   const pyodide = await loadPyodideRuntime();
+  pyodide.globals.set("_ns_target", getNamespace(space, pyodide));
   const result = await pyodide.runPythonAsync(`
 import cloudpickle as _cp, base64 as _b64, io as _io, json as _json, types as _types
 _skip = frozenset({"__name__", "__doc__", "__package__", "__loader__",
                    "__spec__", "__builtins__", "__annotations__"}
                   | set(${JSON.stringify(RUNTIME_GLOBALS)}))
 _out = {}
-for _n, _v in list(globals().items()):
+for _n, _v in list(_ns_target.items()):
     if _n.startswith('_') or _n in _skip:
         continue
     # A module is not user data. cloudpickle stores it as a reference whose
@@ -1510,11 +1527,16 @@ for _n, _v in list(globals().items()):
         _out[_n] = {"data": _b64.b64encode(_buf.getvalue()).decode(), "type": type(_v).__name__}
     except Exception as _e:
         _out[_n] = {"skipped": True, "reason": str(_e)}
-_json.dumps(_out)
+_snap_json = _json.dumps(_out)
+for _k in ['_skip', '_out', '_n', '_v', '_buf', '_e', '_cp', '_b64', '_io', '_json',
+           '_types', '_ns_target']:
+    globals().pop(_k, None)
+globals().pop('_k', None)
+_snap_json
 `);
   const snapshot = JSON.parse(result);
   const skipped = Object.entries(snapshot).filter(([, e]) => e.skipped).map(([n]) => n);
-  logNamespaceEvent("snapshot", { saved: Object.keys(snapshot).length, failed: skipped });
+  logNamespaceEvent("snapshot", { saved: Object.keys(snapshot).length, failed: skipped, space });
   if (skipped.length) {
     console.warn(`[namespace] not persisted (unpicklable): ${skipped.join(", ")}`);
   }
@@ -1525,7 +1547,7 @@ _json.dumps(_out)
  * Restore a namespace snapshot produced by snapshotNamespace().
  * @param {Object} snapshot  — plain JS object from sidecar JSON
  */
-export async function restoreNamespace(snapshot) {
+export async function restoreNamespace(snapshot, space = SHARED_SPACE) {
   if (!snapshot || Object.keys(snapshot).length === 0) return;
   const pyodide = await loadPyodideRuntime();
 
@@ -1546,6 +1568,7 @@ export async function restoreNamespace(snapshot) {
   }
 
   pyodide.globals.set('_restore_data_json', JSON.stringify(snapshot));
+  pyodide.globals.set('_ns_target', getNamespace(space, pyodide));
   // Failures used to be swallowed here, so a variable that could not be
   // unpickled simply ceased to exist, with nothing said anywhere. Collect them
   // instead and report them: silent data loss is the one outcome to rule out.
@@ -1559,9 +1582,9 @@ for _n, _e in _data.items():
         continue
     try:
         if 'module' in _e:
-            globals()[_n] = _il.import_module(_e['module'])
+            _ns_target[_n] = _il.import_module(_e['module'])
         else:
-            globals()[_n] = _cp.loads(_b64.b64decode(_e['data']))
+            _ns_target[_n] = _cp.loads(_b64.b64decode(_e['data']))
         _ok.append(_n)
     except Exception as _err:
         _failed[_n] = type(_err).__name__ + ': ' + str(_err)
@@ -1577,10 +1600,10 @@ for _n, _e in _data.items():
 import types as _types_rl
 _relinked = 0
 for _n_rl in _ok:
-    _f_rl = globals().get(_n_rl)
-    if not isinstance(_f_rl, _types_rl.FunctionType) or _f_rl.__globals__ is globals():
+    _f_rl = _ns_target.get(_n_rl)
+    if not isinstance(_f_rl, _types_rl.FunctionType) or _f_rl.__globals__ is _ns_target:
         continue
-    _g_rl = _types_rl.FunctionType(_f_rl.__code__, globals(), _f_rl.__name__,
+    _g_rl = _types_rl.FunctionType(_f_rl.__code__, _ns_target, _f_rl.__name__,
                                    _f_rl.__defaults__, _f_rl.__closure__)
     _g_rl.__dict__.update(_f_rl.__dict__)
     _g_rl.__kwdefaults__ = _f_rl.__kwdefaults__
@@ -1588,12 +1611,13 @@ for _n_rl in _ok:
     _g_rl.__qualname__ = _f_rl.__qualname__
     _g_rl.__doc__ = _f_rl.__doc__
     _g_rl.__module__ = _f_rl.__module__
-    globals()[_n_rl] = _g_rl
+    _ns_target[_n_rl] = _g_rl
     _relinked += 1
 
 _report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked})
 for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_il',
-           '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl']:
+           '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl',
+           '_ns_target']:
     globals().pop(_k, None)
 globals().pop('_k', None)   # the cleanup loop's own variable
 _report
@@ -1604,7 +1628,7 @@ _report
   // its own, so it is not a variable the user lost.
   for (const name of RUNTIME_GLOBALS) delete failed[name];
   const failedNames = Object.keys(failed);
-  logNamespaceEvent("restore", { added: ok, failed: failedNames });
+  logNamespaceEvent("restore", { added: ok, failed: failedNames, space });
   if (failedNames.length) {
     for (const [name, reason] of Object.entries(failed)) {
       console.warn(`[namespace] could not restore "${name}": ${reason}`);
