@@ -160,9 +160,10 @@ export class TextManager {
   /** @type {{ useCache: boolean, staleInputs: Set<string> } | null} */
   #renderPending = null;
 
-  constructor({ initialText, editorView, cache, options, userSettings, headings, cleanups }) {
+  constructor({ initialText, editorView, cache, options, userSettings, headings, outlineHeadings, cleanups }) {
 
     this.headings = headings;
+    this.outlineHeadings = outlineHeadings;
     this.text = signal(initialText.peek());
     this.lineMap = new Map();
     this.chunks = [];
@@ -626,6 +627,15 @@ export class TextManager {
     })(numberedHeadings);
     const headingMap = { byLine: headingByExpandedLine, active: numberingSectionsActive };
     const renderHeadingMap = { byLine: headingByLine, active: numberingSectionsActive };
+    // The outline shows what the document reads, numbers included. Assigned
+    // only when it differs, so the panel is not re-rendered on every keystroke.
+    if (this.outlineHeadings) {
+      const signature = JSON.stringify(numberedHeadings);
+      if (signature !== this._lastOutlineSignature) {
+        this._lastOutlineSignature = signature;
+        this.outlineHeadings.value = numberedHeadings;
+      }
+    }
 
     // Map (number|text) → pos, used by markdownHeadings.js to set id="hpos-{pos}"
     // on headings that have no explicit (label)= anchor, and by TocDirective for href.

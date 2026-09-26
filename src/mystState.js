@@ -322,6 +322,13 @@ export function createMystState(/** @type {typeof defaults} */ opts) {
     text: null,
     /** @type {Signal<{level: number, text: string, pos: number}[]>} */
     headings: signal([]),
+    /**
+     * The heading tree as the document reads, includes expanded and numbered.
+     * The outline displays this one; `headings` stays the editor's own tree,
+     * which is what section dragging writes back into.
+     * @type {Signal<{level: number, text: string, pos: number|string, number: string|null, included?: boolean}[]>}
+     */
+    outlineHeadings: signal([]),
     /** @type {Signal<{ src: string; error: Error } | null>} */
     error: signal(null),
     suggestMode: signal(false),

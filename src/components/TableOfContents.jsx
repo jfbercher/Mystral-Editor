@@ -66,6 +66,14 @@ const HeadingList = styled.div`
   .dragging {
     opacity: 0.4;
   }
+  .included > span {
+    font-style: italic;
+    opacity: 0.75;
+    cursor: default;
+  }
+  .included > span:hover {
+    text-decoration: none;
+  }
   .drop-before {
     box-shadow: inset 0 2px 0 0 var(--accent-dark, #06c);
   }
@@ -73,6 +81,21 @@ const HeadingList = styled.div`
     box-shadow: inset 0 -2px 0 0 var(--accent-dark, #06c);
   }
 `;
+
+/** The node of `nodes` sitting at that character offset, or null. */
+function findByPos(nodes, pos) {
+  for (const node of nodes) {
+    if (node.pos === pos) return node;
+    const found = findByPos(node.children ?? [], pos);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The same tree without numbers, for when section numbering is off. */
+function stripNumbers(nodes) {
+  return nodes.map((n) => ({ ...n, number: null, children: stripNumbers(n.children ?? []) }));
+}
 
 function findSiblingsArray(nodes, target, parentChildren = nodes) {
   for (const node of nodes) {
@@ -102,16 +125,24 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
 
   return (
     <li
-      draggable={!heading.isTitle}
-      className={[isDragged ? "dragging" : "", isDropBefore ? "drop-before" : "", isDropAfter ? "drop-after" : ""].filter(Boolean).join(" ")}
+      draggable={!heading.isTitle && !heading.included}
+      className={[
+        isDragged ? "dragging" : "",
+        isDropBefore ? "drop-before" : "",
+        isDropAfter ? "drop-after" : "",
+        heading.included ? "included" : "",
+      ].filter(Boolean).join(" ")}
       onDragStart={(ev) => {
-        if (heading.isTitle) return;
+        if (heading.isTitle || heading.included) return;
         ev.stopPropagation();
         ev.dataTransfer.effectAllowed = "move";
         ev.dataTransfer.setData("text/plain", heading.text); // requis par WebKit pour valider le drag
         setDragState({ dragged: heading, overNode: null, overPosition: null });
       }}
       onDragOver={(ev) => {
+        // An included heading is not in this document: it can be neither moved
+        // nor used as a landing place, since the move rewrites the text.
+        if (heading.included) return;
         if (!dragState.dragged || dragState.dragged === heading) return;
         ev.preventDefault();
         ev.stopPropagation();
@@ -124,6 +155,7 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
         ev.stopPropagation();
       }}
       onDrop={(ev) => {
+        if (heading.included) return;
         if (!dragState.dragged || dragState.dragged === heading) return;
         ev.preventDefault();
         ev.stopPropagation();
@@ -132,7 +164,12 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
       }}
       onDragEnd={() => setDragState({ dragged: null, overNode: null, overPosition: null })}
     >
-      <span title="Go to heading" data-heading-pos={heading.pos}>
+      <span
+        title={heading.included
+          ? "From an included file — shown for reference; it cannot be moved from here"
+          : "Go to heading"}
+        data-heading-pos={heading.included ? undefined : heading.pos}
+      >
         {heading.number ? `${heading.number} ` : ""}
         {heading.text}
       </span>
@@ -142,13 +179,21 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
 }
 
 export const TableOfContents = ({ compact = false }) => {
-  const { headings, editorView, options, text, userSettings } = useContext(MystState);
+  const { headings, outlineHeadings, editorView, options, text, userSettings } = useContext(MystState);
   const [dragState, setDragState] = useState({ dragged: null, overNode: null, overPosition: null });
 
   const numberingEnabled = userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
+  // The merged tree when there is one -- it is the document as it reads,
+  // includes and all, and it carries the numbers the rendered text shows.
+  // Falling back to the editor's own tree keeps a document without includes,
+  // or a first pass before any render, behaving exactly as before.
   const numberedHeadings = useMemo(
-    () => (numberingEnabled ? numberHeadings(headings.value) : headings.value),
-    [headings.value, numberingEnabled],
+    () => {
+      const merged = outlineHeadings?.value;
+      if (merged?.length) return numberingEnabled ? merged : stripNumbers(merged);
+      return numberingEnabled ? numberHeadings(headings.value) : headings.value;
+    },
+    [headings.value, outlineHeadings?.value, numberingEnabled],
   );
 
   function handleClick(ev) {
@@ -158,12 +203,24 @@ export const TableOfContents = ({ compact = false }) => {
   }
 
   function handleDrop(draggedNode, targetNode, position) {
+    // Last line of defence: the move rewrites the document's text, and neither
+    // of these exists in it.
+    if (draggedNode.included || targetNode.included) return;
+
+    // The panel displays the merged tree, while the move works on the editor's
+    // own: the nodes are different objects, and everything below compares by
+    // identity. They are paired by character offset, which is the same value
+    // in both trees for a heading of this document.
+    const dragged = findByPos(headings.value, draggedNode.pos);
+    const target = findByPos(headings.value, targetNode.pos);
+    if (!dragged || !target) return;
+
     // Restriction aux frères : refuse silencieusement si pas le même parent.
-    const draggedSiblings = findSiblingsArray(headings.value, draggedNode);
-    const targetSiblings = findSiblingsArray(headings.value, targetNode);
+    const draggedSiblings = findSiblingsArray(headings.value, dragged);
+    const targetSiblings = findSiblingsArray(headings.value, target);
     if (draggedSiblings !== targetSiblings) return;
 
-    const newText = moveSectionInText(draggedNode, targetNode, position, headings.value, text.text.value);
+    const newText = moveSectionInText(dragged, target, position, headings.value, text.text.value);
     editorView.value.dispatch({
       changes: { from: 0, to: editorView.value.state.doc.length, insert: newText },
     });
