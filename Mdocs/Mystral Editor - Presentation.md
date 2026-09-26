@@ -3,7 +3,7 @@ title: Mystral Editor
 subtitle: General presentation
 authors:
   - jfbercher
-date: 2026-09-19.
+date: 2026-09-19
 license: GPL-3.0-or-later
 github: https://github.com/jfbercher/Mystral-Editor
 bibliography: references.bib
@@ -38,7 +38,7 @@ math:
 
 ## Overview
 
-[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative **editing** in web applications, This project uses it to build a full-featured scientific authoring tool for local use.
+[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative **editing** in web applications, this fork uses it to build a full-featured scientific authoring tool for local use.
 
 
 MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
@@ -66,7 +66,7 @@ Mystral Editor retains and extends all upstream editor features:
 - **Diff view**: display changes relative to the document's initial state, with a discard-all option.
 - **Comments**: text hidden from the preview (lines starting with `%`).
 - **Document templates**: loadable from an external JSON file to speed up document creation.
-- **HTML / PDF export**: copy rendered HTML or export to PDF via toolbar buttons.
+- **HTML / PDF export**: copy rendered HTML or print to PDF from toolbar buttons. Kept in the web build; the desktop application hides them in favour of its own export menu, described below.
 - **Spell checker**: configurable Hunspell integration (language, dictionary path).
 - **Customization**: CodeMirror themes, Vim mode, scroll-past-last-line, CSS overrides via Shadow DOM.
 - **Custom transforms**: regular expressions turning syntax into arbitrary HTML (issue links, etc.).
@@ -94,11 +94,13 @@ This is the core contribution of Mystral Editor over upstream.
 
 ### Equations and Mathematics
 
-LaTeX equations are rendered via [KaTeX](https://katex.org/) et [markdown-it-texmath](https://github.com/goessner/markdown-it-texmath). Per-editor math macro maps are supported. Numbered equation blocks and cross-references (`{eq}`, `{numref}`) are resolved automatically.
+LaTeX equations are rendered via [KaTeX](https://katex.org/) and [markdown-it-texmath](https://github.com/goessner/markdown-it-texmath). Per-editor math macro maps are supported. Numbered equation blocks and cross-references (`{eq}`, `{numref}`) are resolved automatically.
 
 ### YAML Frontmatter
 
 A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor. A YAML language server can be activated via an external JSON schema for tooltips and autocompletion.
+
+An `extends:` key lets a document inherit its frontmatter from one or more shared YAML files, so that the settings common to a set of documents -- numbering, citation style, math macros, export entries -- are written once. Lists are combined, objects deep-merged, and the document's own values win. See [frontmatter-extends](frontmatter-extends.md).
 
 ### BibTeX Bibliography
 
@@ -111,9 +113,9 @@ A `.bib` file is associated with each tab. Citations are inserted with the `[@cl
 
 ### Numbering and Cross-References
 
-Figures, tables, equations and sections are numbered automatically. Labels are declared with the standard MyST syntax (`(label)=`). References (erences (`{ref}`, `{eq}`, `{numref}`) are resolved and their text updated dynamically. A popover preview shows the referenced element on link hover.
+Figures, tables, equations and sections are numbered automatically. Labels are declared with the standard MyST syntax (`(label)=`). References (`{ref}`, `{eq}`, `{numref}`) are resolved and their text updated dynamically. A popover preview shows the referenced element on link hover.
 
-Numbering can be enabled or disabled independently for each element type (via `config.json`).
+Numbering is enabled or disabled per element type in the document's own frontmatter, under `numbering:` (`headings`, `equations`, `figure`, …). `config.json` is where the *labels* live -- which directives are numbered and under what name -- through its `data_directives` table.
 
 ### Footnotes
 
@@ -192,6 +194,12 @@ See {ref}`fig:result` ([](#fig:result)) for details.
 
 The figure renders centered, with the automatic caption "Figure 1: Results for the experiment." The `{numref}` role resolves to the hyperlinked text "Figure 1". Tables follow the same pattern using the `list-table` directive with a `(tab:label)=` anchor above it.
 
+### Including Other Files
+
+An `{include}` directive inserts another file into the document, parsed as MyST -- a shared preamble, a chapter split across files, a set of exercises reused from one document to the next. What it pulls in is not a black box: its headings take their place in the outline and in the section numbering, its figures, tables and equations are numbered in reading order with the host's, and its labels can be referenced from the host and the host's from it. Part of a file can be selected by line range or by markers, and `:literal:` shows it as a code block instead of parsing it.
+
+An included file is read once per session, so editing it while the host document is open needs a reload of the editor to be seen. See [include](include.md).
+
 ## Python Executable Code Cells (Pyodide)
 
 Mystral Editor integrates [Pyodide](https://pyodide.org/) — a WebAssembly port of CPython — to support live, in-browser Python execution directly in the document.
@@ -213,17 +221,25 @@ Supported options:
 - `:linenos:` — show line numbers in the cell editor
 - `:tags: hide-input` — cell metadata (for future filtering)
 
-**Access to local-files** in read/write mode is supported -- restricted to the Working Directory with explicit permissions (web), and the same directory as the current file (Tauri local app)). 
+**Access to local-files** in read/write mode is supported -- restricted to the Working Directory with explicit permissions (web), and the same directory as the current file (Tauri local app).
 
-Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables.
+Each cell carries a toolbar acting on itself or on the whole document: Run, Clear, Run All, Clear All, Restart, and a **Vars** window listing what the namespace holds -- one row per variable with its type, memory footprint, shape and a short `repr`, with per-row deletion. The same information is available as text from inside a cell, with `%whos` and `%who`. Shortcuts are configurable in `config.json` under `pyodide.keys`.
+
+A `{eval}` role evaluates a single expression in the middle of a sentence: `` {eval}`2 + 2` `` renders as its value and follows the state of the session.
+
+**Which Python a document runs in** is chosen by the `python:` key of its frontmatter: `shared` (the default) for the namespace common to every document that asks for nothing else, `isolated` for one of its own, or a name for a namespace shared by the documents that give the same one -- several tabs that are chapters of one work, or a set of practicals. What is separated is the variables; imported modules, matplotlib's state and the working directory stay common to the one interpreter.
+
+Alongside a document the editor writes a sidecar file holding its cell outputs and a snapshot of its namespace, so reopening it shows the results without re-running everything and the variables come back.
+
+Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. [executable-content](executable-content.md) covers all of it.
 
 ## Document Organization and Navigation
 
 ### Table of Contents
 
-A collapsible, resizable left side panel displays a table of contents generated dynamically from document headings. When heading numbering is enabled, numbers appear in the panel. Clicking an entry scrolls both the editor and the preview to the corresponding section.
+A collapsible, resizable left side panel displays a table of contents generated dynamically from document headings. When heading numbering is enabled, numbers appear in the panel. Clicking an entry scrolls both the editor and the preview to the corresponding section. Headings coming from an included file appear there too, in their place in the numbering, shown in italics: they belong to another file, so they cannot be dragged, and clicking one scrolls the preview alone.
 
-A `:::{toc}` directive (aliases: `table-of-contents`, `contents`, `toctree`) can also insert a table of contents **inline inside the document body**. It supports an optional title argument, a `:depth:` option to limit heading levels, and a `:dropdown:` flag that wraps the TOC in a collapsible `<details>/<summary>` block. When heading numbering is active, section numbers are preserved in the inline TOC links.
+A `:::{toc}` directive (aliases: `table-of-contents`, `contents`, `toctree`) can also insert a table of contents **inline inside the document body**, where it is exported and printed with the rest. It supports an optional title argument, `:depth:` to limit the levels shown, `:context: section` to restrict the list to the section it is written in, and a `:dropdown:` flag that wraps it in a collapsible `<details>/<summary>` block. When heading numbering is active, section numbers are preserved in the inline TOC links. See [toc](toc.md).
 
 ### Drag-and-Drop Section Reordering
 
@@ -231,7 +247,7 @@ Document sections can be reordered directly from the table-of-contents panel by 
 
 ### Multi-Document Tabbed Editing
 
-Several documents can be open simultaneously in a tabbed interface. Each tab maintains its own state (file, scroll position, comments, bibliography, theme). Inactive tabs are suspended after a configurable timeout to limit memory use, then restored on reactivation.
+Several documents can be open simultaneously in a tabbed interface. Each tab maintains its own state (file, scroll position, comments, bibliography, theme). Tabs are reordered by drag and drop. Inactive tabs are suspended after a configurable timeout to limit memory use, then restored on reactivation.
 
 ### Section Folding
 
@@ -258,6 +274,8 @@ Key Tauri-specific features:
 - **External link handling**: links in the preview open in the system browser rather than the webview
 - **Webview zoom**: Cmd/Ctrl +/-/0 scales the entire UI
 - **Logging** via the Tauri logging plugin
+
+The desktop application also carries an **export menu**, which the web build cannot have since it shells out to [mystmd](https://mystmd.org): PDF, LaTeX and Word through `myst build`, an HTML export that writes out the rendered preview with the editor's stylesheets inlined, and the project-level `myst build` and `myst start` commands. When the folder has no `myst.yml`, or the document declares no export entry for the format, the editor says which is missing and offers to set both up and export in one go. See [export](export.md).
 
 A GitHub Actions workflow (`release.yaml`) builds and signs all platform variants on every `v*` tag push, producing installer artifacts published to GitHub Releases. A `Makefile` `release` target automates version bumping, tagging and pushing.
 
@@ -300,13 +318,11 @@ Where to place these files depends on how you are running the app:
 For  **Web / dev server** — put both files in `src/public/`. Vite copies them to `dist/` at build time, where they are served alongside the application bundle.
 
 For *Tauri desktop apps*:
-| Plateform | path (`appConfigDir`) |
+| Platform | Path (`appConfigDir`) |
 |---|---|
 | macOS | `~/Library/Application Support/MystralEditor/` |
 | Linux | `~/.config/MystralEditor/` |
 | Windows | `%APPDATA%\MystralEditor\` |
-
-`appConfigDir`
 
 ## Getting Started
 
@@ -447,12 +463,14 @@ This updates the version string in `src-tauri/Cargo.toml` and `tauri.conf.json`,
 | Footnotes | Not supported | Supported, numbered by first appearance |
 | Admonitions | Standard markdown-it MyST types | MySTmd support: Titles, dropdown (details/summary), new types (theorem, exercise) |
 | Figure/table alignment | Not supported | Left, center, right alignment and scaling |
-| Table of contents | Outline mode only | Collapsible side panel, numbered headings |
+| Table of contents | Outline mode only | Collapsible side panel with numbered headings, plus an in-page `{toc}` directive with `:context:` and `:depth:` |
 | Drag-and-drop reorder | Not supported | Section drag-and-drop from TOC panel |
 | Heading numbering | Not supported | Configurable, synced to TOC and source |
 | Themes | Dark theme only | Explicit selectable Light and Dark themes; user `custom.css` with `data-theme` attribute for per-theme overrides |
 | CodeMirror syntax colors | Fixed | CSS-variable-driven (`--tok-*`), shared between editor and preview, overridable per theme via `custom.css` |
-| Code block languages | Markdown only | Python sub-mode for ` ```python ` and `:::{code-cell}` fences; Pyodide live execution |
+| Code block languages | Markdown only | Python sub-mode for ` ```python ` and `:::{code-cell}` fences; Pyodide live execution, per-document namespaces, variable inspector, saved outputs |
+| File inclusion | Not supported | `{include}` / `{literalinclude}`, with the included headings, labels and numbers taken into the host document |
+| Export | Copy HTML, print to PDF | The same in the web build; in the desktop application, PDF, LaTeX, Word and HTML through mystmd, plus `myst build` and `myst start` |
 | MyST autocompletion | Not supported | Roles, directives, cross-ref targets, BibTeX keys |
 | Section folding | Collapsible heading marker | Chevron gutter marker, frontmatter fold |
 | Desktop app | No | macOS, Linux, Windows (Tauri); file associations; auto-updater |
