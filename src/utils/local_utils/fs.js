@@ -54,10 +54,6 @@ export function clearEditorPythonSpace(editorId) {
   pythonSpaceByEditor.delete(editorId);
 }
 
-export function getEditorPythonSpace(editorId) {
-  return pythonSpaceByEditor.get(editorId) ?? "shared";
-}
-
 /**
  * The namespace of the document a tab is loading, once it is known.
  *

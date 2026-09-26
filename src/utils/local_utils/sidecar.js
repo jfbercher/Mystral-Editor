@@ -115,12 +115,13 @@ async function loadSidecarFromWorkdir(fileName) {
  * @param {string} filePath   Tauri: absolute path; Web: ignored (uses currentFileName)
  * @param {string} fileName   Current document filename (e.g. "document.md")
  */
-export async function saveSidecarToFile(filePath, fileName, space = "shared", editorId = "") {
-  const cells = collectCellOutputs(editorId);
-  if (Object.keys(cells).length === 0) {
-    console.log("[sidecar] no cell outputs to save — skipping");
+export async function saveSidecarToFile(filePath, fileName, editorId = "") {
+  if (countCells(editorId) === 0) {
+    console.log("[sidecar] no code cell in this document — skipping");
     return;
   }
+  const cells = collectCellOutputs(editorId);
+  const space = await whenEditorPythonSpace(editorId);
 
   const data = {
     version: 1,
@@ -180,16 +181,8 @@ export function applySidecarOutputs(sidecar, editorId = "") {
  * Fire-and-forget: pre-initialize Pyodide, then restore the namespace.
  * Safe to call immediately after applySidecarOutputs().
  */
-export function scheduleNamespaceRestore(sidecar, editorId = "") {
+export function scheduleNamespaceRestore(sidecar) {
   if (!sidecar) return;
-  // A snapshot belongs to the namespace it was taken from, so that is where it
-  // goes back. This matters when a document's `python:` has changed since it
-  // was saved: the variables return to the namespace they were computed in --
-  // the old one -- rather than being poured into the new one, which would carry
-  // a shared pot's contents into a namespace meant to be separate. The cells
-  // now run elsewhere and have to be re-run, which is what changing the
-  // namespace means. A sidecar written before this field existed says nothing,
-  // and "shared" is what it meant.
 
   const hasCells = Object.keys(sidecar.cells ?? {}).length > 0;
   if (!hasCells && !sidecar.namespace) return;
@@ -197,20 +190,19 @@ export function scheduleNamespaceRestore(sidecar, editorId = "") {
   loadPyodideRuntime()
     .then(async () => {
       if (sidecar.namespace) {
-        // Resolved here rather than when this was queued: the document had not
-        // been rendered yet at that point, so its frontmatter had not been read
-        // and the namespace on file was the previous document's.
+        // A snapshot goes back to the namespace it was taken from, which the
+        // sidecar records. When `python:` has changed since the document was
+        // saved, the variables return to the namespace they were computed in --
+        // the old one -- and the cells, which now run elsewhere, have to be
+        // re-run. That is what changing the namespace means.
         //
-        // A snapshot belongs to the namespace it was taken from, so that is
-        // where it goes back. This matters when `python:` has changed since the
-        // document was saved: the variables return to the namespace they were
-        // computed in -- the old one -- rather than being poured into the new
-        // one, which would carry a shared pot's contents into a namespace meant
-        // to be separate. The cells now run elsewhere and have to be re-run,
-        // which is what changing the namespace means. A sidecar written before
-        // this field existed says nothing, and the document's own namespace is
-        // then the best guess.
-        const target = sidecar.python_space ?? (await whenEditorPythonSpace(editorId));
+        // A sidecar that names no namespace was written when there was only
+        // one: the shared pot. Its snapshot is a dump of that pot -- possibly
+        // holding other documents' variables and modules -- so it goes back
+        // there and not into a namespace meant to be separate. A document that
+        // has since asked for one starts clean, and its next save writes a
+        // sidecar that says where its variables belong.
+        const target = sidecar.python_space ?? "shared";
         await restoreNamespace(sidecar.namespace, target);
         console.log(`[sidecar] namespace restored into ${target}`);
       }
@@ -223,6 +215,14 @@ export function scheduleNamespaceRestore(sidecar, editorId = "") {
 }
 
 // ── Collect for save ──────────────────────────────────────────────────────────
+
+/** How many code cells this document has, whether or not they have run. */
+function countCells(editorId = "") {
+  const prefix = editorId + OWNER_SEP;
+  let n = 0;
+  for (const key of cellCache.keys()) if (key.startsWith(prefix)) n++;
+  return n;
+}
 
 /**
  * This document's cell outputs.
@@ -250,11 +250,22 @@ function collectCellOutputs(editorId = "") {
  * Call only on explicit user save (Cmd+S, Save As) — NOT on autosave.
  * @param {string} fileKeyOrPath  Tauri: absolute path; Web: stable fileKey string
  */
-export async function saveSidecarWithNamespace(fileKeyOrPath, space = "shared", editorId = "") {
+export async function saveSidecarWithNamespace(fileKeyOrPath, editorId = "") {
   if (!fileKeyOrPath) return;
 
+  // Written whenever the document has code cells, even if none has run.
+  // Keying on the outputs instead made a stale sidecar immortal: a document
+  // whose sidecar had been written by an older version -- when the snapshot
+  // took the whole shared pot, so it could hold another document's variables
+  // and another document's cells -- showed no output of its own, so the save
+  // returned here and left that file exactly as it was, complaint included.
+  if (countCells(editorId) === 0) return;
   const cells = collectCellOutputs(editorId);
-  if (Object.keys(cells).length === 0) return; // no code cells → skip
+
+  // Resolved here, not by the caller: right after a document is loaded its
+  // namespace is republished by the first render, and an autosave that fired
+  // in between would otherwise record the previous document's.
+  const space = await whenEditorPythonSpace(editorId);
 
   const data = {
     version: 1,
