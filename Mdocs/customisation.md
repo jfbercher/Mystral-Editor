@@ -94,6 +94,12 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `pyodide.keys.restart` | `""` | Restart the kernel, clearing all variables. |
 | `pyodide.keys.deleteCell` | `""` | Delete the current cell. |
 
+Which Python namespace a document's cells run in is not set here: it belongs to
+the document, through the `python:` key of its frontmatter (`shared`,
+`isolated`, or a group name). A project can still set it once for all of its
+documents, through a shared YAML file and `extends`. See
+[executable-content](executable-content.md).
+
 These shortcuts apply only while the cursor is inside a code-cell editor, and
 they take precedence there over the editor's own bindings: giving one a key the
 editor already uses, `"Mod-s"` for instance, shadows it inside cells. An empty

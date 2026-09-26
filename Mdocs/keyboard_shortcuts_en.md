@@ -33,9 +33,9 @@ CodeMirror keymaps may change from one version to the next, so check for any edg
 
 | Key | Action |
 |---|---|
-| `Mod-Shit-o` | Open a file in current tab |
-| `Mod-Shit-e` | Open a new (empty) tab |
-| `Mod-Shit-s` | Save current tab |
+| `Mod-Shift-o` | Open a file in current tab |
+| `Mod-Shift-e` | Open a new (empty) tab |
+| `Mod-Shift-s` | Save current tab |
 :::
 Configurable in `config.json`.
 
@@ -108,3 +108,30 @@ On macOS, Emacs shortcuts are added (`Ctrl-a`, `Ctrl-e`, `Ctrl-k`, `Ctrl-d`…).
 
 - `Ctrl-Space` triggers, `↑`/`↓` navigate, `Enter` accepts, `Escape` closes. 
 - `Mod-Shift-m` opens the diagnostics panel, `F8` goes to the next item.
+
+## Code cells
+
+These apply while the cursor is inside the editor of a `{code-cell}`, in the
+preview. They take precedence over the bindings above, so rebinding one to a
+key the editor already uses shadows it while the cursor is in a cell.
+
+:::{table} Code-cell shortcuts
+:align: center
+
+| Key | Action | Key in `config.json` |
+|---|---|---|
+| `Shift-Enter` | Run this cell | `run` |
+| `Mod-Shift-Enter` | Insert an empty cell below | `insertBelow` |
+| `Alt-v` | Open the variable window | `inspect` |
+| *(none by default)* | Clear this cell's output | `clear` |
+| *(none by default)* | Run every cell of the document | `runAll` |
+| *(none by default)* | Clear every output | `clearAll` |
+| *(none by default)* | Restart the kernel | `restart` |
+| *(none by default)* | Delete this cell | `deleteCell` |
+:::
+
+Configurable in `config.json` under `pyodide.keys`; an empty string means no
+shortcut. Two keys are fixed: `Tab` accepts the completion when the popup is
+open and indents otherwise, and `ArrowUp` / `ArrowDown` move to the previous or
+next cell once the cursor reaches the first or last line.
+[executable-content](executable-content.md) covers the cells themselves.

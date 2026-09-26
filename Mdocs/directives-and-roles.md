@@ -104,12 +104,24 @@ the *Number headers* setting.
 
 ## Labels are shared with included files
 
-Labels form one namespace for the document and everything it includes. Two
-definitions of the same label resolve to whichever the scan reads last, so a
-reference points at one of them and carries a number belonging to the other.
-This is reported in the browser console, naming the file and line of each
-definition; prefixing the labels of a reusable file is the usual way to avoid
-the clash.
+Labels form one namespace for the document and everything it includes, and so
+do the numbers: a figure inside an included file is numbered in reading order
+along with the host's, and its headings take their place in the outline and in
+the section numbering. [include](include.md) covers this.
+
+Two definitions of the same label are a conflict, not a merge. The host's
+definition wins, and the clash is reported on screen as well as in the browser
+console, naming the file and line of each definition. Prefixing the labels of a
+file meant to be reused is the usual way to avoid it.
+
+## Frontmatter: `python`
+
+A document's frontmatter chooses the Python namespace its code cells run in:
+`shared` (the default) for the namespace common to every document that asks for
+nothing else, `isolated` for one of its own, or a name for a namespace shared
+by the documents that give the same one. Variables are what is separated;
+imported modules, matplotlib's state and the working directory stay common.
+[executable-content](executable-content.md) covers it.
 
 ## Frontmatter: `extends`
 
