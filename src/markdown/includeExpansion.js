@@ -170,5 +170,49 @@ export function expandIncludes(hostText, getText, { maxDepth = 3 } = {}) {
   };
 }
 
+/**
+ * Headings of a text, in order, skipping fenced regions.
+ *
+ * The editor gets its heading tree from CodeMirror's syntax tree, which knows
+ * nothing of included files. This reads them from the text instead, so the
+ * expanded document can be numbered as a whole. Fences are tracked for the
+ * same reason the include scan tracks them: a "# comment" inside a Python cell
+ * is not a heading.
+ *
+ * @returns {{level: number, text: string, line: number}[]}  lines are 1-based
+ */
+export function scanHeadingLines(text) {
+  const lines = text.split("\n");
+  const headings = [];
+  let fence = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const marker = /^[ \t]*(`{3,}|~{3,}|:{3,})(.*)$/.exec(line);
+    if (marker) {
+      const [, ticks, rest] = marker;
+      const char = ticks[0];
+      if (!fence) fence = { char, len: ticks.length };
+      else if (char === fence.char && ticks.length >= fence.len && rest.trim() === "") fence = null;
+      continue;
+    }
+    if (fence) continue;
+
+    const atx = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (atx) {
+      headings.push({ level: atx[1].length, text: atx[2].trim(), line: i + 1 });
+      continue;
+    }
+    // Setext: "===" (level 1) or "---" (level 2) under a non-empty line.
+    if (i > 0 && /^(=+|-{2,})\s*$/.test(line)) {
+      const previous = lines[i - 1];
+      if (previous.trim() && !/^(#{1,6})\s/.test(previous)) {
+        headings.push({ level: line[0] === "=" ? 1 : 2, text: previous.trim(), line: i });
+      }
+    }
+  }
+  return headings;
+}
+
 /** True for a line number allocated to included content rather than the document. */
 export const isVirtualLine = (line, hostLineCount) => line > hostLineCount;

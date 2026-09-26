@@ -8,7 +8,7 @@ import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } f
 import markdownMermaid from "./markdown/markdownMermaid";
 import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import { includeDirectives, includeCache } from "./markdown/markdownInclude";
-import { expandIncludes } from "./markdown/includeExpansion";
+import { expandIncludes, scanHeadingLines } from "./markdown/includeExpansion";
 import { readTextRelative } from "./utils/local_utils/fs.js";
 import { showToast } from "./utils/utils_ui";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
@@ -31,6 +31,7 @@ import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./
 import { extractFrontmatter, extendsCache } from "./markdown/frontmatterUtils";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
+import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import { getNumberingConfig } from "./markdown/markdownMath";
 import { scanFootnotes, markdownItFootnoteRefs, markdownItFootnoteDefs, renderFootnotesSection } from "./markdown/markdownFootnotes";
@@ -584,9 +585,47 @@ export class TextManager {
     // for headings numbering
     if (timing_debug) {const _t3 = performance.now();}
     const numberingSectionsActive = this.userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
-    const numberedHeadings = annotateHeadingLines(numberHeadings(this.headings.value), this.text.value);
-    const headingByLine = flattenToLineMap(numberedHeadings, this.text.value);
-    const headingMap = { byLine: headingByLine, active: numberingSectionsActive };
+
+    // The heading tree used for numbering, for the {toc} and for anchors is
+    // read from the expanded text rather than from CodeMirror's syntax tree,
+    // which knows nothing of included files: a heading brought in by an
+    // include has to take its place in the sequence, and the headings that
+    // follow it have to count it.
+    //
+    // The sidebar outline keeps using this.headings.value, the editor's own
+    // tree. It writes back into the document when sections are dragged, and a
+    // heading that is not in the document has no business being draggable.
+    const hostLineStarts = lineStarts(this.text.value);
+    const numberedHeadings = numberHeadings(nestHeadings(scanHeadingLines(scanText).map((h) => {
+      const key = expansion.expanded ? expansion.lineOf[h.line - 1] : h.line;
+      const included = key > hostLineCount;
+      return {
+        ...h,
+        line: key,               // document line, or virtual for included content
+        expandedLine: h.line,    // line in the text the scanners walk
+        included,
+        // pos identifies the anchor in the preview, it is not an editor
+        // position: a real offset for a heading of this document, and a
+        // distinct marker for one that exists only in an included file.
+        pos: included ? `v${key}` : (hostLineStarts[key - 1] ?? 0),
+      };
+    })));
+
+    // Two keyings of the same headings, because the two consumers address
+    // different spaces: scanTargets walks the expanded text, while the
+    // renderer works in document and virtual lines.
+    const headingByLine = new Map();
+    const headingByExpandedLine = new Map();
+    (function collect(nodes) {
+      for (const n of nodes) {
+        const info = { number: n.number, isTitle: n.isTitle, text: n.text };
+        headingByLine.set(n.line, info);
+        headingByExpandedLine.set(n.expandedLine, info);
+        if (n.children?.length) collect(n.children);
+      }
+    })(numberedHeadings);
+    const headingMap = { byLine: headingByExpandedLine, active: numberingSectionsActive };
+    const renderHeadingMap = { byLine: headingByLine, active: numberingSectionsActive };
 
     // Map (number|text) → pos, used by markdownHeadings.js to set id="hpos-{pos}"
     // on headings that have no explicit (label)= anchor, and by TocDirective for href.
@@ -616,7 +655,7 @@ export class TextManager {
     if (timing_debug) console.log("scanFootnotes:", (performance.now() - _t5).toFixed(2), "ms");
 
     this.refMap = refMap; // exposed for external use (e.g. label resolution -> line in Inline mode)
-    this.headingMap = headingMap; // same, for headings if necessary
+    this.headingMap = renderHeadingMap; // same, for headings if necessary (document lines)
     this.citeMap = citeMap;
     this.footnoteMap = footnoteMap;
     this.citationTemplate = citationTemplate;
@@ -687,7 +726,7 @@ export class TextManager {
                       hostLineCount,
                       virtualLineMap,
                       docutils: { targets },
-                      headingMap,
+                      headingMap: renderHeadingMap,
                       numberedHeadings,
                       headingPosMap,
                       footnoteMap,
