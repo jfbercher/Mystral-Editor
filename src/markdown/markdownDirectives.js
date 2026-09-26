@@ -171,7 +171,8 @@ class BaseAdmonitionV2 extends Directive {
     if (kind) openToken.attrJoin("class", kind);
     if (!showIcon) openToken.attrJoin("class", "no-icon");
     if (isDropdown && isOpen) openToken.attrSet("open", "");
-    if (options.label) openToken.attrSet("id", options.label);
+    const admonitionLabel = labelOf(options);
+    if (admonitionLabel) openToken.attrSet("id", admonitionLabel);
 
     const newTokens = [openToken];
 
@@ -321,6 +322,18 @@ class FigureMd extends directivesDefault.image {
 }
 
 
+/**
+ * The label of a directive, whichever of the two spellings was used.
+ *
+ * `shared_option_spec` accepts `:label:` and `:name:` as aliases, and the scan
+ * that collects targets reads both. The directives did not: the figure looked
+ * only at `name`, so a figure carrying `:label:` was numbered by the scan but
+ * received no id -- a reference to it resolved its number and then pointed at
+ * nothing, which is why its hover preview had nothing to show. Tables,
+ * exercises and admonitions had the mirror problem with `:name:`.
+ */
+export const labelOf = (options) => options?.label ?? options?.name ?? null;
+
 /** Numéro et cible depuis refMap. Retourne null si non trouvé. */
 export const resolveTarget = (state, label) => (label ? (state?.env?.refMap?.byLabel?.get(label) ?? null) : null);
 
@@ -407,10 +420,9 @@ class FigureExtended extends directivesDefault.image {
       openToken.attrSet("width", data.options.figwidth);
     }
     let target;
-    if (data.options.name) {
-      // target = newTarget(this.state, openToken, "fig", data.options.name, data.body.trim());
-      target = getTarget(this.state, openToken, data.options.name);
-      //openToken.attrJoin("class", "numbered");
+    const figureLabel = labelOf(data.options);
+    if (figureLabel) {
+      target = getTarget(this.state, openToken, figureLabel);
     }
 
     const imageToken = this.create_image(data);
@@ -501,7 +513,7 @@ export class TableDirective extends Directive {
     //p if (options.label) tableOpen.attrSet("id", options.label);
     //console.log("label:", options.label, "| info:", info, "| refMap:", !!this.state?.env?.refMap);
     
-    const info = getTarget(this.state, tableOpen, options.label);
+    const info = getTarget(this.state, tableOpen, labelOf(options));
 
     const captionTokens = [];
     if (data.args.length && data.args[0]) {
@@ -560,7 +572,7 @@ class ListTableExtended extends directivesDefault["list-table"] {
     if (options.width) tableOpen.attrSet("style", `width: ${options.width}`);
 
     // Cible et numéro
-    const info = getTarget(this.state, tableOpen, options.label);
+    const info = getTarget(this.state, tableOpen, labelOf(options));
     if (info?.number != null) {
       const caption = tokens.find((t) => t.type === "table_caption_open");
       if (caption) caption.attrSet("data-number", `${info.number}`);
@@ -616,7 +628,7 @@ class BaseNumberedV2 extends BaseAdmonitionV2 {
    */
   buildTitle(data, options, userTitle) {
     const base = displayLabel(this.state, this.name, this.kind);
-    const target = targetFor(this.state, options.label);
+    const target = targetFor(this.state, labelOf(options));
     const number = target?.number;
 
     const head = number != null ? `${base} ${number}` : base;
@@ -720,7 +732,7 @@ class MathNumbered extends directivesDefault.math {
     const token = tokens[0];
     if (!token) return tokens;
 
-    const label = options.label ?? null;
+    const label = labelOf(options);
     // Absent = on suit la configuration globale ; présent = surcharge locale.
     const explicit = "enumerated" in options ? asBool(options.enumerated) : undefined;
 
@@ -909,7 +921,7 @@ class TocDirective extends Directive {
     const maxDepth = options.depth ?? options.maxdepth ?? Infinity;
     const classes = [].concat(options.class ?? [])
       .flatMap((c) => String(c).split(/\s+/)).filter(Boolean);
-    const labelId = options.label ?? options.name;
+    const labelId = labelOf(options);
     // :enumerated: refers to the numbering of the table of contents itself, not the section numbers.
     // Section numbers come from numberedHeadings (enabled globally).
 
