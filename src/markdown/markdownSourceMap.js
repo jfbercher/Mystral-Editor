@@ -23,16 +23,17 @@ export default function markdownSourceMap(md) {
 
     function addLineAttr(token) {
       const line = token.map[0] + state.env.startLine - (state.env.chunkId !== 0);
-      // Content pulled in by an {include} is parsed at virtual lines, past the
-      // end of the document. They are a key shared with the scanners, not an
-      // address in the editor: registering them here would have the scroll
-      // sync ask CodeMirror for a line that does not exist. Left unstamped,
-      // such an element falls back to the nearest preceding one, which is the
-      // include itself -- where clicking should land anyway.
-      if (state.env.hostLineCount && line > state.env.hostLineCount) return;
-      if (!state.env.lineMap.has(line)) {
+      // Content pulled in by an {include} sits on virtual lines, past the end
+      // of the document. It still needs an id -- that is how an unlabelled
+      // equation finds its number -- but the id must not enter lineMap, which
+      // everything that addresses the editor reads: the scroll sync and the
+      // inline preview would ask CodeMirror for a line that does not exist.
+      // It goes to a map of its own, which only the number lookups consult.
+      const virtual = state.env.hostLineCount && line > state.env.hostLineCount;
+      const map = virtual ? state.env.virtualLineMap : state.env.lineMap;
+      if (map && !map.has(line)) {
         const id = lineId(state.env.chunkId, line);
-        state.env.lineMap.set(line, id);
+        map.set(line, id);
         token.attrSet(SRC_LINE_ID, id);
       }
     }
@@ -168,6 +169,7 @@ export function findNearestElementForLine(lineNumber, lineMap, preview) {
 }
 
 export function getLineById(lineMap, id) {
+  if (!lineMap) return undefined;
   for (const [line, value] of lineMap.entries()) {
     if (value === id) {
       return line;

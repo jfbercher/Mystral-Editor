@@ -487,6 +487,11 @@ export class TextManager {
     // inside an included file finds its number where the scan left it.
     const includeMap = new Map(expansion.includes.map((i) => [i.hostLine, i]));
     const hostLineCount = this.text.value.split("\n").length;
+    // Source-map ids for included content. Kept apart from this.lineMap, which
+    // the scroll sync and the inline preview read as editor lines: these are
+    // not lines of the editor. Rebuilt with each pass, since the allocation
+    // follows the includes.
+    const virtualLineMap = new Map();
 
     /**
      * Bring a map keyed by line in the expanded text back to the document's
@@ -635,6 +640,7 @@ export class TextManager {
                       refMap,
                       includeMap,
                       hostLineCount,
+                      virtualLineMap,
                       docutils: { targets },
                       headingMap,
                       numberedHeadings,

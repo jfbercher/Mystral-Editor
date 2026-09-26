@@ -78,6 +78,16 @@ export function disposeEditorMacros(editorId) {
 
 
 
+/**
+ * Line behind a source-map id, looking in the document's map and then in the
+ * one holding included content. Both are needed: numbers are keyed by line on
+ * either side of that boundary, even though only the first addresses the
+ * editor.
+ */
+function lineOfId(env, id) {
+  return getLineById(env.lineMap, id) ?? getLineById(env.virtualLineMap, id) ?? null;
+}
+
 function findNearestTableEntry(byLine, absoluteLine) {
   let best = null;
   let bestLine = -Infinity;
@@ -241,7 +251,7 @@ const markdownItMath = (md, editorId) => {
     const info = env.refMap.byLabel.get(label);
     eqInfo = info != null ? { number: info.number, label } : null;
   } else {
-    const resolvedLine = sourceLineId ? getLineById(env.lineMap, sourceLineId) : null;
+    const resolvedLine = sourceLineId ? lineOfId(env, sourceLineId) : null;
     eqInfo = resolvedLine != null ? env.refMap.byLine.get(resolvedLine) : null;
   }
 
@@ -284,7 +294,7 @@ const markdownItMath = (md, editorId) => {
 
     const figToken = tokens[openIdx];
     const id = figToken.attrGet("data-line-id");
-    const resolvedLine = id ? getLineById(env.lineMap, id) : null;
+    const resolvedLine = id ? lineOfId(env, id) : null;
     const info = resolvedLine != null ? env.refMap.byLine.get(resolvedLine) : null;
     if (!info) return html;
 
