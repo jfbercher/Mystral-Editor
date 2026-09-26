@@ -70,8 +70,8 @@ of its own.
 
 | Directive | Origin | Notes |
 | --- | --- | --- |
-| `toc`, and the aliases `table-of-contents`, `tableofcontents`, `contents`, `toctree` | Fork | Table of contents built from the document's headings, with `:depth:`, `:context:`, `:dropdown:` |
-| `include`, `literalinclude` | Fork | Inserts another file, parsed as MyST or shown as a code block |
+| `toc`, and the aliases `table-of-contents`, `tableofcontents`, `contents`, `toctree` | Fork | Table of contents built from the document's headings, with `:depth:`, `:context:`, `:dropdown:` — see [toc](toc.md) |
+| `include`, `literalinclude` | Fork | Inserts another file, parsed as MyST or shown as a code block — see [include](include.md) |
 
 ## Roles
 
