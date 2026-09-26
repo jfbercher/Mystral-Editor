@@ -1709,15 +1709,7 @@ _report
         Object.entries(neverSaved).map(([n, why]) => `${n} (${why})`).join(", "),
     );
   }
-  // Sidecars written before runtime names were excluded still carry an entry
-  // for "js" (an unpicklable JsProxy). It is plumbing the bootstrap rebinds on
-  // its own, so it is not a variable the user lost.
-  for (const name of RUNTIME_GLOBALS) delete failed[name];
-
-  const entries = Object.entries(failed).map(([name, info]) =>
-    // Sidecars written before the reason carried a kind stored a bare string.
-    typeof info === "string" ? [name, { reason: info, kind: "error" }] : [name, info],
-  );
+  const entries = Object.entries(failed);
   const missingImports = entries.filter(([, i]) => i.kind === "import");
   const reallyLost = entries.filter(([, i]) => i.kind !== "import");
 

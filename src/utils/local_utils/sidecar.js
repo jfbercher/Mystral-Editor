@@ -16,6 +16,20 @@ import {
 } from "../../markdown/pyodideRunner";
 import { evalCache } from "../../markdown/markdownPyodide";
 
+/**
+ * Format of the files this module writes.
+ *
+ * 2 — a snapshot names the namespace it was taken from (`python_space`), and
+ *     holds only the variables and the cells of its own document.
+ * 1 — written when there was one namespace for every document: the snapshot was
+ *     a dump of the shared globals and the cells were everyone's. Such a file
+ *     cannot be told apart from a correct one by looking at its contents, so
+ *     its namespace is not restored at all -- it would pour other documents'
+ *     variables into this one. Its cell outputs are harmless: they are keyed by
+ *     the cell's code, so only this document's own cells can match.
+ */
+const SIDECAR_VERSION = 2;
+
 // ── Path / key helpers ────────────────────────────────────────────────────────
 
 /** /path/to/doc.md → /path/to/doc.myst.cache.json  (Tauri only) */
@@ -124,7 +138,7 @@ export async function saveSidecarToFile(filePath, fileName, editorId = "") {
   const space = await whenEditorPythonSpace(editorId);
 
   const data = {
-    version: 1,
+    version: SIDECAR_VERSION,
     saved_at: new Date().toISOString(),
     cells,
     namespace: null,
@@ -189,20 +203,19 @@ export function scheduleNamespaceRestore(sidecar) {
 
   loadPyodideRuntime()
     .then(async () => {
-      if (sidecar.namespace) {
+      if (sidecar.namespace && sidecar.version !== SIDECAR_VERSION) {
+        console.warn(
+          `[sidecar] ignoring the saved variables: this file is version ${sidecar.version ?? "?"}, ` +
+            `written before a document had a namespace of its own, so they may not be this document's. ` +
+            `Re-run the cells and save to write a current one.`,
+        );
+      } else if (sidecar.namespace) {
         // A snapshot goes back to the namespace it was taken from, which the
         // sidecar records. When `python:` has changed since the document was
         // saved, the variables return to the namespace they were computed in --
         // the old one -- and the cells, which now run elsewhere, have to be
         // re-run. That is what changing the namespace means.
-        //
-        // A sidecar that names no namespace was written when there was only
-        // one: the shared pot. Its snapshot is a dump of that pot -- possibly
-        // holding other documents' variables and modules -- so it goes back
-        // there and not into a namespace meant to be separate. A document that
-        // has since asked for one starts clean, and its next save writes a
-        // sidecar that says where its variables belong.
-        const target = sidecar.python_space ?? "shared";
+        const target = sidecar.python_space;
         await restoreNamespace(sidecar.namespace, target);
         console.log(`[sidecar] namespace restored into ${target}`);
       }
@@ -268,7 +281,7 @@ export async function saveSidecarWithNamespace(fileKeyOrPath, editorId = "") {
   const space = await whenEditorPythonSpace(editorId);
 
   const data = {
-    version: 1,
+    version: SIDECAR_VERSION,
     saved_at: new Date().toISOString(),
     cells,
     namespace: null,
