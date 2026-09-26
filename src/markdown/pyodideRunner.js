@@ -1055,7 +1055,8 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   // Not a control: a document's namespace is a property of the document, set
   // in its frontmatter, so this says where one is without offering a second way
-  // of changing it.
+  // of changing it. It lives in the status bar, with the rest of what is true
+  // of this cell rather than actionable on it.
   const spaceTag = document.createElement("span");
   spaceTag.className = "pyodide-space-tag";
   const refreshSpaceTag = () => {
@@ -1078,7 +1079,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   });
 
   controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, deleteBtn);
-  header.append(controls, spaceTag);
+  header.append(controls);
 
   // Zone d'édition CM6
   const editorRow = document.createElement("div");
@@ -1097,7 +1098,39 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   statusText.className = "pyodide-status-text";
   const timing = document.createElement("span");
   timing.className = "pyodide-timing";
-  statusBar.append(statusText, timing);
+  // The status bar used to carry a message and a duration and nothing else,
+  // which left it empty most of the time. It now also says when the cell last
+  // ran -- the question one asks of a document reopened a week later, whose
+  // outputs are restored from its sidecar and look exactly as fresh as the ones
+  // just computed -- and which namespace the cell belongs to, which belongs
+  // here rather than in the toolbar: it is a piece of status, not a control.
+  const ranAt = document.createElement("span");
+  ranAt.className = "pyodide-ran-at";
+  statusBar.append(statusText, ranAt, timing, spaceTag);
+
+  /**
+   * Record when the cell last ran.
+   * Shown as a clock time while it is today's, and with the date once it is
+   * not: "14:32:07" answers "did that just run?", "26/09 14:32" answers "is
+   * what I am reading from last week?" -- the question a document reopened
+   * with its outputs restored from its sidecar cannot otherwise answer, since
+   * a restored output looks exactly as fresh as one just computed.
+   * It is kept on the host element so the sidecar can save and restore it.
+   */
+  const setRanAt = (when) => {
+    if (!when) {
+      ranAt.textContent = "";
+      ranAt.title = "";
+      delete el.dataset.ranAt;
+      return;
+    }
+    const today = when.toDateString() === new Date().toDateString();
+    ranAt.textContent = today
+      ? when.toLocaleTimeString()
+      : when.toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    ranAt.title = `Last run: ${when.toLocaleString()}`;
+    el.dataset.ranAt = when.toISOString();
+  };
 
   // Zone de sortie (widget DOM area + text/stderr/figure area)
   const outputArea = document.createElement("div");
@@ -1124,8 +1157,10 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   // Restore output from sidecar if available (populated by sidecar.js)
   if (cacheKey && restoredOutputCache.has(cacheKey)) {
-    textOutputArea.innerHTML = restoredOutputCache.get(cacheKey);
+    const restored = restoredOutputCache.get(cacheKey);
+    textOutputArea.innerHTML = restored.html;
     outputArea.hidden = false;
+    if (restored.ranAt) setRanAt(new Date(restored.ranAt));
     restoredOutputCache.delete(cacheKey);
   }
 
@@ -1293,6 +1328,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     textOutputArea.innerHTML = "";
     outputArea.hidden = true;
     timing.textContent = "";
+    setRanAt(null);
     setStatus(statusText, "");
   });
 
@@ -1399,6 +1435,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     widgetOutputArea.innerHTML = "";
     textOutputArea.innerHTML = "";
     timing.textContent = "";
+    setRanAt(null);
     // A message left by something else -- a restart, an earlier error -- has
     // nothing to say about this run, and would end up glued to its timing.
     setStatus(statusText, "");
@@ -1502,6 +1539,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       // Show outer container if either sub-area has content
       outputArea.hidden = textOutputArea.hidden && widgetOutputArea.children.length === 0;
       timing.textContent = `run: ${result.durationMs} ms`;
+      setRanAt(new Date());
       _cellExecutedListeners.forEach(fn => fn());
       if (result.error) {
         setStatus(statusText, "Error", "error");

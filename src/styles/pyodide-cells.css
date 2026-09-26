@@ -18,7 +18,7 @@
 .pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
 /* Which Python namespace the cell runs in. An indicator, not a control: the
    namespace is set in the document's frontmatter. */
-.pyodide-space-tag{flex:none;font-size:.72rem;letter-spacing:.02em;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));opacity:.8;white-space:nowrap;cursor:default;user-select:none}
+.pyodide-space-tag{flex:none;font-size:.68rem;letter-spacing:.02em;padding:0 .4rem;border-radius:999px;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));opacity:.8;white-space:nowrap;cursor:default;user-select:none}
 .pyodide-space-tag[data-shared="true"]{opacity:.4;border-style:dashed}
 .pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -39,6 +39,9 @@
 .pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0}
 .pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
-.pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
+.pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap}
+/* When the cell last ran. Pushed to the right with the duration and the
+   namespace, leaving the message on the left. */
+.pyodide-ran-at{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
 .pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}

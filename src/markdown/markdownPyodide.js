@@ -188,6 +188,11 @@ function ensureObserver(parent, owner = "") {
           if (st) { st.textContent = ""; st.className = "pyodide-status-text"; }
           const ti = evictedHost.querySelector(".pyodide-timing");
           if (ti) ti.textContent = "";
+          // The code changed, so the moment the old one ran is no longer about
+          // anything on screen.
+          const ra = evictedHost.querySelector(".pyodide-ran-at");
+          if (ra) { ra.textContent = ""; ra.title = ""; }
+          delete evictedHost.dataset.ranAt;
         }
         // Mettre à jour la clé du cache
         for (const [k, v] of cellCache.entries()) {

@@ -187,7 +187,12 @@ export function applySidecarOutputs(sidecar, editorId = "") {
   // owning editor, so the outputs are filed under this editor -- otherwise a
   // document would light up the identical cell of the document next to it.
   for (const [cacheKey, entry] of Object.entries(sidecar.cells)) {
-    if (entry.output_html) restoredOutputCache.set(editorId + OWNER_SEP + cacheKey, entry.output_html);
+    if (entry.output_html) {
+      restoredOutputCache.set(editorId + OWNER_SEP + cacheKey, {
+        html: entry.output_html,
+        ranAt: entry.ran_at ?? null,
+      });
+    }
   }
 }
 
@@ -251,7 +256,7 @@ function collectCellOutputs(editorId = "") {
     const out = el.querySelector(".pyodide-output");
     if (!out || out.hidden || !out.innerHTML.trim()) continue;
     const key = cacheKey.slice(prefix.length);
-    cells[key] = { output_html: out.innerHTML, source_hash: key };
+    cells[key] = { output_html: out.innerHTML, source_hash: key, ran_at: el.dataset.ranAt ?? null };
   }
   return cells;
 }

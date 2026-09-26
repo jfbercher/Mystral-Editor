@@ -95,8 +95,8 @@ is invisible to them. Since `extends` also works on the frontmatter, a project
 can set this once in a shared YAML file and have all of its documents inherit
 it — see [frontmatter-extends](frontmatter-extends.md).
 
-The namespace in force is shown at the right end of each cell's toolbar. It is
-an indicator and not a control: a document's namespace is a property of the
+The namespace in force is shown at the right end of each cell's status bar. It
+is an indicator and not a control: a document's namespace is a property of the
 document, written in its frontmatter, so there is one place to change it and
 no hidden state to wonder about. The shared namespace is drawn dimmed, with a
 dashed outline, since it is the default.
@@ -157,6 +157,18 @@ slate.
 
 **+ Cell** inserts an empty cell just below. **✕** deletes the cell, after an
 inline confirmation.
+
+### The status bar
+
+Under the editor, a bar reports on the cell rather than acting on it: a message
+when there is one, the time of the last run, how long that run took, and the
+namespace the cell belongs to.
+
+The time is shown as a clock time while it is today's and with the date once it
+is not. It is saved with the cell's output and restored with it, which is what
+it is for: a document reopened a week later shows its results exactly as if
+they had just been computed, and the bar is what says otherwise. Changing a
+cell's code clears it, along with the output it described.
 
 ## Keyboard shortcuts
 
