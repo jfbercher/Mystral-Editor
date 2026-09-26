@@ -287,8 +287,11 @@ export function spaceKey(space, docId) {
   if (!value || value === SHARED_SPACE) return SHARED_SPACE;
   if (value !== "isolated") return `group:${value}`;
   if (docId) return `doc:${docId}`;
-  console.warn('[namespace] "python: isolated" without a document id — falling back to the shared namespace');
-  return SHARED_SPACE;
+  // No id means a document that has never been saved. Falling back to the
+  // shared namespace would silently do the opposite of what it asked for, so it
+  // gets one anyway; it just will not be found again once the tab is gone.
+  console.warn('[namespace] "python: isolated" on a document with no id — isolated for this tab only');
+  return "doc:unsaved";
 }
 
 /** What the indicator shows: the value as written, or "shared" when unset. */
@@ -1640,9 +1643,14 @@ export async function restoreNamespace(snapshot, space = SHARED_SPACE) {
 import cloudpickle as _cp, base64 as _b64, json as _json, importlib as _il
 _data = _json.loads(_restore_data_json)
 _ok, _failed = [], {}
+_never_saved = {}
 for _n, _e in _data.items():
     if _e.get('skipped'):
-        _failed[_n] = _e.get('reason', 'not persisted')
+        # Recorded at save time: this one could not be pickled, so it was never
+        # in the sidecar. Reporting it as a failed restore made the same alert
+        # come back at every single load, about variables the document could do
+        # nothing for. It is noted apart, and only in the console.
+        _never_saved[_n] = _e.get('reason', 'not persisted')
         continue
     try:
         if 'module' in _e:
@@ -1678,15 +1686,23 @@ for _n_rl in _ok:
     _ns_target[_n_rl] = _g_rl
     _relinked += 1
 
-_report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked})
-for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_il',
+_report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked,
+                       'never_saved': _never_saved})
+for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_never_saved', '_cp', '_b64', '_json', '_il',
            '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl',
            '_ns_target']:
     globals().pop(_k, None)
 globals().pop('_k', None)   # the cleanup loop's own variable
 _report
 `);
-  const { ok, failed, relinked } = JSON.parse(report);
+  const { ok, failed, relinked, never_saved: neverSaved } = JSON.parse(report);
+  const neverSavedNames = Object.keys(neverSaved ?? {});
+  if (neverSavedNames.length) {
+    console.info(
+      `[namespace] never saved (unpicklable when the document was written): ` +
+        Object.entries(neverSaved).map(([n, why]) => `${n} (${why})`).join(", "),
+    );
+  }
   // Sidecars written before runtime names were excluded still carry an entry
   // for "js" (an unpicklable JsProxy). It is plumbing the bootstrap rebinds on
   // its own, so it is not a variable the user lost.
@@ -1704,7 +1720,7 @@ _report
     );
   }
   console.log(
-    `[namespace] restored ${ok.length} variable(s)` +
+    `[namespace] restored ${ok.length} variable(s) into ${space}` +
       (relinked ? `, ${relinked} function(s) rebound to the live namespace` : ""),
   );
   return { ok, failed };

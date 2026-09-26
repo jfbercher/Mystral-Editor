@@ -38,13 +38,43 @@ export function getEditorFileKey(editorId) {
  * rather than whatever the shared pot happens to hold.
  */
 const pythonSpaceByEditor = new Map();
+const pythonSpaceWaiters = new Map();
 
 export function setEditorPythonSpace(editorId, space) {
   pythonSpaceByEditor.set(editorId, space);
+  const waiters = pythonSpaceWaiters.get(editorId);
+  if (waiters) {
+    pythonSpaceWaiters.delete(editorId);
+    waiters.forEach((resolve) => resolve(space));
+  }
+}
+
+/** Called when a tab binds a new file: what it held is the previous document's. */
+export function clearEditorPythonSpace(editorId) {
+  pythonSpaceByEditor.delete(editorId);
 }
 
 export function getEditorPythonSpace(editorId) {
   return pythonSpaceByEditor.get(editorId) ?? "shared";
+}
+
+/**
+ * The namespace of the document a tab is loading, once it is known.
+ *
+ * Only the renderer can say: the namespace is in the frontmatter. The sidecar
+ * restore starts before the first render, and when Pyodide is already warm it
+ * would otherwise read whatever the previous document left here -- and pour a
+ * document's variables into its predecessor's namespace. It waits instead,
+ * and settles for the shared one if no render comes.
+ */
+export function whenEditorPythonSpace(editorId, timeoutMs = 5000) {
+  if (pythonSpaceByEditor.has(editorId)) return Promise.resolve(pythonSpaceByEditor.get(editorId));
+  return new Promise((resolve) => {
+    const waiters = pythonSpaceWaiters.get(editorId) ?? [];
+    waiters.push(resolve);
+    pythonSpaceWaiters.set(editorId, waiters);
+    setTimeout(() => resolve(pythonSpaceByEditor.get(editorId) ?? "shared"), timeoutMs);
+  });
 }
 
 // --- Repli pour les navigateurs sans File System Access API -----------------

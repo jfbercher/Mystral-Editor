@@ -13,6 +13,7 @@ import {
   currentFileDir,
   setEditorFileKey,
   getEditorPythonSpace,
+  clearEditorPythonSpace,
   selectWorkingFolder,
   hasFileSystemAccess,
   isFallbackHandle,
@@ -221,6 +222,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       tab.selectedFileHandle = null;
       tab.currentFileKey = null;
       setEditorFileKey(editorId, null);
+      clearEditorPythonSpace(editorId);
       tab.currentFileName = null;
       tab.fileLoaded = false;
       currentFileDir.value = null;
@@ -307,6 +309,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.currentFileName = getFileName(fileHandleOrPath);
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
         setEditorFileKey(editorId, tab.currentFileKey);
+        clearEditorPythonSpace(editorId);
         currentFileDir.value = typeof fileHandleOrPath === 'string'  
           ? fileHandleOrPath.split('/').slice(0, -1).join('/')
           : null;
@@ -319,7 +322,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         const _sidecar = await loadSidecar(fileHandleOrPath);
         if (_sidecar) {
           applySidecarOutputs(_sidecar, editorId);       // sync – populates restoredOutputCache
-          scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));  // async fire-and-forget
+          scheduleNamespaceRestore(_sidecar, editorId);  // async fire-and-forget
         }
         return { text: async () => textContent };
       } else {
@@ -339,6 +342,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.currentFileName = fileHandleOrPath.name;
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
         setEditorFileKey(editorId, tab.currentFileKey);
+        clearEditorPythonSpace(editorId);
         // A fallback handle is not structured-cloneable and is only a snapshot.
         if (!isFallbackHandle(tab.currentFileHandle)) {
           await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
@@ -350,7 +354,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         const _sidecar = await loadSidecar(tab.currentFileKey);
         if (_sidecar) {
           applySidecarOutputs(_sidecar, editorId);
-          scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));
+          scheduleNamespaceRestore(_sidecar, editorId);
         }
         // On the web a FileSystemFileHandle carries no access to its parent
         // directory -- the File System Access API deliberately withholds it.  So

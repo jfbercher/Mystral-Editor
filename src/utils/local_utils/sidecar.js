@@ -4,7 +4,7 @@
  * Web:   IndexedDB entry keyed by stable fileKey (workspaceName_fileName)
  */
 import { get as idbGet, set as idbSet } from "idb-keyval";
-import { isTauri, workingDirectory } from "./fs.js";
+import { isTauri, workingDirectory, whenEditorPythonSpace } from "./fs.js";
 import {
   cellCache,
   OWNER_SEP,
@@ -180,7 +180,7 @@ export function applySidecarOutputs(sidecar, editorId = "") {
  * Fire-and-forget: pre-initialize Pyodide, then restore the namespace.
  * Safe to call immediately after applySidecarOutputs().
  */
-export function scheduleNamespaceRestore(sidecar, space = "shared") {
+export function scheduleNamespaceRestore(sidecar, editorId = "") {
   if (!sidecar) return;
   // A snapshot belongs to the namespace it was taken from, so that is where it
   // goes back. This matters when a document's `python:` has changed since it
@@ -190,13 +190,27 @@ export function scheduleNamespaceRestore(sidecar, space = "shared") {
   // now run elsewhere and have to be re-run, which is what changing the
   // namespace means. A sidecar written before this field existed says nothing,
   // and "shared" is what it meant.
-  const target = sidecar.python_space ?? space;
+
   const hasCells = Object.keys(sidecar.cells ?? {}).length > 0;
   if (!hasCells && !sidecar.namespace) return;
 
   loadPyodideRuntime()
     .then(async () => {
       if (sidecar.namespace) {
+        // Resolved here rather than when this was queued: the document had not
+        // been rendered yet at that point, so its frontmatter had not been read
+        // and the namespace on file was the previous document's.
+        //
+        // A snapshot belongs to the namespace it was taken from, so that is
+        // where it goes back. This matters when `python:` has changed since the
+        // document was saved: the variables return to the namespace they were
+        // computed in -- the old one -- rather than being poured into the new
+        // one, which would carry a shared pot's contents into a namespace meant
+        // to be separate. The cells now run elsewhere and have to be re-run,
+        // which is what changing the namespace means. A sidecar written before
+        // this field existed says nothing, and the document's own namespace is
+        // then the best guess.
+        const target = sidecar.python_space ?? (await whenEditorPythonSpace(editorId));
         await restoreNamespace(sidecar.namespace, target);
         console.log(`[sidecar] namespace restored into ${target}`);
       }

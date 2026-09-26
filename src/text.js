@@ -525,7 +525,14 @@ export class TextManager {
     // file -- not by the tab -- which keeps a document in the same namespace
     // when it is closed and reopened, and lines it up with its sidecar.
     const pythonSpaceValue = fmResult?.frontmatter?.python;
-    const pythonSpace = spaceKey(pythonSpaceValue, getEditorFileKey(this.options.id.value));
+    // A document that has never been saved has no file key; it is then keyed by
+    // its tab, so `python: isolated` still isolates it. It will not find that
+    // namespace again after a reload, which is true of everything about an
+    // unsaved document.
+    const pythonSpace = spaceKey(
+      pythonSpaceValue,
+      getEditorFileKey(this.options.id.value) ?? `editor:${this.options.id.value}`,
+    );
     const pythonSpaceLabel = spaceLabel(pythonSpaceValue);
     setEditorPythonSpace(this.options.id.value, pythonSpace);
 
