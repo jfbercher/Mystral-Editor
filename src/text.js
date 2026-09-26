@@ -8,6 +8,8 @@ import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } f
 import markdownMermaid from "./markdown/markdownMermaid";
 import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import { includeDirectives, includeCache } from "./markdown/markdownInclude";
+import { expandIncludes } from "./markdown/includeExpansion";
+import { readTextRelative } from "./utils/local_utils/fs.js";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
 import { colonFencedBlocks } from "./markdown/markdownFence";
@@ -462,6 +464,41 @@ export class TextManager {
     //const refsKindLabel = getKindLabel(fmResult?.frontmatter)
     const { kindLabel, numberingEnabled } = getNumberingConfig(fmResult?.frontmatter);
 
+    // The scanners below walk the text to collect labels, numbers, citations
+    // and reference definitions. An {include} is one line there, so what it
+    // pulls in was invisible to them. They walk the expanded text instead:
+    // the same document with each include replaced by its cached content, in
+    // place, which is what the counters need to number in reading order.
+    //
+    // A document without includes is untouched -- expansion reports that it
+    // changed nothing, and the original text is used, so nothing about the
+    // existing behaviour depends on this.
+    const expansion = expandIncludes(this.text.value, (path) => {
+      const entry = includeCache.get(path);
+      if (!entry) {
+        includeCache.resolve(path, readTextRelative(path));   // renders again when it lands
+        return null;
+      }
+      return entry.error ? null : entry.text;
+    });
+    const scanText = expansion.expanded ? expansion.text : this.text.value;
+
+    /**
+     * Bring a map keyed by line in the expanded text back to the document's
+     * own numbering. A line of the document recovers its number; a line that
+     * came from an included file keeps its virtual key, which addresses
+     * nothing in the editor and is simply never looked up.
+     */
+    const toDocumentLines = (map) => {
+      if (!expansion.expanded) return map;
+      const out = new Map();
+      for (const [line, entry] of map.entries()) {
+        const key = expansion.lineOf[line - 1];
+        if (key != null) out.set(key, entry);
+      }
+      return out;
+    };
+
     // bibliography
 
     const bibliographyPath = fmResult?.frontmatter?.bibliography;
@@ -479,13 +516,13 @@ export class TextManager {
       numberingSetting.enabled = numberingSectionsFrontmatter;
     }
     if (timing_debug) {const _t1 = performance.now();}
-    const refDefs = scanReferenceLinks(this.text.value);
+    const refDefs = scanReferenceLinks(scanText);
     const refDefsSignature = [...refDefs.entries()].map(([k, v]) => `${k}:${v.url}`).join("|");
     if (timing_debug) console.log("scanReferenceLinks+macros:", (performance.now() - _t1).toFixed(2), "ms");
 
     ensureBibliographyLoaded(this.options.id.value, bibliographyPath, () => this.options.getBibliographyDirectory.value?.(), () => this.rerender());
     if (timing_debug) {const _t2 = performance.now();}
-    const { citeMap } = scanCitations(this.text.value, getBibEntries(this.options.id.value), citationStyle);
+    const { citeMap } = scanCitations(scanText, getBibEntries(this.options.id.value), citationStyle);
     
     const citationsSignature = [...citeMap.entries()].map(([k, v]) => `${k}:${v.number}:${v.entry?.year}`).join("|");
     if (timing_debug) console.log("scanCitations:", (performance.now() - _t2).toFixed(2), "ms");
@@ -509,7 +546,9 @@ export class TextManager {
     if (timing_debug) console.log("headings, count:", this.headings.value.length, "temps:", (performance.now() - _t3).toFixed(2), "ms");
 
     if (timing_debug) {const _t4 = performance.now();}
-    const { byLine, byLabel, targets } = scanTargets(this.text.value, numberingEnabled, headingMap);
+    const scanned = scanTargets(scanText, numberingEnabled, headingMap);
+    const { byLabel, targets } = scanned;
+    const byLine = toDocumentLines(scanned.byLine);
     const refMap = { byLine, byLabel };
     if (timing_debug) console.log("scanTargets:", (performance.now() - _t4).toFixed(2), "ms");
 
@@ -517,7 +556,7 @@ export class TextManager {
     const numberedSignature = getNumberedSignature(byLabel);
 
     if (timing_debug) {const _t5 = performance.now();}
-    const { footnoteMap } = scanFootnotes(this.text.value);
+    const { footnoteMap } = scanFootnotes(scanText);
     const footnotesSignature = [...footnoteMap.entries()].map(([l, i]) => `${l}:${i.number}:${i.content}`).join("|");
     if (timing_debug) console.log("scanFootnotes:", (performance.now() - _t5).toFixed(2), "ms");
 
