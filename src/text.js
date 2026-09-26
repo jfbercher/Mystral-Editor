@@ -10,6 +10,7 @@ import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import { includeDirectives, includeCache } from "./markdown/markdownInclude";
 import { expandIncludes } from "./markdown/includeExpansion";
 import { readTextRelative } from "./utils/local_utils/fs.js";
+import { showToast } from "./utils/utils_ui";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
 import { colonFencedBlocks } from "./markdown/markdownFence";
@@ -484,6 +485,16 @@ export class TextManager {
     for (const message of messages) {
       console.warn(`[labels] ${message}; references resolve to the second`);
     }
+    // Said on screen as well as in the console. The only sign of a collision
+    // otherwise is a number missing from a sequence, which is found by reading
+    // the numbers closely -- and usually too late.
+    const shown = messages.slice(0, 3).join(" — ");
+    const rest = messages.length > 3 ? ` (and ${messages.length - 3} more)` : "";
+    showToast(
+      `Duplicate label: ${shown}${rest}. References resolve to the second, and the number given to the first is not shown anywhere.`,
+      "error",
+      0,
+    );
   }
 
   splitTextIntoChunks(chunkLookup = {}) {
