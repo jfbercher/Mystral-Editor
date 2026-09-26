@@ -25,7 +25,7 @@ import { criticMarkup } from "./markdown/markdownCriticMarkup";
 import { markdownFrontmatter } from "./markdown/markdownFrontmatter";
 import markdownItMath from "./markdown/markdownMath";
 import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./markdown/scanTargets";
-import { extractFrontmatter } from "./markdown/frontmatterUtils";
+import { extractFrontmatter, extendsCache } from "./markdown/frontmatterUtils";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
 import markdownItHeadings from "./markdown/markdownHeadings";
@@ -301,6 +301,10 @@ export class TextManager {
     // An {include} resolves asynchronously; when its file arrives, render again
     // so the directive finds it in the cache this time.
     const unsubscribeInclude = includeCache.onChange(() => this.scheduleRender({ useCache: false }));
+    // Same for a frontmatter `extends`: the inherited file arrives late, and
+    // it can change macros, numbering or the bibliography, so everything is
+    // rendered again rather than served from the cache.
+    const unsubscribeExtends = extendsCache.onChange(() => this.scheduleRender({ useCache: false }));
     cleanups?.push(() => {
       if (this.#renderFrame) clearTimeout(this.#renderFrame);
       // if (this.#renderFrame) cancelAnimationFrame(this.#renderFrame);
@@ -309,6 +313,7 @@ export class TextManager {
       unsubscribe();
       unsubscribeEval();
       unsubscribeInclude();
+      unsubscribeExtends();
     });
   }
 

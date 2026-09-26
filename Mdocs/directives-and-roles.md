@@ -102,6 +102,36 @@ the fork: `%` line comments, footnotes (`[^1]`), reference-style links
 Mermaid diagrams (as a fenced `mermaid` block), and heading numbering driven by
 the *Number headers* setting.
 
+## Frontmatter: `extends`
+
+A document's frontmatter may inherit from one or more YAML files:
+
+```
+---
+extends: shared/common.yml
+title: This document
+---
+```
+
+or, for several, a list. Paths are relative to the document, as for images and
+`{include}`. An inherited file may extend another in turn, up to five levels;
+a file naming itself, or two naming each other, is reported and ignored.
+
+Merging follows mystmd: **lists are combined rather than replaced**, so authors
+or exports declared in a shared file and in the document all end up in the
+result; `exports` and `downloads` are deduplicated by `id`, which is how an
+inherited entry is overridden. **Objects are deep-merged**, key by key. Any
+other value written in the document **wins** over the inherited one.
+
+Everything the frontmatter drives follows: math macros, numbering, the
+bibliography path and citation style, the exports the desktop build writes, and
+the block rendered at the top of the document.
+
+Two limits for now. Remote URLs are not fetched — an `extends` entry starting
+with `http://` or `https://` is ignored with a message. And the file is read
+through the working folder, so on the web it needs one to be selected, like any
+other local file.
+
 ## Extending the set
 
 `config.json` does not add directives; it configures how the ones above are
