@@ -1,6 +1,6 @@
 import * as localUtils from "./utils/local_utils.js";
 import { resetBibliography } from "./markdown/bibliography.js"
-import MystEditor, { defaultButtons } from "./MystEditor.jsx";
+import MystEditor, { predefinedButtons } from "./MystEditor.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
 import { h } from "preact";
@@ -52,7 +52,21 @@ import { showToast } from "./utils/utils_ui.js";
 
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {
-  const reducedButtons = [1, 2, 3, 4, 6].map((i) => defaultButtons[i]);
+  // Named rather than picked by index out of defaultButtons: the previous
+  // [1,2,3,4,6] silently selected something else whenever that list changed.
+  const reducedButtons = [
+    predefinedButtons.settings,
+    // "Copy document as HTML" and "Print document as pdf" only in the web
+    // build. The desktop one has the export menu, which writes real files
+    // through myst; on the web these two are the only way to get the document
+    // out at all.
+    ...(isTauri ? [] : [predefinedButtons.copyHtml, predefinedButtons.printToPdf]),
+    // predefinedButtons.refresh — "Refresh issue links" drives the upstream
+    // issue-tracker integration, which this fork does not use. Left here
+    // rather than deleted, so the button can be brought back if that
+    // integration ever is.
+    predefinedButtons.suggestMode,
+  ];
   return reducedButtons.concat([
     {
       text: h("span", { style: "font-size:1.5em" }, "☀︎/☾"),
