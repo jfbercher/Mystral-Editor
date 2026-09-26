@@ -1,9 +1,5 @@
 import { formatEntryFull } from "../markdown/bibliography";
 
-let previewMapCache = null;
-let previewMapForChunks = null;
-
-// ---
 const previewStateByEditor = new Map(); // editorId -> { mapCache, forChunks }
 
 function getPreviewState(editorId) {
@@ -78,17 +74,43 @@ function resolvePreviewHtml(id, text) {
   return html ? `<div class="preview-generic">${html}</div>` : null;
 }
 
-let popupEl = null;
-let showTimeout = null;
-let hideTimeout = null;
+/**
+ * One popup per preview, not one for the whole application.
+ *
+ * There used to be a single module-level popup element, reused as long as it
+ * was connected *anywhere*. With several tabs open it stayed in the shadow root
+ * of whichever editor hovered a reference first, so every other tab wrote its
+ * content into an element that was not in its own DOM: nothing appeared, until
+ * one came back to that first tab. The same went for the show and hide timers,
+ * which one tab could cancel for another.
+ *
+ * Keyed by the preview root, which is what a popup belongs to. A WeakMap, so a
+ * closed editor takes its entry with it.
+ */
+const popupByRoot = new WeakMap();
 
-function ensurePopupEl(root) {
-  if (popupEl && popupEl.isConnected) return popupEl;
-  popupEl = document.createElement("div");
-  popupEl.className = "myst-preview-popup";
-  popupEl.style.display = "none";
-  root.appendChild(popupEl);
-  return popupEl;
+const HIDE_DELAY = 150;
+
+function popupStateFor(root) {
+  let state = popupByRoot.get(root);
+  if (state?.el.isConnected) return state;
+
+  const el = document.createElement("div");
+  el.className = "myst-preview-popup";
+  el.style.display = "none";
+  root.appendChild(el);
+  state = { el, showTimeout: null, hideTimeout: null };
+
+  // Attached here rather than at setup time: the element did not exist yet when
+  // setup ran, so these were never attached at all for the first editor, and
+  // the popup vanished the moment one tried to move the pointer into it.
+  el.addEventListener("mouseenter", () => clearTimeout(state.hideTimeout));
+  el.addEventListener("mouseleave", () => {
+    state.hideTimeout = setTimeout(() => { el.style.display = "none"; }, HIDE_DELAY);
+  });
+
+  popupByRoot.set(root, state);
+  return state;
 }
 
 function positionPopup(popup, targetRect, root) {
@@ -111,44 +133,34 @@ function positionPopup(popup, targetRect, root) {
 
 export function setupPreviewPopups(root, text) {
   const showDelay = 250;
-  const hideDelay = 150;
 
   root.addEventListener("mouseover", (ev) => {
     const target = ev.target.closest?.("[data-preview]");
     if (!target) return;
 
-    clearTimeout(hideTimeout);
-    clearTimeout(showTimeout);
+    const state = popupStateFor(root);
+    clearTimeout(state.hideTimeout);
+    clearTimeout(state.showTimeout);
 
-    showTimeout = setTimeout(() => {
+    state.showTimeout = setTimeout(() => {
       const id = target.getAttribute("data-preview");
       const html = resolvePreviewHtml(id, text);
       if (!html) return;
 
-      const popup = ensurePopupEl(root);
-      popup.innerHTML = html;
-      positionPopup(popup, target.getBoundingClientRect(), root);
+      state.el.innerHTML = html;
+      positionPopup(state.el, target.getBoundingClientRect(), root);
     }, showDelay);
   });
 
   root.addEventListener("mouseout", (ev) => {
     const target = ev.target.closest?.("[data-preview]");
     if (!target) return;
+    const state = popupByRoot.get(root);
+    if (!state) return;
     // Ignore si on passe juste vers la popup elle-même ou un enfant du même lien.
-    if (ev.relatedTarget && (popupEl?.contains(ev.relatedTarget) || target.contains(ev.relatedTarget))) return;
+    if (ev.relatedTarget && (state.el.contains(ev.relatedTarget) || target.contains(ev.relatedTarget))) return;
 
-    clearTimeout(showTimeout);
-    hideTimeout = setTimeout(() => {
-      if (popupEl) popupEl.style.display = "none";
-    }, hideDelay);
+    clearTimeout(state.showTimeout);
+    state.hideTimeout = setTimeout(() => { state.el.style.display = "none"; }, HIDE_DELAY);
   });
-
-  if (popupEl) {
-    popupEl.addEventListener("mouseenter", () => clearTimeout(hideTimeout));
-    popupEl.addEventListener("mouseleave", () => {
-      hideTimeout = setTimeout(() => {
-        if (popupEl) popupEl.style.display = "none";
-      }, hideDelay);
-    });
-  }
 }
