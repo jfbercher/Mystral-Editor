@@ -108,13 +108,16 @@ const DIRECTIVES = [
   /*
   { name: "bibliography", group: "Document" },
   { name: "glossary", group: "Document" },
-  { name: "include", group: "Document", arg: "path/to/file.md" },
   { name: "embed", group: "Document", arg: "#label" },
   { name: "raw", group: "Document", arg: "html" },
   */
+  // The path is required: an {include} without one is an error, so the snippet
+  // puts the cursor on it. Its options are all optional, and most documents use
+  // none, so none are pre-written.
+  { name: "include", group: "Document", arg: "path/to/file.md" },
   // Table of contents
-  { name: "toc", group: "Document", arg: "Title", opts: ["depth", "class", "label", "dropdown", "open"] },
-  { name: "table-of-contents", group: "Document", arg: "Title", opts: ["depth", "class", "label", "dropdown", "open"] },
+  { name: "toc", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
+  { name: "table-of-contents", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
 ];
 
 
@@ -140,11 +143,15 @@ const DIRECTIVE_OPTIONS = {
   "grid-item-card": ["header", "footer", "link", "columns"],
   "tab-item": ["sync", "selected"],
   iframe: ["width", "align"],
-  include: ["start-after", "end-before", "literal"],
+  include: [
+    "lines", "start-line", "start-at", "start-after",
+    "end-line", "end-at", "end-before",
+    "literal", "lang", "caption", "linenos", "lineno-start", "filename",
+  ],
   bibliography: ["filter"],
   exercise: ["enumerated", "hidden"],
-  toc: ["depth", "class", "label", "dropdown", "open"],
-  "table-of-contents": ["depth", "class", "label", "dropdown", "open"],
+  toc: ["context", "depth", "class", "label", "dropdown", "open"],
+  "table-of-contents": ["context", "depth", "class", "label", "dropdown", "open"],
   ...Object.fromEntries(
     ADMONITION_KINDS.map(kind => [kind, ADMONITION_OPTIONS])
   ),
@@ -153,6 +160,10 @@ const DIRECTIVE_OPTIONS = {
 /** Options à domaine fermé : on complète aussi la valeur. */
 const OPTION_VALUES = {
   align: ["left", "center", "right"],
+  // What the table of contents covers. "section" is the one that reads the
+  // document itself; "project" needs a multi-page project, and falls back to
+  // the page here.
+  context: ["page", "section", "project"],
   enumerated: ["true", "false"],
   depth: ["1", "2", "3", "4", "5", "6"],
   open: ["true", "false"],
