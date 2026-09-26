@@ -1159,8 +1159,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     el.id = newId;
     _currentCacheKey = newKey;
 
+    // These three events travel on `document`, so every open editor hears
+    // them. Each carries the editor it came from: without that, two documents
+    // holding the same cell at the same line both match the fence being looked
+    // for, and an edit in one rewrote the other as well.
     document.dispatchEvent(new CustomEvent("pyodide-code-edit", {
-      detail: { originalCode: _currentCode, newCode, lineId: _lineId() }
+      detail: { originalCode: _currentCode, newCode, lineId: _lineId(), owner }
     }));
     _currentCode = newCode;
   };
@@ -1338,7 +1342,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     _syncToEditor(view);
     pendingEmptyCellFocus = performance.now();
     document.dispatchEvent(new CustomEvent("pyodide-insert-cell-below", {
-      detail: { currentCode: _currentCode, lineId: _lineId() }
+      detail: { currentCode: _currentCode, lineId: _lineId(), owner }
     }));
   };
   insertBtn.addEventListener("click", _dispatchInsertBelow);
@@ -1380,7 +1384,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       bar.remove();
       if (_currentCacheKey) cellCache.delete(_currentCacheKey);
       document.dispatchEvent(new CustomEvent("pyodide-delete-cell", {
-        detail: { currentCode: _currentCode, lineId: _lineId() }
+        detail: { currentCode: _currentCode, lineId: _lineId(), owner }
       }));
     });
   });

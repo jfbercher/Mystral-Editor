@@ -256,7 +256,14 @@ export class TextManager {
       }
     };
 
-    this._pyodideEditHandler = ({ detail: { originalCode, newCode, lineId } }) => {
+    // A code-cell event is broadcast on `document`, so it reaches every open
+    // editor. Only the one that owns the cell may act on it: two documents
+    // holding the same cell text at the same line would otherwise both find the
+    // fence and both rewrite it.
+    const _notMine = (owner) => owner != null && owner !== this.options.id.value;
+
+    this._pyodideEditHandler = ({ detail: { originalCode, newCode, lineId, owner } }) => {
+      if (_notMine(owner)) return;
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
@@ -271,7 +278,8 @@ export class TextManager {
     // Insère une cellule :::code-cell vide sous la cellule courante.
     // Utilise findFenceBlock pour localiser précisément le bloc, même si currentCode
     // est court ou identique à du texte hors-fence.
-    this._pyodideInsertBelowHandler = ({ detail: { currentCode, lineId } }) => {
+    this._pyodideInsertBelowHandler = ({ detail: { currentCode, lineId, owner } }) => {
+      if (_notMine(owner)) return;
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
@@ -289,7 +297,8 @@ export class TextManager {
     cleanups?.push(() => document.removeEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler));
 
     // Supprime la cellule code-cell dont le code est currentCode.
-    this._pyodideDeleteCellHandler = ({ detail: { currentCode, lineId } }) => {
+    this._pyodideDeleteCellHandler = ({ detail: { currentCode, lineId, owner } }) => {
+      if (_notMine(owner)) return;
       const view = this.editorView.value;
       if (!view) return;
       const src = view.state.doc.toString();
