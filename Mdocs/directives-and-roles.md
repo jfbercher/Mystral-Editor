@@ -102,6 +102,15 @@ the fork: `%` line comments, footnotes (`[^1]`), reference-style links
 Mermaid diagrams (as a fenced `mermaid` block), and heading numbering driven by
 the *Number headers* setting.
 
+## Labels are shared with included files
+
+Labels form one namespace for the document and everything it includes. Two
+definitions of the same label resolve to whichever the scan reads last, so a
+reference points at one of them and carries a number belonging to the other.
+This is reported in the browser console, naming the file and line of each
+definition; prefixing the labels of a reusable file is the usual way to avoid
+the clash.
+
 ## Frontmatter: `extends`
 
 A document's frontmatter can inherit from one or more YAML files, so that

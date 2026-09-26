@@ -83,6 +83,24 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
   const byLine = new Map();
   const byLabel = new Map();
 
+  /**
+   * Register a label, and say so when two things claim the same one.
+   *
+   * Labels are a single flat namespace for the whole document, included files
+   * included. Two definitions used to resolve silently -- one simply
+   * overwrote the other -- so a reference pointed at whichever won, with a
+   * number belonging to something else. That is invisible until the numbers
+   * are read closely, which is the worst way to find out.
+   */
+  const duplicates = [];
+  const setLabel = (label, info) => {
+    const previous = byLabel.get(label);
+    if (previous && previous.line !== info.line) {
+      duplicates.push({ label, first: previous.line, second: info.line });
+    }
+    byLabel.set(label, info);
+  };
+
   /** Un compteur par `kind`, créé à la demande. */
   const counters = {};
   /*const nextNumber = (kind) => {
@@ -130,7 +148,7 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
 
     if (frame.label) {
       if (entry) entry.label = frame.label;
-      byLabel.set(frame.label, {
+      setLabel(frame.label, {
         number: frame.number,
         kind: frame.spec.kind,
         name: frame.name,
@@ -261,7 +279,7 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
       
       const inlineLabel = TEX_LABEL.exec(line)?.[1] ?? null;
       byLine.set(mathLine, { number, label: inlineLabel, kind: "eq", title: "" });
-      if (inlineLabel) byLabel.set(inlineLabel, { number, kind: "eq", title: "", line: mathLine });
+      if (inlineLabel) setLabel(inlineLabel, { number, kind: "eq", title: "", line: mathLine });
       if (dollars >= 2) mathLine = null; // $$ … $$ sur une seule ligne
       continue;
     }
@@ -272,7 +290,7 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
     if (tex) {
       const entry = byLine.get(mathLine);
       entry.label = tex[1];
-      byLabel.set(tex[1], { number: entry.number, kind: "eq", title: "", line: mathLine });
+      setLabel(tex[1], { number: entry.number, kind: "eq", title: "", line: mathLine });
     }
 
     if (end || dollars > 0) mathLine = null;
@@ -293,7 +311,7 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
   for (const [label, headingLine] of sectionLabelLines.entries()) {
     const headingInfo = headingMap?.byLine.get(headingLine);
     if (!headingInfo) continue;
-    byLabel.set(label, {
+    setLabel(label, {
       number: headingMap.active ? headingInfo.number : null,
       kind: "sec",
       title: headingInfo.text,
@@ -306,6 +324,9 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
     targets[label] = { label, kind: info.kind, title: info.title, number: info.number };
   }
 
-  return { byLine, byLabel, targets };
+  // Reported by the caller, which alone can turn these line numbers back into
+  // something a reader recognises -- a line of the document, or a line of an
+  // included file.
+  return { byLine, byLabel, targets, duplicates };
 }
 

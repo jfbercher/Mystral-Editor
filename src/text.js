@@ -453,6 +453,39 @@ export class TextManager {
 
 
 
+  /**
+   * Say when two things claim the same label.
+   *
+   * A label is a single namespace for the document and everything it
+   * includes, so the same one in two places resolves to whichever the scan
+   * saw last, and a reference silently points at the wrong thing with a
+   * number that belongs elsewhere. Reported once per distinct set, since the
+   * scan runs on every keystroke, and with the file named rather than the
+   * virtual line number, which would mean nothing to anyone.
+   */
+  reportDuplicateLabels(duplicates, expansion) {
+    if (!duplicates?.length) {
+      this._lastDuplicateLabels = "";
+      return;
+    }
+    const where = (line) => {
+      const key = expansion.expanded ? expansion.lineOf[line - 1] : line;
+      const file = expansion.includes?.find(
+        (i) => key >= i.virtualStart && key < i.virtualStart + i.text.split("\n").length,
+      );
+      return file ? `${file.path} line ${key - file.virtualStart + 1}` : `line ${key}`;
+    };
+    const messages = duplicates.map(
+      ({ label, first, second }) => `"${label}" is defined at ${where(first)} and at ${where(second)}`,
+    );
+    const signature = messages.join("|");
+    if (signature === this._lastDuplicateLabels) return;
+    this._lastDuplicateLabels = signature;
+    for (const message of messages) {
+      console.warn(`[labels] ${message}; references resolve to the second`);
+    }
+  }
+
   splitTextIntoChunks(chunkLookup = {}) {
     
     if (timing_debug) {const _t0 = performance.now();}
@@ -557,6 +590,7 @@ export class TextManager {
 
     if (timing_debug) {const _t4 = performance.now();}
     const scanned = scanTargets(scanText, numberingEnabled, headingMap);
+    this.reportDuplicateLabels(scanned.duplicates, expansion);
     const { byLabel, targets } = scanned;
     const byLine = toDocumentLines(scanned.byLine);
     const refMap = { byLine, byLabel };
