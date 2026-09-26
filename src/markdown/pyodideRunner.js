@@ -1451,12 +1451,40 @@ for _n, _e in _data.items():
         _ok.append(_n)
     except Exception as _err:
         _failed[_n] = type(_err).__name__ + ': ' + str(_err)
-_report = _json.dumps({'ok': _ok, 'failed': _failed})
-for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_il', '_restore_data_json']:
+
+# cloudpickle rebuilds a function with a private copy of the globals it reads,
+# so a restored function stops following the namespace it came from: after a
+# reload, a cell setting CONST = 100 would leave a restored f() still reading
+# the 41 it was saved with, and two restored functions would not even share
+# their globals with each other. Rebind each one to the live namespace -- same
+# code, same closure, same defaults -- so that they stay in step, as they were
+# before the document was closed. Methods of a restored class keep their own
+# snapshot: that one is inside the class object and out of reach here.
+import types as _types_rl
+_relinked = 0
+for _n_rl in _ok:
+    _f_rl = globals().get(_n_rl)
+    if not isinstance(_f_rl, _types_rl.FunctionType) or _f_rl.__globals__ is globals():
+        continue
+    _g_rl = _types_rl.FunctionType(_f_rl.__code__, globals(), _f_rl.__name__,
+                                   _f_rl.__defaults__, _f_rl.__closure__)
+    _g_rl.__dict__.update(_f_rl.__dict__)
+    _g_rl.__kwdefaults__ = _f_rl.__kwdefaults__
+    _g_rl.__annotations__ = _f_rl.__annotations__
+    _g_rl.__qualname__ = _f_rl.__qualname__
+    _g_rl.__doc__ = _f_rl.__doc__
+    _g_rl.__module__ = _f_rl.__module__
+    globals()[_n_rl] = _g_rl
+    _relinked += 1
+
+_report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked})
+for _k in ['_data', '_n', '_e', '_err', '_ok', '_failed', '_cp', '_b64', '_json', '_il',
+           '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl']:
     globals().pop(_k, None)
+globals().pop('_k', None)   # the cleanup loop's own variable
 _report
 `);
-  const { ok, failed } = JSON.parse(report);
+  const { ok, failed, relinked } = JSON.parse(report);
   // Sidecars written before runtime names were excluded still carry an entry
   // for "js" (an unpicklable JsProxy). It is plumbing the bootstrap rebinds on
   // its own, so it is not a variable the user lost.
@@ -1473,6 +1501,9 @@ _report
       0,
     );
   }
-  console.log(`[namespace] restored ${ok.length} variable(s)`);
+  console.log(
+    `[namespace] restored ${ok.length} variable(s)` +
+      (relinked ? `, ${relinked} function(s) rebound to the live namespace` : ""),
+  );
   return { ok, failed };
 }
