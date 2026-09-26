@@ -955,6 +955,23 @@ function renderOutput(outputArea, result) {
 
 // ─── Cache inter-renders ──────────────────────────────────────────────────────
 export const cellCache = new Map();
+
+/**
+ * Cells belong to the editor that rendered them.
+ *
+ * Every tab has its own editor but they all share this module, so a cache keyed
+ * by the code alone made two documents holding the same cell text the same
+ * cell: switching tabs handed one document's live widget to the other, which
+ * took it out of the first -- cells vanishing from a preview, edits landing in
+ * the wrong document, and, since the widget carried its own `data-python-space`,
+ * a `del y` that ran in a namespace where y had never been defined.
+ *
+ * The owner is the editor id, and the sidecar strips it back off so that what
+ * it stores stays keyed by the code, as before.
+ */
+export const OWNER_SEP = "\u0000";
+export const cellKey = (owner, hash, linenos) =>
+  `${owner ?? ""}${OWNER_SEP}${hash}${linenos ? "-ln" : ""}`;
 /** Populated from sidecar before render; consumed by initCodeCell(). */
 export const restoredOutputCache = new Map();
 
@@ -976,10 +993,14 @@ export const restoredOutputCache = new Map();
 let pendingEmptyCellFocus = 0;
 const FOCUS_REQUEST_TTL_MS = 3000;
 
-export function initCodeCell(el, code, { packages = [], linenos = false, hash } = {}) {
-  const cacheKey = hash ? hash + (linenos ? "-ln" : "") : null;
-  if (cacheKey && cellCache.has(cacheKey)) {
-    el.replaceWith(cellCache.get(cacheKey));
+export function initCodeCell(el, code, { packages = [], linenos = false, hash, owner = "" } = {}) {
+  const cacheKey = hash ? cellKey(owner, hash, linenos) : null;
+  // Only a widget still attached to this editor may stand in for this
+  // placeholder. A disconnected one belongs to a tab that is not showing, and
+  // moving it here would remove it from there.
+  const known = cacheKey ? cellCache.get(cacheKey) : null;
+  if (known?.isConnected) {
+    el.replaceWith(known);
     return;
   }
 
@@ -1132,7 +1153,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
 
     const newHex = new IMurMurHash(newCode, 42).result().toString(16);
     const newId  = `code-cell-${newHex}`;
-    const newKey = newId + (linenos ? "-ln" : "");
+    const newKey = cellKey(owner, newId, linenos);
     if (_currentCacheKey) cellCache.delete(_currentCacheKey);
     cellCache.set(newKey, el);
     el.id = newId;

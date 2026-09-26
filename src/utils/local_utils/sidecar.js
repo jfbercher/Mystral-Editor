@@ -7,6 +7,7 @@ import { get as idbGet, set as idbSet } from "idb-keyval";
 import { isTauri, workingDirectory } from "./fs.js";
 import {
   cellCache,
+  OWNER_SEP,
   restoredOutputCache,
   isPyodideReady,
   loadPyodideRuntime,
@@ -114,8 +115,8 @@ async function loadSidecarFromWorkdir(fileName) {
  * @param {string} filePath   Tauri: absolute path; Web: ignored (uses currentFileName)
  * @param {string} fileName   Current document filename (e.g. "document.md")
  */
-export async function saveSidecarToFile(filePath, fileName, space = "shared") {
-  const cells = collectCellOutputs();
+export async function saveSidecarToFile(filePath, fileName, space = "shared", editorId = "") {
+  const cells = collectCellOutputs(editorId);
   if (Object.keys(cells).length === 0) {
     console.log("[sidecar] no cell outputs to save — skipping");
     return;
@@ -165,10 +166,13 @@ export async function saveSidecarToFile(filePath, fileName, space = "shared") {
  * Must be called BEFORE the markdown is rendered so that initCodeCell()
  * picks up the stored outputs on first render.
  */
-export function applySidecarOutputs(sidecar) {
+export function applySidecarOutputs(sidecar, editorId = "") {
   if (!sidecar?.cells) return;
+  // The sidecar keys a cell by its code; the runtime cache keys it by code and
+  // owning editor, so the outputs are filed under this editor -- otherwise a
+  // document would light up the identical cell of the document next to it.
   for (const [cacheKey, entry] of Object.entries(sidecar.cells)) {
-    if (entry.output_html) restoredOutputCache.set(cacheKey, entry.output_html);
+    if (entry.output_html) restoredOutputCache.set(editorId + OWNER_SEP + cacheKey, entry.output_html);
   }
 }
 
@@ -206,13 +210,21 @@ export function scheduleNamespaceRestore(sidecar, space = "shared") {
 
 // ── Collect for save ──────────────────────────────────────────────────────────
 
-/** Extract current cell outputs from cellCache. */
-function collectCellOutputs() {
+/**
+ * This document's cell outputs.
+ * The cache is shared by every editor and its keys carry the owning editor, so
+ * the others are skipped here and the prefix is stripped: what the sidecar
+ * stores stays keyed by the cell's code, as it has always been.
+ */
+function collectCellOutputs(editorId = "") {
   const cells = {};
+  const prefix = editorId + OWNER_SEP;
   for (const [cacheKey, el] of cellCache.entries()) {
+    if (!cacheKey.startsWith(prefix)) continue;
     const out = el.querySelector(".pyodide-output");
     if (!out || out.hidden || !out.innerHTML.trim()) continue;
-    cells[cacheKey] = { output_html: out.innerHTML, source_hash: cacheKey };
+    const key = cacheKey.slice(prefix.length);
+    cells[key] = { output_html: out.innerHTML, source_hash: key };
   }
   return cells;
 }
@@ -224,10 +236,10 @@ function collectCellOutputs() {
  * Call only on explicit user save (Cmd+S, Save As) — NOT on autosave.
  * @param {string} fileKeyOrPath  Tauri: absolute path; Web: stable fileKey string
  */
-export async function saveSidecarWithNamespace(fileKeyOrPath, space = "shared") {
+export async function saveSidecarWithNamespace(fileKeyOrPath, space = "shared", editorId = "") {
   if (!fileKeyOrPath) return;
 
-  const cells = collectCellOutputs();
+  const cells = collectCellOutputs(editorId);
   if (Object.keys(cells).length === 0) return; // no code cells → skip
 
   const data = {

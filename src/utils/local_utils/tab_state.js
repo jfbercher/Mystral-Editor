@@ -318,7 +318,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         // restoredOutputCache already populated (no race with markdown render).
         const _sidecar = await loadSidecar(fileHandleOrPath);
         if (_sidecar) {
-          applySidecarOutputs(_sidecar);       // sync – populates restoredOutputCache
+          applySidecarOutputs(_sidecar, editorId);       // sync – populates restoredOutputCache
           scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));  // async fire-and-forget
         }
         return { text: async () => textContent };
@@ -349,7 +349,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         // populated before the markdown renders.
         const _sidecar = await loadSidecar(tab.currentFileKey);
         if (_sidecar) {
-          applySidecarOutputs(_sidecar);
+          applySidecarOutputs(_sidecar, editorId);
           scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));
         }
         // On the web a FileSystemFileHandle carries no access to its parent
@@ -494,7 +494,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       await writable.close();
       tab.markSaved(contentToSave);
       await tab.saveCommentsForCurrentFile(); 
-      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId)).catch(e => console.warn('[sidecar] save failed:', e));
+      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId), editorId).catch(e => console.warn('[sidecar] save failed:', e));
       showToast(`Save: ${tab.currentFileName} successful.`);
       console.log(`Saved: ${tab.currentFileName}`);
     }
@@ -502,7 +502,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.saveSidecarToFile = async () => {
-    await saveSidecarToFile(tab.currentFileHandle, tab.currentFileName, getEditorPythonSpace(editorId));
+    await saveSidecarToFile(tab.currentFileHandle, tab.currentFileName, getEditorPythonSpace(editorId), editorId);
     showToast(`Save: ${tab.currentFileName} with sidecar successful.`);
   };
 
@@ -533,7 +533,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         await tab.saveCurrentDoc({ skipSidecar: true });
         // Web: IDB sidecar save is cheap — piggyback on autosave
         if (!isTauri) {
-          saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId))
+          saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId), editorId)
             .catch(e => console.warn('[sidecar] autosave IDB failed:', e));
         }
         console.log(`Autosave: ${tab.currentFileName}`);

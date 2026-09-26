@@ -197,7 +197,7 @@ export class TextManager {
         .use(useCustomRoles(options.customRoles.value, cache.transform))
         .use(useCustomDirectives(options.customDirectives.value, cache.transform))
         .use(markdownMermaid, { lineMap: this.lineMap, parent: options.parent, theme: options.mermaidTheme.value })
-        .use(markdownPyodide, { parent: options.parent })
+        .use(markdownPyodide, { parent: options.parent, editorId: options.id.value })
         .use(markdownItMath, this.options.id.value)
         .use(markdownSourceMap)
         .use(markdownItHeadings)

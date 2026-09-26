@@ -10,7 +10,7 @@
  */
 
 import IMurMurHash from "imurmurhash";
-import { initCodeCell, cellCache, runExpression, onCellExecuted } from "./pyodideRunner";
+import { initCodeCell, cellCache, cellKey, OWNER_SEP, runExpression, onCellExecuted } from "./pyodideRunner";
 import { Role } from "markdown-it-docutils";
 
 const HASH_SEED = 42;
@@ -137,7 +137,7 @@ const observerRegistry = new WeakMap();
  * Installe (une seule fois) un MutationObserver sur `parent` qui détecte
  * les divs .code-cell-host non encore initialisés et appelle initCodeCell().
  */
-function ensureObserver(parent) {
+function ensureObserver(parent, owner = "") {
   if (observerRegistry.has(parent)) return;
 
   const initPending = (el, evictedHost) => {
@@ -147,7 +147,7 @@ function ensureObserver(parent) {
     const packages = JSON.parse(el.dataset.packages ?? "[]");
     const linenos  = el.dataset.linenos === "true";
     const hash     = el.id;
-    const cacheKey = hash + (linenos ? "-ln" : "");
+    const cacheKey = cellKey(owner, hash, linenos);
 
     // ── Réutilisation d'un widget évincé ────────────────────────────────
     // On cherche dans le cache un élément qui n'est plus dans le DOM
@@ -197,6 +197,11 @@ function ensureObserver(parent) {
         evictedHost.id = hash;
         // Copier data-line-id pour que la sync scroll du source-map soit correcte
         if (el.dataset.lineId !== undefined) evictedHost.dataset.lineId = el.dataset.lineId;
+        // …et la clé du namespace, que la cellule relit à chaque exécution : sans
+        // cela un widget réutilisé garderait l'espace qu'il avait au rendu
+        // précédent, et une cellule s'exécuterait ailleurs que ses voisines.
+        evictedHost.dataset.pythonSpace = el.dataset.pythonSpace ?? "shared";
+        evictedHost.dataset.pythonSpaceLabel = el.dataset.pythonSpaceLabel ?? "shared";
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.
@@ -209,7 +214,7 @@ function ensureObserver(parent) {
       }
     }
 
-    initCodeCell(el, code, { packages, linenos, hash });
+    initCodeCell(el, code, { packages, linenos, hash, owner });
   };
 
   const observer = new MutationObserver(() => {
@@ -217,8 +222,12 @@ function ensureObserver(parent) {
     if (!newHosts.length) return;
 
     // Collecter les éléments évincés (déconnectés mais initialisés)
+    // Only this editor's own cells: one tab's widgets are all disconnected
+    // while another tab is showing, and pass 2 would hand them out here.
+    const prefix = owner + OWNER_SEP;
     const evictedSet = new Set();
-    for (const [, el] of cellCache.entries()) {
+    for (const [key, el] of cellCache.entries()) {
+      if (!key.startsWith(prefix)) continue;
       if (!el.isConnected && el.dataset.initialized) evictedSet.add(el);
     }
 
@@ -227,7 +236,7 @@ function ensureObserver(parent) {
     // de Map, cassant l'appariement naïf par index.
     const pairs = newHosts.map((el) => {
       const linenos = el.dataset.linenos === "true";
-      const cacheKey = el.id + (linenos ? "-ln" : "");
+      const cacheKey = cellKey(owner, el.id, linenos);
       const cached = cellCache.get(cacheKey);
       if (cached && evictedSet.has(cached)) {
         evictedSet.delete(cached);
@@ -252,10 +261,10 @@ function ensureObserver(parent) {
 /**
  * Plugin markdown-it.
  * @param {import("markdown-it").default} md
- * @param {{ parent: Element }} options
+ * @param {{ parent: Element, editorId: string }} options
  */
-const markdownItPyodide = (md, { parent } = {}) => {
-  if (parent) ensureObserver(parent);
+const markdownItPyodide = (md, { parent, editorId = "" } = {}) => {
+  if (parent) ensureObserver(parent, editorId);
 
   // ── 0. Renderer rule for {eval} role tokens ─────────────────────────────
   md.renderer.rules[EVAL_RESULT_RULE] = (tokens, idx) => tokens[idx].content;
