@@ -2,15 +2,22 @@
 
 Mystral Editor runs Python inside the document. A `code-cell` block becomes a
 small editor with its own toolbar; running it executes the code in a Python
-interpreter living in the page, and the result appears underneath. All the
-cells share one interpreter, so a variable defined in one is visible from the
-next, as in a notebook — and that interpreter is shared by **every open tab**,
-not one per document. Two documents opened side by side see each other's
-variables and can overwrite them, which is worth knowing before naming a
-variable `data` in both.
+interpreter living in the page, and the result appears underneath.
 
-This page covers writing and running cells, what the Python side can and
-cannot do, the variable inspector, and the settings that govern all of it.
+For a scientific editor this is more than a convenience, and it is the feature
+that changes how a document is written. The prose, the computation and the
+figure it produces live in one file and travel together, so a number in a
+sentence and the code that produced it cannot drift apart: change the data and
+re-run, and the text follows. A colleague opening the file gets the argument
+and the means of checking it at once, without a separate notebook to locate,
+a script to reconstruct or an environment to install — the interpreter comes
+with the page. It is the same promise as a computational notebook, made to a
+document that is meant to be read rather than to a notebook that happens to
+contain prose.
+
+This page covers writing and running cells, the namespace a document runs in,
+what the Python side can and cannot do, the variable inspector, and the
+settings that govern all of it.
 
 ## Writing a cell
 
@@ -42,6 +49,86 @@ not otherwise interpreted at present.
 A fourth form exists for a single expression in the middle of a sentence: the
 `{eval}` role. `` {eval}`2 + 2` `` renders as its value in the text flow, and
 is re-evaluated whenever a cell runs, so it follows the state of the session.
+It reads the document's own namespace, described next.
+
+## Namespaces: which Python a document runs in
+
+Within a document, all the cells share one namespace: a variable defined in one
+is visible from the next, as in a notebook.
+
+Between documents, the frontmatter decides. There is a single interpreter for
+the whole editor, but it holds as many namespaces as documents ask for:
+
+```yaml
+---
+python: shared      # the default, and what you get by writing nothing
+---
+```
+
+`shared` is one common namespace for every document that does not ask for
+another. It is the right answer more often than it sounds: several tabs that
+are chapters of the same work, or a document doing a quick calculation beside
+the one being written, are better off seeing each other's variables than
+importing `numpy` twice.
+
+`isolated` gives the document a namespace of its own. Nothing it defines
+reaches another document, and nothing another document defines reaches it.
+This is what to use when two files are unrelated, and above all when both are
+liable to bind a name as ordinary as `data`, `df` or `x`.
+
+```yaml
+---
+python: isolated
+---
+```
+
+A name gives a namespace shared by exactly the documents that ask for it:
+
+```yaml
+---
+python: tp3
+---
+```
+
+Every document carrying `python: tp3` sees the same variables; everything else
+is invisible to them. Since `extends` also works on the frontmatter, a project
+can set this once in a shared YAML file and have all of its documents inherit
+it — see [frontmatter-extends](frontmatter-extends.md).
+
+The namespace in force is shown at the right end of each cell's toolbar. It is
+an indicator and not a control: a document's namespace is a property of the
+document, written in its frontmatter, so there is one place to change it and
+no hidden state to wonder about. The shared namespace is drawn dimmed, with a
+dashed outline, since it is the default.
+
+`shared` and `isolated` are reserved: a group cannot be called either.
+
+### What is separated, and what is not
+
+What a namespace separates is **variables**. Several things stay common to the
+whole editor, and it is better to know which:
+
+Imported modules. `sys.modules` is shared, so an `import numpy` paid for once
+benefits every document — which is what one wants, given what that import
+costs. The consequence is that a module's own state is shared too:
+monkey-patching a library in one document changes it for all of them.
+
+Matplotlib's state, beyond the figures themselves. Figures are closed before
+each run, so no cell inherits another's canvas, but `rcParams` set in one
+document apply everywhere.
+
+The current working directory, and the in-memory filesystem under `/local`.
+Two documents living in different folders share one `/local`, whatever their
+namespaces.
+
+Separating those as well would take a second interpreter — a second
+WebAssembly heap with its own copy of every package, paid for in memory and in
+loading time. The frontmatter value is a plain string, so such a mode can be
+added later without changing anything already written in a document.
+
+A document that has never been saved has no file to be keyed by, so
+`python: isolated` there isolates it for the current tab only; the namespace is
+not found again after a reload.
 
 ## The toolbar
 
@@ -54,15 +141,18 @@ selected. **Clear** empties its output without touching the
 interpreter. **Run All** runs every cell of the document in order, waiting for
 each to finish. **Clear All** empties every output.
 
-**Vars** opens the variable inspector, described below.
+**Vars** opens the variable inspector, described below. It shows the
+document's own namespace.
 
-**Restart** clears the namespace: every user variable goes, open figures are
-closed, the working directory returns to `/local`. It keeps the interpreter
-itself, so it is instantaneous and works offline. What it deliberately does not
-do is unload modules — an `import` after a restart does not re-execute the
-module, and a library's internal state survives. When that matters,
-**⌥/Alt-click** on Restart instead: that reloads the whole Pyodide runtime,
-which takes several seconds and needs the network, and is the only true clean
+**Restart** clears the namespace *of this document*: its user variables go,
+open figures are closed, the working directory returns to `/local`. A document
+running on its own therefore no longer wipes its neighbours' work. It keeps the
+interpreter itself, so it is instantaneous and works offline. What it
+deliberately does not do is unload modules — an `import` after a restart does
+not re-execute the module, and a library's internal state survives. When that
+matters, **⌥/Alt-click** on Restart instead: that reloads the whole Pyodide
+runtime, which takes several seconds, needs the network, and affects every
+document, since there is one runtime for all of them. It is the only true clean
 slate.
 
 **+ Cell** inserts an empty cell just below. **✕** deletes the cell, after an
@@ -98,7 +188,8 @@ once the cursor reaches the first or last line.
 
 Completion is provided by jedi, installed at start-up. If that installation
 fails — no network, typically — `Tab` falls back to inserting four spaces and a
-message says so in the console.
+message says so in the console. Completion reads the cell's text rather than
+the running interpreter, so it is the same in every namespace.
 
 ## What Python can do here
 
@@ -161,37 +252,51 @@ of a session therefore needs the network, and so does a hard restart.
 ## Saved outputs and variables
 
 Alongside a document, the editor writes a sidecar file holding the outputs of
-its cells and a snapshot of the namespace, so reopening it shows the results
-without re-running everything, and the variables come back.
+its cells and a snapshot of its namespace, so reopening it shows the results
+without re-running everything, and the variables come back. The snapshot is
+taken of the document's own namespace and records which one it was, so it is
+put back where it came from.
 
-The single shared interpreter shows through here. The snapshot is taken of the
-whole namespace, so a document's sidecar records variables created by the cells
-of any other document open at the time; reopening it then reports them as
-unrestorable, the packages they need not being loaded. The message is accurate
-and the sidecar holds what it was asked to record — it is the pairing of one
-kernel with per-document snapshots that does not hold as soon as two Python
-documents are open.
+Changing `python:` between two sessions therefore does not move the saved
+variables: they return to the namespace they were computed in, and the cells,
+which now run elsewhere, have to be re-run. That is what changing the namespace
+means.
 
 The snapshot has limits worth knowing. Values are serialised with
 `cloudpickle`, and what it cannot pickle is not saved — an open file, a
-JavaScript proxy, some objects holding a live resource. Modules are recorded by
-name and re-imported on load, which is why a module from a package that is not
-in the runtime yet, such as `pandas` after a reload, may be reported as
-unrestorable. Whatever does not come back is named in a message rather than
-disappearing quietly, and re-running the cell that defines it is always the
-remedy.
+JavaScript proxy, some objects holding a live resource. Those are named in the
+browser console when the document is reopened, with the reason, since there is
+nothing to be done about them at that point.
+
+Modules are recorded by name and re-imported on load. A module the document
+installed itself, with `micropip` or by writing it, does not exist in a fresh
+runtime until the cells that create it have run; the same goes for an object
+whose class lives in such a module. That is not lost data, so it is reported as
+a console note rather than an alert: running the cells brings it back. The
+alert is kept for a value that really could not be rebuilt, which is the case
+worth looking at.
+
+One subtlety about restored functions. `cloudpickle` rebuilds a function with
+its own copy of the globals it reads, which would leave a restored `f()` seeing
+the value a variable had when the document was saved rather than its current
+one. Restored functions are therefore rebound to the live namespace, so they
+follow the document's variables as they did before it was closed. Methods of a
+restored class keep their own snapshot, which is out of reach of that
+mechanism.
 
 ## The variable inspector
 
-**Vars**, or `Alt-v`, opens a window listing what the namespace holds: one row
-per variable with its type, memory footprint, shape and a short `repr`. Columns
+**Vars**, or `Alt-v`, opens a window listing what the document's namespace
+holds: one row per variable with its type, memory footprint, shape and a short
+`repr`. Its title names the namespace when it is not the shared one. Columns
 sort on click, the filter box matches names and types, and a checkbox adds
 modules, functions and classes, which are hidden by default.
 
 The `×` on a row deletes that variable. On a module row it also drops the entry
 from `sys.modules`, so a later `import` rebuilds it — though memory only comes
 back if nothing else still references the module, which between `numpy`,
-`matplotlib` and their friends is rarely the case.
+`matplotlib` and their friends is rarely the case. Note that `sys.modules` is
+shared by every document, so unloading a module there affects all of them.
 
 The footer totals the sizes on display. Read it as an order of magnitude: a
 container reports its own footprint and not that of its contents, so a list of
@@ -202,19 +307,17 @@ rather than trusting `sys.getsizeof`, which would only measure the wrapper.
 The same information is available as text, from inside a cell:
 
 ```python
--%whos      # table: name, type, size, shape, value
-- %who       # names only
-- %whos -a   # include modules, functions and classes
+%whos      # table: name, type, size, shape, value
+%who       # names only
+%whos -a   # include modules, functions and classes
 ```
 
-
-
-These are the only two magics this runtime understands. Pyodide runs plain
-Python, where `%whos` is a syntax error, so the two lines are rewritten into
-calls before execution; any other `%` line is left to fail as Python, rather
-than being silently swallowed. Their output is text in the cell, so it stays in
-the document and in the saved outputs — which the window, being transient,
-does not.
+These are the only two magics this runtime understands, and they report on the
+namespace of the cell that calls them. Pyodide runs plain Python, where `%whos`
+is a syntax error, so the two lines are rewritten into calls before execution;
+any other `%` line is left to fail as Python, rather than being silently
+swallowed. Their output is text in the cell, so it stays in the document and in
+the saved outputs — which the window, being transient, does not.
 
 A word on the percent sign itself: in MyST, a line beginning with `%` is a
 comment and disappears from the rendered document. That rule stops at fences,
@@ -226,21 +329,23 @@ renders as `%`; anywhere else on the line no escape is needed.
 
 The look of a cell is governed by four CSS variables — `--pyodide-cell-bg`,
 `--pyodide-cell-border`, `--pyodide-output-bg` and `--pyodide-cell-running-bg`
-— plus a font-size knob, `--pyodide-cell-font-size`. They take precedence over the general `--color-*`
-variables so cells can be set apart from the rest of the page, and they have
-separate light and dark values. [myst-editor-css-variables](myst-editor-css-variables.md)
-documents each one, and [customisation](customisation.md) explains where to
-put your overrides.
+— plus a font-size knob, `--pyodide-cell-font-size`. They take precedence over
+the general `--color-*` variables so cells can be set apart from the rest of
+the page, and they have separate light and dark values.
+[myst-editor-css-variables](myst-editor-css-variables.md) documents each one,
+and [customisation](customisation.md) explains where to put your overrides.
 
 ## Diagnostics
 
 Two helpers live on `window` for when something behaves oddly.
 
-`__mystralNamespaceDebug` keeps a log of everything that changes the shared
-namespace — cell runs with the names they added and removed, restores,
-restarts, deletions. `.losses()` lists only the events that removed a name, and
-`.dump()` prints the whole timeline. It answers the question "when did this
-variable disappear, and because of what?", which reading the code does not.
+`__mystralNamespaceDebug` keeps a log of everything that changes a namespace —
+cell runs with the names they added and removed, restores, restarts,
+deletions — each event naming the namespace it touched. `.spaces()` lists the
+namespaces currently in existence, `.losses()` only the events that removed a
+name, and `.dump()` prints the whole timeline. It answers the question "when
+did this variable disappear, and because of what?", which reading the code does
+not.
 
 `__mystralEnvReport()` reports what the browser offers: secure context, which
 file pickers exist, whether IndexedDB really accepts a write. It is about file
