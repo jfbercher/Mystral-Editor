@@ -13,6 +13,9 @@
 
 import { Directive, directiveOptions } from "markdown-it-docutils";
 import { readTextRelative } from "../utils/local_utils/fs.js";
+// The scan expands includes with these very functions: the renderer must
+// select the same lines it did, or their line numbers drift apart.
+import { selectLines, stripFrontmatter } from "./includeExpansion.js";
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
@@ -61,72 +64,6 @@ export const includeCache = {
   },
 };
 
-// ─── Content selection ───────────────────────────────────────────────────────
-
-/** Strip a leading YAML frontmatter block from an included file. */
-function stripFrontmatter(text) {
-  const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
-  return m ? text.slice(m[0].length) : text;
-}
-
-/** Parse "1,3-5" into a predicate over 1-based line numbers. */
-function lineSelector(spec) {
-  const ranges = String(spec)
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const m = /^(\d+)\s*-\s*(\d+)$/.exec(part);
-      if (m) return [Number(m[1]), Number(m[2])];
-      const n = Number(part);
-      return Number.isFinite(n) ? [n, n] : null;
-    })
-    .filter(Boolean);
-  return (n) => ranges.some(([a, b]) => n >= a && n <= b);
-}
-
-/**
- * Apply the selection options, in the order mystmd documents them.
- * Returns {text, firstLine} -- firstLine being the 1-based line of the first
- * kept line, which :lineno-match: needs.
- */
-export function selectLines(text, options) {
-  let lines = text.split("\n");
-  let offset = 0;   // how many lines were dropped from the top
-
-  if (options.lines) {
-    const keep = lineSelector(options.lines);
-    const kept = [];
-    let first = null;
-    lines.forEach((line, i) => {
-      if (keep(i + 1)) { kept.push(line); if (first === null) first = i; }
-    });
-    return { text: kept.join("\n"), firstLine: (first ?? 0) + 1 };
-  }
-
-  const cut = (from) => { lines = lines.slice(from); offset += from; };
-
-  if (options["start-at"] != null || options["start-after"] != null) {
-    const needle = String(options["start-at"] ?? options["start-after"]);
-    const i = lines.findIndex((l) => l.includes(needle));
-    if (i >= 0) cut(options["start-at"] != null ? i : i + 1);
-  } else if (options["start-line"] != null) {
-    const n = Number(options["start-line"]);
-    if (Number.isFinite(n)) cut(Math.max(0, n - 1));
-  }
-
-  if (options["end-at"] != null || options["end-before"] != null) {
-    const needle = String(options["end-at"] ?? options["end-before"]);
-    const i = lines.findIndex((l) => l.includes(needle));
-    if (i >= 0) lines = lines.slice(0, options["end-at"] != null ? i + 1 : i);
-  } else if (options["end-line"] != null) {
-    const n = Number(options["end-line"]);
-    // end-line is exclusive, and counted in the original file.
-    if (Number.isFinite(n)) lines = lines.slice(0, Math.max(0, n - offset - 1));
-  }
-
-  return { text: lines.join("\n"), firstLine: offset + 1 };
-}
 
 // ─── Directive ───────────────────────────────────────────────────────────────
 

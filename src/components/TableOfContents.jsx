@@ -2,7 +2,7 @@ import { useContext, useMemo,  useState } from "preact/hooks";
 import styled from "styled-components";
 import { MystState } from "../mystState";
 import { useSignalEffect } from "@preact/signals";
-import { scrollToPos } from "../utils";
+import { scrollToPos, scrollToVirtualLine } from "../utils";
 import { numberHeadings } from "../utils/headingNumbering";
 // For drag & drop of sections
 import { moveSectionInText } from "../utils/sectionReorder";
@@ -69,10 +69,6 @@ const HeadingList = styled.div`
   .included > span {
     font-style: italic;
     opacity: 0.75;
-    cursor: default;
-  }
-  .included > span:hover {
-    text-decoration: none;
   }
   .drop-before {
     box-shadow: inset 0 2px 0 0 var(--accent-dark, #06c);
@@ -166,9 +162,9 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
     >
       <span
         title={heading.included
-          ? "From an included file — shown for reference; it cannot be moved from here"
+          ? "From an included file — scrolls the preview; it cannot be moved from here"
           : "Go to heading"}
-        data-heading-pos={heading.included ? undefined : heading.pos}
+        data-heading-pos={heading.pos}
       >
         {heading.number ? `${heading.number} ` : ""}
         {heading.text}
@@ -199,6 +195,12 @@ export const TableOfContents = ({ compact = false }) => {
   function handleClick(ev) {
     const posAttr = ev.target?.dataset?.headingPos;
     if (!posAttr) return;
+    // "v<line>" is a heading of an included file: a virtual line, which
+    // addresses the preview but nothing in the editor.
+    if (posAttr.startsWith("v")) {
+      scrollToVirtualLine(parseInt(posAttr.slice(1), 10), { text });
+      return;
+    }
     scrollToPos(parseInt(posAttr, 10), { editorView, options, text });
   }
 

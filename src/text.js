@@ -538,6 +538,10 @@ export class TextManager {
     // not lines of the editor. Rebuilt with each pass, since the allocation
     // follows the includes.
     const virtualLineMap = new Map();
+    // Kept on the manager so the outline can scroll the preview to a heading
+    // that came from an included file: it has no editor position, but it does
+    // have a rendered element, keyed here.
+    this.virtualLineMap = virtualLineMap;
 
     /**
      * Bring a map keyed by line in the expanded text back to the document's

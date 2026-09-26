@@ -14,6 +14,21 @@ export function scrollToPos(pos, { editorView, options, text }) {
   preview.scrollTo({ top: preview.scrollTop + elem.getBoundingClientRect().top - preview.getBoundingClientRect().top, behavior: "smooth" });
 }
 
+/**
+ * Scroll the preview to content pulled in by an {include}. Such content has no
+ * position in the editor -- its lines are not lines of this document -- so only
+ * the preview moves, and only when it is on screen and already rendered.
+ */
+export function scrollToVirtualLine(line, { text }) {
+  const preview = text.preview.peek();
+  const id = text.virtualLineMap?.get(line);
+  if (!preview || !id) return false;
+  const elem = preview.querySelector(`[data-line-id="${id}"]`);
+  if (!elem?.offsetParent) return false;
+  preview.scrollTo({ top: preview.scrollTop + elem.getBoundingClientRect().top - preview.getBoundingClientRect().top, behavior: "smooth" });
+  return true;
+}
+
 export async function waitForElement(parent, id) {
   return new Promise((resolve) => {
     const elem = parent.getElementById(id);

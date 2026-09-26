@@ -93,6 +93,73 @@ function readOptions(lines, from, to) {
   return options;
 }
 
+// ─── Content selection ───────────────────────────────────────────────────────
+
+/** Strip a leading YAML frontmatter block from an included file. */
+export function stripFrontmatter(text) {
+  const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
+  return m ? text.slice(m[0].length) : text;
+}
+
+/** Parse "1,3-5" into a predicate over 1-based line numbers. */
+function lineSelector(spec) {
+  const ranges = String(spec)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const m = /^(\d+)\s*-\s*(\d+)$/.exec(part);
+      if (m) return [Number(m[1]), Number(m[2])];
+      const n = Number(part);
+      return Number.isFinite(n) ? [n, n] : null;
+    })
+    .filter(Boolean);
+  return (n) => ranges.some(([a, b]) => n >= a && n <= b);
+}
+
+/**
+ * Apply the selection options, in the order mystmd documents them.
+ * Returns {text, firstLine} -- firstLine being the 1-based line of the first
+ * kept line, which :lineno-match: needs.
+ */
+export function selectLines(text, options) {
+  let lines = text.split("\n");
+  let offset = 0;   // how many lines were dropped from the top
+
+  if (options.lines) {
+    const keep = lineSelector(options.lines);
+    const kept = [];
+    let first = null;
+    lines.forEach((line, i) => {
+      if (keep(i + 1)) { kept.push(line); if (first === null) first = i; }
+    });
+    return { text: kept.join("\n"), firstLine: (first ?? 0) + 1 };
+  }
+
+  const cut = (from) => { lines = lines.slice(from); offset += from; };
+
+  if (options["start-at"] != null || options["start-after"] != null) {
+    const needle = String(options["start-at"] ?? options["start-after"]);
+    const i = lines.findIndex((l) => l.includes(needle));
+    if (i >= 0) cut(options["start-at"] != null ? i : i + 1);
+  } else if (options["start-line"] != null) {
+    const n = Number(options["start-line"]);
+    if (Number.isFinite(n)) cut(Math.max(0, n - 1));
+  }
+
+  if (options["end-at"] != null || options["end-before"] != null) {
+    const needle = String(options["end-at"] ?? options["end-before"]);
+    const i = lines.findIndex((l) => l.includes(needle));
+    if (i >= 0) lines = lines.slice(0, options["end-at"] != null ? i + 1 : i);
+  } else if (options["end-line"] != null) {
+    const n = Number(options["end-line"]);
+    // end-line is exclusive, and counted in the original file.
+    if (Number.isFinite(n)) lines = lines.slice(0, Math.max(0, n - offset - 1));
+  }
+
+  return { text: lines.join("\n"), firstLine: offset + 1 };
+}
+
 const VIRTUAL_GAP = 1000;
 
 /**
@@ -139,9 +206,16 @@ export function expandIncludes(hostText, getText, { maxDepth = 3 } = {}) {
 
       const options = readOptions(lines, i + 1, consumedTo - 1);
       const literal = block.literal || options.has("literal") || options.has("lang");
-      const content = block.path && !literal && depth < maxDepth && !seen.has(block.path)
+      const raw = block.path && !literal && depth < maxDepth && !seen.has(block.path)
         ? getText(block.path)
         : null;
+      // Prepared here rather than at render time, and handed to the renderer
+      // through `includes`: the frontmatter of an included file and its line
+      // selection both shift its content, and a shift the scan did not make
+      // would offset every number inside it.
+      const content = raw == null
+        ? null
+        : selectLines(stripFrontmatter(raw), Object.fromEntries(options)).text;
 
       if (content != null) {
         const innerLines = content.split("\n");
@@ -186,7 +260,21 @@ export function scanHeadingLines(text) {
   const headings = [];
   let fence = null;
 
-  for (let i = 0; i < lines.length; i++) {
+  // A leading YAML frontmatter block is data, not prose. Its closing "---"
+  // would otherwise read as the setext underline of the last key it contains,
+  // which turned that key into a level-2 heading -- in the outline, and in the
+  // section numbering with it.
+  let start = 0;
+  if (/^---[ \t]*$/.test(lines[0] ?? "")) {
+    for (let i = 1; i < lines.length; i++) {
+      if (/^(-{3,}|\.{3})[ \t]*$/.test(lines[i])) {
+        start = i + 1;
+        break;
+      }
+    }
+  }
+
+  for (let i = start; i < lines.length; i++) {
     const line = lines[i];
     const marker = /^[ \t]*(`{3,}|~{3,}|:{3,})(.*)$/.exec(line);
     if (marker) {
@@ -204,7 +292,7 @@ export function scanHeadingLines(text) {
       continue;
     }
     // Setext: "===" (level 1) or "---" (level 2) under a non-empty line.
-    if (i > 0 && /^(=+|-{2,})\s*$/.test(line)) {
+    if (i > start && /^(=+|-{2,})\s*$/.test(line)) {
       const previous = lines[i - 1];
       if (previous.trim() && !/^(#{1,6})\s/.test(previous)) {
         headings.push({ level: line[0] === "=" ? 1 : 2, text: previous.trim(), line: i });
