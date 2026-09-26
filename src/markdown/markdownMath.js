@@ -179,6 +179,24 @@ export function refDisplayText(info, state) {
 
 
 
+// texmath reads `$$ … $$ (3)` as an equation carrying its own number, and the
+// `\s*?` before the parenthesis crosses newlines. A MyST target written right
+// under a display equation --
+//
+//   $$ … $$
+//   (my-section)=
+//   ## Title
+//
+// -- was therefore swallowed as that number: the label disappeared and the
+// leftover `=` surfaced in the preview. A `(…)` immediately followed by `=` is
+// a target, never an equation number.
+for (const delimiter of ["dollars", "brackets"]) {
+  const rule = texmath.rules[delimiter]?.block?.find((r) => r.name === "math_block_eqno");
+  if (rule && !rule.rex.source.endsWith("(?!=)")) {
+    rule.rex = new RegExp(rule.rex.source + "(?!=)", rule.rex.flags);
+  }
+}
+
 const markdownItMath = (md, editorId) => {
   const macros = getKatexMacros(editorId);
   md.use(texmath, {
