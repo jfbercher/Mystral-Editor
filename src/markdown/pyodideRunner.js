@@ -380,11 +380,13 @@ function logNamespaceEvent(event, detail) {
 }
 
 /** Names currently bound in the Python globals (user-facing ones only). */
-function userGlobalNames(pyodide) {
+function userGlobalNames(pyodide, space = SHARED_SPACE) {
   try {
+    pyodide.globals.set("_ns_names", getNamespace(space, pyodide));
     const json = pyodide.runPython(
-      "__import__('json').dumps(sorted(k for k in globals() if not k.startswith('_')))"
+      "__import__('json').dumps(sorted(k for k in _ns_names if not k.startswith('_')))"
     );
+    pyodide.runPython("globals().pop('_ns_names', None)");
     return JSON.parse(json);
   } catch (e) {
     return null;
@@ -423,17 +425,21 @@ globalThis.__mystralNamespaceDebug = {
 // failure ("lost sys.stderr").
 const RUNTIME_GLOBALS = ["sys", "io", "js"];
 
-export async function softRestartKernel() {
+export async function softRestartKernel(space = SHARED_SPACE) {
   if (!pyodideInstance) return { softened: false, removed: [] };
-  const removed = (userGlobalNames(pyodideInstance) ?? []).filter((n) => !RUNTIME_GLOBALS.includes(n));
+  const removed = (userGlobalNames(pyodideInstance, space) ?? []).filter((n) => !RUNTIME_GLOBALS.includes(n));
+  // Only this namespace is emptied. A document that runs on its own no longer
+  // wipes its neighbours' variables when its Restart button is pressed.
+  pyodideInstance.globals.set("_ns_target", getNamespace(space));
   pyodideInstance.runPython(`
 _spared = frozenset(${JSON.stringify(RUNTIME_GLOBALS)})
-_doomed = [_k for _k in globals() if not _k.startswith('_') and _k not in _spared]
+_doomed = [_k for _k in _ns_target if not _k.startswith('_') and _k not in _spared]
 for _n in _doomed:
-    globals().pop(_n, None)
+    _ns_target.pop(_n, None)
 globals().pop('_doomed', None)
 globals().pop('_n', None)
 globals().pop('_spared', None)
+globals().pop('_ns_target', None)
 try:
     import matplotlib.pyplot as _plt
     _plt.close('all')
@@ -444,7 +450,7 @@ import os as _os
 _os.chdir('/local')
 del _os
 `);
-  logNamespaceEvent("kernel-soft-restart", { removed });
+  logNamespaceEvent("kernel-soft-restart", { removed, space });
   _cellExecutedListeners.forEach((fn) => fn());   // {eval} results are now stale
   return { softened: true, removed };
 }
@@ -723,8 +729,9 @@ function cellKeyBindings(actions) {
   return bindings;
 }
 
-async function executePython(code, packages, onStream = null) {
+async function executePython(code, packages, onStream = null, space = SHARED_SPACE) {
   const pyodide = await loadPyodideRuntime(packages);
+  const namespace = getNamespace(space, pyodide);
   const capture = { stdout: "", stderr: "", onWrite: onStream };
   globalThis._pyodideCurrentCell = capture;
 
@@ -738,14 +745,14 @@ async function executePython(code, packages, onStream = null) {
   }
 
   const memfsSnapshot = snapshotMemfsDir(pyodide);
-  const namesBefore = userGlobalNames(pyodide);
+  const namesBefore = userGlobalNames(pyodide, space);
 
   const started = performance.now();
   let error = null;
   let returnValue = null;
 
   try {
-    const value = await pyodide.runPythonAsync(expandMystralMagics(code));
+    const value = await pyodide.runPythonAsync(expandMystralMagics(code), { globals: namespace });
     if (value !== undefined && value !== null) returnValue = String(value);
   } catch (err) {
     error = String(err);
@@ -754,11 +761,11 @@ async function executePython(code, packages, onStream = null) {
   }
 
   if (namesBefore) {
-    const namesAfter = userGlobalNames(pyodide) ?? namesBefore;
+    const namesAfter = userGlobalNames(pyodide, space) ?? namesBefore;
     const removed = namesBefore.filter((n) => !namesAfter.includes(n));
     const added = namesAfter.filter((n) => !namesBefore.includes(n));
     if (removed.length || added.length) {
-      logNamespaceEvent("cell-run", { added, removed, errored: Boolean(error) });
+      logNamespaceEvent("cell-run", { added, removed, errored: Boolean(error), space });
       if (removed.length) console.warn("[namespace] cell run removed:", removed.join(", "));
     }
   }
@@ -1003,12 +1010,17 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const clearAllBtn = mkBtn("pyodide-btn-clearall", "Clear All");
   const varsBtn     = mkBtn("pyodide-btn-vars",     "Vars");
   varsBtn.title = "List the variables currently defined (\u2325V) \u2014 or run %whos in a cell";
+  // Read at each use rather than captured: a re-render restamps the host, and
+  // the frontmatter may have changed `python:` in between.
+  const _space = () => el.dataset.pythonSpace || SHARED_SPACE;
+  const _spaceLabel = () => el.dataset.pythonSpaceLabel || SHARED_SPACE;
+
   // Declared here, before the keymap that calls it. Imported on demand: the
   // window needs this module and this module needs the window, and a static
   // import each way would be a cycle.
   const openVarInspector = async () => {
     const { showVarInspector } = await import("./varInspectorUi.js");
-    await showVarInspector();
+    await showVarInspector(_space(), _spaceLabel());
   };
   varsBtn.addEventListener("click", openVarInspector);
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
@@ -1017,8 +1029,32 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
   deleteBtn.title = "Delete this cell";
 
+  // Not a control: a document's namespace is a property of the document, set
+  // in its frontmatter, so this says where one is without offering a second way
+  // of changing it.
+  const spaceTag = document.createElement("span");
+  spaceTag.className = "pyodide-space-tag";
+  const refreshSpaceTag = () => {
+    const label = el.dataset.pythonSpaceLabel || SHARED_SPACE;
+    spaceTag.textContent = label;
+    spaceTag.dataset.shared = String(label === SHARED_SPACE);
+    spaceTag.title =
+      label === SHARED_SPACE
+        ? "Python namespace: shared with every document that does not ask for another.\n" +
+          "Set `python: isolated` or `python: <name>` in the frontmatter to separate them."
+        : `Python namespace: ${label} — the variables of this document are its own.\n` +
+          "Imported modules, matplotlib state and the current directory stay common.";
+  };
+  refreshSpaceTag();
+  // A re-render restamps the host in place -- the widget is reused -- so the
+  // label has to follow the attribute rather than being read once.
+  new MutationObserver(refreshSpaceTag).observe(el, {
+    attributes: true,
+    attributeFilter: ["data-python-space-label"],
+  });
+
   controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, deleteBtn);
-  header.append(controls);
+  header.append(controls, spaceTag);
 
   // Zone d'édition CM6
   const editorRow = document.createElement("div");
@@ -1232,7 +1268,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
     setStatus(statusText, "");
   });
 
-  restartBtn.title = "Restart the kernel: clears all variables (⌥/Alt-click to reload the whole Pyodide runtime)";
+  restartBtn.title =
+    "Restart the kernel: clears the variables of this document's namespace " +
+    "(⌥/Alt-click to reload the whole Pyodide runtime, which affects every document)";
   restartBtn.addEventListener("click", async (ev) => {
     const hard = ev.altKey;
     restartBtn.disabled = true;
@@ -1245,11 +1283,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
         await loadPyodideRuntime();
         setStatus(statusText, "Runtime reloaded", "success");
       } else {
-        const { softened, removed } = await softRestartKernel();
+        const { softened, removed } = await softRestartKernel(_space());
+        const where = _spaceLabel() === SHARED_SPACE ? "" : ` in ${_spaceLabel()}`;
         setStatus(
           statusText,
           softened
-            ? `Kernel restarted — ${removed.length} variable(s) cleared`
+            ? `Kernel restarted — ${removed.length} variable(s) cleared${where}`
             : "Kernel not started yet",
           "success",
         );
@@ -1421,7 +1460,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash } 
 
       let result;
       try {
-        result = await executePython(view.state.doc.toString(), packages, onStream);
+        result = await executePython(view.state.doc.toString(), packages, onStream, _space());
       } finally {
         // Stop streaming before renderOutput() wipes textOutputArea, otherwise a
         // queued frame would append to detached nodes.
@@ -1485,9 +1524,9 @@ export function clearAllCells(root = document.body) {
  * @param {string} expr
  * @returns {Promise<string>}
  */
-export async function runExpression(expr) {
+export async function runExpression(expr, space = SHARED_SPACE) {
   const pyodide = await loadPyodideRuntime();
-  const result = await pyodide.runPythonAsync(expr);
+  const result = await pyodide.runPythonAsync(expr, { globals: getNamespace(space, pyodide) });
   if (result === undefined || result === null) return "";
   return String(result);
 }

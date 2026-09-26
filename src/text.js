@@ -9,7 +9,8 @@ import markdownMermaid from "./markdown/markdownMermaid";
 import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import { includeDirectives, includeCache } from "./markdown/markdownInclude";
 import { expandIncludes, scanHeadingLines } from "./markdown/includeExpansion";
-import { readTextRelative } from "./utils/local_utils/fs.js";
+import { readTextRelative, getEditorFileKey, setEditorPythonSpace } from "./utils/local_utils/fs.js";
+import { spaceKey, spaceLabel } from "./markdown/pyodideRunner";
 import { showToast } from "./utils/utils_ui";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
@@ -510,6 +511,15 @@ export class TextManager {
     //const refsKindLabel = getKindLabel(fmResult?.frontmatter)
     const { kindLabel, numberingEnabled } = getNumberingConfig(fmResult?.frontmatter);
 
+    // Which Python namespace this document's code cells run in.
+    // `python: isolated` means one namespace per document, so it is keyed by the
+    // file -- not by the tab -- which keeps a document in the same namespace
+    // when it is closed and reopened, and lines it up with its sidecar.
+    const pythonSpaceValue = fmResult?.frontmatter?.python;
+    const pythonSpace = spaceKey(pythonSpaceValue, getEditorFileKey(this.options.id.value));
+    const pythonSpaceLabel = spaceLabel(pythonSpaceValue);
+    setEditorPythonSpace(this.options.id.value, pythonSpace);
+
     // The scanners below walk the text to collect labels, numbers, citations
     // and reference definitions. An {include} is one line there, so what it
     // pulls in was invisible to them. They walk the expanded text instead:
@@ -716,7 +726,7 @@ export class TextManager {
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}`,
         42,
         ).result();
         
@@ -749,7 +759,9 @@ export class TextManager {
                       citationTemplate,
                       kindLabel,
                       numberingEnabled,
-                      refDefs, });
+                      refDefs,
+                      pythonSpace,
+                      pythonSpaceLabel, });
           if (timing_debug) {const _r1 = performance.now();}
           html = sanitize(rendered);
           if (timing_debug) {

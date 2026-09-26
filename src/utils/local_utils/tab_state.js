@@ -11,6 +11,8 @@ import { effect, signal } from '@preact/signals';
 import { 
   workingDirectory, 
   currentFileDir,
+  setEditorFileKey,
+  getEditorPythonSpace,
   selectWorkingFolder,
   hasFileSystemAccess,
   isFallbackHandle,
@@ -218,6 +220,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       tab.currentFileHandle = null;
       tab.selectedFileHandle = null;
       tab.currentFileKey = null;
+      setEditorFileKey(editorId, null);
       tab.currentFileName = null;
       tab.fileLoaded = false;
       currentFileDir.value = null;
@@ -228,6 +231,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     tab.currentFileHandle = handleOrPath;
     tab.currentFileName = getFileName(handleOrPath);
     tab.currentFileKey = getFileKey(handleOrPath);
+    setEditorFileKey(editorId, tab.currentFileKey);
     // Reached from "Save as" and from an explicit open: the file exists and is
     // ours in both cases.
     tab.fileLoaded = true;
@@ -302,6 +306,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = getFileName(fileHandleOrPath);
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
+        setEditorFileKey(editorId, tab.currentFileKey);
         currentFileDir.value = typeof fileHandleOrPath === 'string'  
           ? fileHandleOrPath.split('/').slice(0, -1).join('/')
           : null;
@@ -314,7 +319,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         const _sidecar = await loadSidecar(fileHandleOrPath);
         if (_sidecar) {
           applySidecarOutputs(_sidecar);       // sync – populates restoredOutputCache
-          scheduleNamespaceRestore(_sidecar);  // async fire-and-forget
+          scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));  // async fire-and-forget
         }
         return { text: async () => textContent };
       } else {
@@ -333,6 +338,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.selectedFileHandle = fileHandleOrPath;
         tab.currentFileName = fileHandleOrPath.name;
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
+        setEditorFileKey(editorId, tab.currentFileKey);
         // A fallback handle is not structured-cloneable and is only a snapshot.
         if (!isFallbackHandle(tab.currentFileHandle)) {
           await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
@@ -344,7 +350,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         const _sidecar = await loadSidecar(tab.currentFileKey);
         if (_sidecar) {
           applySidecarOutputs(_sidecar);
-          scheduleNamespaceRestore(_sidecar);
+          scheduleNamespaceRestore(_sidecar, getEditorPythonSpace(editorId));
         }
         // On the web a FileSystemFileHandle carries no access to its parent
         // directory -- the File System Access API deliberately withholds it.  So
@@ -488,7 +494,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       await writable.close();
       tab.markSaved(contentToSave);
       await tab.saveCommentsForCurrentFile(); 
-      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey).catch(e => console.warn('[sidecar] save failed:', e));
+      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId)).catch(e => console.warn('[sidecar] save failed:', e));
       showToast(`Save: ${tab.currentFileName} successful.`);
       console.log(`Saved: ${tab.currentFileName}`);
     }
@@ -496,7 +502,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.saveSidecarToFile = async () => {
-    await saveSidecarToFile(tab.currentFileHandle, tab.currentFileName);
+    await saveSidecarToFile(tab.currentFileHandle, tab.currentFileName, getEditorPythonSpace(editorId));
     showToast(`Save: ${tab.currentFileName} with sidecar successful.`);
   };
 
@@ -527,7 +533,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         await tab.saveCurrentDoc({ skipSidecar: true });
         // Web: IDB sidecar save is cheap — piggyback on autosave
         if (!isTauri) {
-          saveSidecarWithNamespace(tab.currentFileKey)
+          saveSidecarWithNamespace(tab.currentFileKey, getEditorPythonSpace(editorId))
             .catch(e => console.warn('[sidecar] autosave IDB failed:', e));
         }
         console.log(`Autosave: ${tab.currentFileName}`);

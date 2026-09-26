@@ -12,6 +12,41 @@ export let imagesDirectory = null;
 export const workingDirectory = signal(null); // Signal WAS let workingDirectory = null
 export const currentFileDir = signal(null); 
 
+/**
+ * The document each tab is showing, as the sidecar keys it.
+ *
+ * Every tab has its own editor, but they all share this module and the one
+ * Python runtime, so a global "current file" would hold whichever tab bound a
+ * file last. This is keyed by editor id, which is what a tab is identified by
+ * everywhere else. Undefined for a tab whose document was never saved.
+ */
+const fileKeyByEditor = new Map();
+
+export function setEditorFileKey(editorId, key) {
+  if (key == null) fileKeyByEditor.delete(editorId);
+  else fileKeyByEditor.set(editorId, key);
+}
+
+export function getEditorFileKey(editorId) {
+  return fileKeyByEditor.get(editorId) ?? null;
+}
+
+/**
+ * The Python namespace each tab's document runs in, as its frontmatter asks.
+ * Published by the renderer, which is where the frontmatter is read, and used
+ * by the sidecar, which must save and restore the namespace of ITS document
+ * rather than whatever the shared pot happens to hold.
+ */
+const pythonSpaceByEditor = new Map();
+
+export function setEditorPythonSpace(editorId, space) {
+  pythonSpaceByEditor.set(editorId, space);
+}
+
+export function getEditorPythonSpace(editorId) {
+  return pythonSpaceByEditor.get(editorId) ?? "shared";
+}
+
 // --- Repli pour les navigateurs sans File System Access API -----------------
 //
 // Safari et Firefox n'implementent ni showOpenFilePicker, ni showSaveFilePicker,

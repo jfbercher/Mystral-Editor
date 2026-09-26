@@ -16,6 +16,10 @@
    whole cell at once: header, editor and status bar all read that variable. */
 .pyodide-wrapper.pyodide-running{--pyodide-cell-bg:var(--pyodide-cell-running-bg,#fdeeec)}
 .pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
+/* Which Python namespace the cell runs in. An indicator, not a control: the
+   namespace is set in the document's frontmatter. */
+.pyodide-space-tag{flex:none;font-size:.72rem;letter-spacing:.02em;padding:.1rem .45rem;border-radius:999px;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));opacity:.8;white-space:nowrap;cursor:default;user-select:none}
+.pyodide-space-tag[data-shared="true"]{opacity:.4;border-style:dashed}
 .pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
 .pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}

@@ -1005,10 +1005,15 @@ class CodeCellDirective extends Directive {
     const id      = `code-cell-${hash}`;
     const encoded = _encodeCode(code);
 
+    // Same attributes as the fence form in markdownPyodide.js: the cell has to
+    // know which Python namespace it belongs to, whichever syntax wrote it.
+    const env = this.state?.env ?? {};
     const html =
       `<div id="${id}" class="code-cell-host" ` +
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
+      `data-python-space="${env.pythonSpace ?? "shared"}" ` +
+      `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
       `data-linenos="${linenos}">` +
       `</div>\n`;
 

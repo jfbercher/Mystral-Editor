@@ -33,7 +33,7 @@ const escapeHtml = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /** Open (or re-open) the variable window. */
-export async function showVarInspector() {
+export async function showVarInspector(space = "shared", spaceLabel = "shared") {
   document.getElementById(OVERLAY_ID)?.remove();
 
   const overlay = document.createElement("div");
@@ -51,7 +51,9 @@ export async function showVarInspector() {
     "box-shadow:0 4px 20px rgba(0,0,0,.25);";
   box.innerHTML = `
     <div style="display:flex; align-items:center; gap:10px;">
-      <h2 style="margin:0; font-size:1.05rem; flex:1;">Variables</h2>
+      <h2 style="margin:0; font-size:1.05rem; flex:1;">Variables${
+        spaceLabel === "shared" ? "" : ` <span style="font-weight:400; opacity:.7;">— ${escapeHtml(spaceLabel)}</span>`
+      }</h2>
       <input class="vars-filter" type="search" placeholder="Filter…"
              style="padding:4px 8px; min-width:140px;" />
       <label style="display:flex; align-items:center; gap:4px; font-size:.85rem; white-space:nowrap;">
@@ -134,7 +136,7 @@ export async function showVarInspector() {
     body.querySelectorAll(".vars-del").forEach((btn) =>
       btn.addEventListener("click", async () => {
         btn.disabled = true;
-        await deleteVariables([btn.dataset.name], { unloadModules: Boolean(btn.dataset.module) });
+        await deleteVariables([btn.dataset.name], { unloadModules: Boolean(btn.dataset.module), space });
         await load();
       }));
 
@@ -148,7 +150,7 @@ export async function showVarInspector() {
   };
 
   const load = async () => {
-    const list = await inspectNamespace(allBox.checked);
+    const list = await inspectNamespace(allBox.checked, space);
     if (list === null) {
       body.innerHTML = `<p style="opacity:.7;">Python has not started yet — run a cell first.</p>`;
       total.textContent = "";

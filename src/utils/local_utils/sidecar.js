@@ -114,7 +114,7 @@ async function loadSidecarFromWorkdir(fileName) {
  * @param {string} filePath   Tauri: absolute path; Web: ignored (uses currentFileName)
  * @param {string} fileName   Current document filename (e.g. "document.md")
  */
-export async function saveSidecarToFile(filePath, fileName) {
+export async function saveSidecarToFile(filePath, fileName, space = "shared") {
   const cells = collectCellOutputs();
   if (Object.keys(cells).length === 0) {
     console.log("[sidecar] no cell outputs to save — skipping");
@@ -130,12 +130,13 @@ export async function saveSidecarToFile(filePath, fileName) {
 
   if (isPyodideReady()) {
     try {
-      data.namespace = await snapshotNamespace();
+      data.namespace = await snapshotNamespace(space);
     } catch (e) {
       console.warn("[sidecar] namespace snapshot failed:", e);
     }
   }
 
+  data.python_space = space;
   const n = Object.keys(cells).length;
   const nsCount = data.namespace ? Object.keys(data.namespace).length : 0;
 
@@ -175,16 +176,25 @@ export function applySidecarOutputs(sidecar) {
  * Fire-and-forget: pre-initialize Pyodide, then restore the namespace.
  * Safe to call immediately after applySidecarOutputs().
  */
-export function scheduleNamespaceRestore(sidecar) {
+export function scheduleNamespaceRestore(sidecar, space = "shared") {
   if (!sidecar) return;
+  // A snapshot belongs to the namespace it was taken from, so that is where it
+  // goes back. This matters when a document's `python:` has changed since it
+  // was saved: the variables return to the namespace they were computed in --
+  // the old one -- rather than being poured into the new one, which would carry
+  // a shared pot's contents into a namespace meant to be separate. The cells
+  // now run elsewhere and have to be re-run, which is what changing the
+  // namespace means. A sidecar written before this field existed says nothing,
+  // and "shared" is what it meant.
+  const target = sidecar.python_space ?? space;
   const hasCells = Object.keys(sidecar.cells ?? {}).length > 0;
   if (!hasCells && !sidecar.namespace) return;
 
   loadPyodideRuntime()
     .then(async () => {
       if (sidecar.namespace) {
-        await restoreNamespace(sidecar.namespace);
-        console.log("[sidecar] namespace restored");
+        await restoreNamespace(sidecar.namespace, target);
+        console.log(`[sidecar] namespace restored into ${target}`);
       }
       // Always clear eval cache after Pyodide is ready + sidecar loaded,
       // so {eval} expressions that errored before namespace was ready re-evaluate.
@@ -214,7 +224,7 @@ function collectCellOutputs() {
  * Call only on explicit user save (Cmd+S, Save As) — NOT on autosave.
  * @param {string} fileKeyOrPath  Tauri: absolute path; Web: stable fileKey string
  */
-export async function saveSidecarWithNamespace(fileKeyOrPath) {
+export async function saveSidecarWithNamespace(fileKeyOrPath, space = "shared") {
   if (!fileKeyOrPath) return;
 
   const cells = collectCellOutputs();
@@ -229,11 +239,12 @@ export async function saveSidecarWithNamespace(fileKeyOrPath) {
 
   if (isPyodideReady()) {
     try {
-      data.namespace = await snapshotNamespace();
+      data.namespace = await snapshotNamespace(space);
     } catch (e) {
       console.warn("[sidecar] namespace snapshot failed:", e);
     }
   }
+  data.python_space = space;
 
   try {
     await writeSidecar(fileKeyOrPath, data);

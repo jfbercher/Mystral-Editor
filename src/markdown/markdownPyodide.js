@@ -87,8 +87,14 @@ export class EvalRole extends Role {
     const expr = content.trim();
     const token = new this.state.Token(EVAL_RESULT_RULE, "", 0);
 
-    if (evalCache.has(expr)) {
-      const val = evalCache.get(expr);
+    // The same expression means different things in two namespaces, so the
+    // cache key carries the namespace; the expression alone would let one
+    // document answer for another.
+    const space = this.state.env.pythonSpace ?? "shared";
+    const cacheKey = `${space}\u0000${expr}`;
+
+    if (evalCache.has(cacheKey)) {
+      const val = evalCache.get(cacheKey);
       // val is already escaped/safe HTML from runExpression (plain string) or
       // an error <span> from the catch branch of evalCache.resolve().
       const safe = val.startsWith("<") ? val
@@ -96,7 +102,7 @@ export class EvalRole extends Role {
       token.content = `<span class="eval-result">${safe}</span>`;
     } else {
       // Kick off async evaluation; return a placeholder for now.
-      evalCache.resolve(expr, runExpression(expr));
+      evalCache.resolve(cacheKey, runExpression(expr, space));
       const safeExpr = expr.replace(/"/g, "&quot;");
       token.content = `<span class="eval-pending" title="{eval} ${safeExpr}">⋯</span>`;
     }
@@ -116,8 +122,12 @@ export function decodeCode(encoded) {
 }
 
 /** Génère l'HTML du div placeholder partagé par fence et directive. */
-function placeholderHtml(id, encoded, packages, linenos) {
-  return `<div id="${id}" class="code-cell-host" data-code="${encoded}" data-packages='${JSON.stringify(packages)}' data-linenos="${linenos}"></div>`;
+function placeholderHtml(id, encoded, packages, linenos, space, spaceLabel) {
+  // The namespace is written into the HTML rather than looked up when the cell
+  // runs: it follows the render, so it is right even with several documents
+  // open, and a change of `python:` in the frontmatter reaches the cells the
+  // moment the document is re-rendered.
+  return `<div id="${id}" class="code-cell-host" data-code="${encoded}" data-packages='${JSON.stringify(packages)}' data-linenos="${linenos}" data-python-space="${space ?? "shared"}" data-python-space-label="${spaceLabel ?? "shared"}"></div>`;
 }
 
 // Un seul observateur par conteneur parent
@@ -275,7 +285,7 @@ const markdownItPyodide = (md, { parent } = {}) => {
 
     // Injecter les attributs du token (dont data-line-id posé par markdownSourceMap)
     // pour que le scroll-sync trouve la cellule correctement.
-    let html = placeholderHtml(id, encoded, [], linenos);
+    let html = placeholderHtml(id, encoded, [], linenos, env.pythonSpace, env.pythonSpaceLabel);
     const closeIdx = html.indexOf(">");
     html = html.slice(0, closeIdx) + self.renderAttrs(token) + html.slice(closeIdx);
     return html;
