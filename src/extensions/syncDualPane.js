@@ -50,6 +50,7 @@ export const syncPreviewWithCursor = (text, lastTyped) => {
  * @param {EditorView} param0.view
  */
 function scrollPreviewElemIntoView({ view, matchingLine, matchingElem, behavior = "auto", preview }) {
+  if (!matchingLine || matchingLine < 1 || matchingLine > view.state.doc.lines) return;
   const cursorBlock = view.lineBlockAt(view.state.doc.line(matchingLine).from);
   const previewRect = preview.getBoundingClientRect();
   const editor = view.dom.parentElement;
@@ -82,6 +83,10 @@ export function handlePreviewClickToScroll(ev, lineMap, preview, editor) {
   if (!id) return;
 
   const lineNumber = getLineById(lineMap, id);
+  // A line id that no longer matches a line of the document -- a stale map, or
+  // a virtual line allocated to included content -- would make doc.line()
+  // throw. Scrolling nowhere is the right answer.
+  if (!lineNumber || lineNumber < 1 || lineNumber > editor.state.doc.lines) return;
   const line = editor.state.doc.line(lineNumber);
   const visible = editor.visibleRanges[0];
   function setCursor() {

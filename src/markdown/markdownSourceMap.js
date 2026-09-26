@@ -23,6 +23,13 @@ export default function markdownSourceMap(md) {
 
     function addLineAttr(token) {
       const line = token.map[0] + state.env.startLine - (state.env.chunkId !== 0);
+      // Content pulled in by an {include} is parsed at virtual lines, past the
+      // end of the document. They are a key shared with the scanners, not an
+      // address in the editor: registering them here would have the scroll
+      // sync ask CodeMirror for a line that does not exist. Left unstamped,
+      // such an element falls back to the nearest preceding one, which is the
+      // include itself -- where clicking should land anyway.
+      if (state.env.hostLineCount && line > state.env.hostLineCount) return;
       if (!state.env.lineMap.has(line)) {
         const id = lineId(state.env.chunkId, line);
         state.env.lineMap.set(line, id);
@@ -126,6 +133,9 @@ function wrapFencedLinesInSpan(/** @type {markdownIt} */ md) {
     const codeElem = defaultHTML.querySelector("pre > code");
     const defaultContent = codeElem.innerHTML;
     const startLine = token.map[0] + env.startLine - (env.chunkId !== 0);
+    // Same guard as addLineAttr: a fence inside an included file sits on
+    // virtual lines, which must not reach the lineMap.
+    if (env.hostLineCount && startLine > env.hostLineCount) return defaultOutput;
     codeElem.innerHTML = defaultContent
       .split("\n")
       .filter((_, i, lines) => i !== lines.length - 1)

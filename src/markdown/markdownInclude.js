@@ -167,6 +167,12 @@ class IncludeDirective extends Directive {
     "end-before":   directiveOptions.unchanged,
   };
 
+  /** 1-based line of this directive in the document, across chunks. */
+  absoluteLine(data) {
+    const env = this.state?.env ?? {};
+    return data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
+  }
+
   run(data) {
     const path = String(data.args[0] ?? "").trim();
     const options = data.options ?? {};
@@ -197,10 +203,18 @@ class IncludeDirective extends Directive {
     }
     expanding.add(path);
     try {
-      // Parsed at the directive's own line: the included text has no lines of
-      // its own in this document, so the source map points every element of it
-      // at the include, which is where clicking in the preview should land.
-      return this.nestedParse(text, data.map?.[0] ?? 0);
+      // Parse at the virtual lines the scan allocated to this include, when it
+      // allocated any. The scanners walked the expanded document and left the
+      // numbers of anything inside this file keyed on those lines; parsing at
+      // the same offset is what lets an equation or a table find its own entry
+      // rather than the include's. The source map is told to ignore lines past
+      // the end of the document, so nothing addresses the editor with them.
+      const env = this.state?.env ?? {};
+      const entry = env.includeMap?.get(this.absoluteLine(data));
+      const offset = entry
+        ? entry.virtualStart - (env.startLine ?? 0) + (env.chunkId ? 1 : 0)
+        : (data.map?.[0] ?? 0);
+      return this.nestedParse(entry?.text ?? text, offset);
     } finally {
       expanding.delete(path);
     }

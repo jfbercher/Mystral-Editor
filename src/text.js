@@ -482,6 +482,11 @@ export class TextManager {
       return entry.error ? null : entry.text;
     });
     const scanText = expansion.expanded ? expansion.text : this.text.value;
+    // Given to the renderer so that the {include} directive parses its content
+    // at the same virtual lines the scan used, and an equation or a table
+    // inside an included file finds its number where the scan left it.
+    const includeMap = new Map(expansion.includes.map((i) => [i.hostLine, i]));
+    const hostLineCount = this.text.value.split("\n").length;
 
     /**
      * Bring a map keyed by line in the expanded text back to the document's
@@ -628,6 +633,8 @@ export class TextManager {
                       lineMap: this.lineMap,
                       view: this.editorView.value,
                       refMap,
+                      includeMap,
+                      hostLineCount,
                       docutils: { targets },
                       headingMap,
                       numberedHeadings,
