@@ -171,8 +171,7 @@ class BaseAdmonitionV2 extends Directive {
     if (kind) openToken.attrJoin("class", kind);
     if (!showIcon) openToken.attrJoin("class", "no-icon");
     if (isDropdown && isOpen) openToken.attrSet("open", "");
-    const admonitionLabel = labelOf(options);
-    if (admonitionLabel) openToken.attrSet("id", admonitionLabel);
+    if (options.label) openToken.attrSet("id", options.label);
 
     const newTokens = [openToken];
 
@@ -322,18 +321,6 @@ class FigureMd extends directivesDefault.image {
 }
 
 
-/**
- * The label of a directive, whichever of the two spellings was used.
- *
- * `shared_option_spec` accepts `:label:` and `:name:` as aliases, and the scan
- * that collects targets reads both. The directives did not: the figure looked
- * only at `name`, so a figure carrying `:label:` was numbered by the scan but
- * received no id -- a reference to it resolved its number and then pointed at
- * nothing, which is why its hover preview had nothing to show. Tables,
- * exercises and admonitions had the mirror problem with `:name:`.
- */
-export const labelOf = (options) => options?.label ?? options?.name ?? null;
-
 /** Numéro et cible depuis refMap. Retourne null si non trouvé. */
 export const resolveTarget = (state, label) => (label ? (state?.env?.refMap?.byLabel?.get(label) ?? null) : null);
 
@@ -406,31 +393,35 @@ class FigureExtended extends directivesDefault.image {
   required_arguments = 1;   // <-- changé : l'image est maintenant un argument obligatoire
   optional_arguments = 0;   // <-- changé : plus d'argument optionnel pour le label (voir remarque plus bas)
   run(data) {
+    // Like every other directive here: the aliases declared in option_spec are
+    // unified once, at the top, and nothing below reads data.options directly.
+    // Reading the raw options is what made this directive answer to :name: and
+    // ignore :label:, while the scan that numbers it accepted both.
+    const options = normalizeOptions(data.options);
     const openToken = this.createToken("figure_open", "figure", 1, {
       map: data.map,
       block: true,
     });
-    if (data.options.figclass) {
-      openToken.attrJoin("class", data.options.figclass.join(" "));
+    if (options.figclass) {
+      openToken.attrJoin("class", options.figclass.join(" "));
     }
-    if (data.options.align) {
-      openToken.attrJoin("class", `align-${data.options.align}`);
+    if (options.align) {
+      openToken.attrJoin("class", `align-${options.align}`);
     }
-    if (data.options.figwidth && data.options.figwidth !== "image") {
-      openToken.attrSet("width", data.options.figwidth);
+    if (options.figwidth && options.figwidth !== "image") {
+      openToken.attrSet("width", options.figwidth);
     }
     let target;
-    const figureLabel = labelOf(data.options);
-    if (figureLabel) {
-      target = getTarget(this.state, openToken, figureLabel);
+    if (options.label) {
+      target = getTarget(this.state, openToken, options.label);
     }
 
     const imageToken = this.create_image(data);
     imageToken.map = [data.map[0], data.map[0]];
-    if (data.options.height) imageToken.attrSet("height", data.options.height);
-    if (data.options.width) imageToken.attrSet("width", data.options.width);
-    if (data.options.align) imageToken.attrJoin("class", `align-${data.options.align}`);
-    if (data.options.class) imageToken.attrJoin("class", data.options.class.join(" "));
+    if (options.height) imageToken.attrSet("height", options.height);
+    if (options.width) imageToken.attrSet("width", options.width);
+    if (options.align) imageToken.attrJoin("class", `align-${options.align}`);
+    if (options.class) imageToken.attrJoin("class", options.class.join(" "));
 
     let captionTokens = [];
     let legendTokens = [];
@@ -513,7 +504,7 @@ export class TableDirective extends Directive {
     //p if (options.label) tableOpen.attrSet("id", options.label);
     //console.log("label:", options.label, "| info:", info, "| refMap:", !!this.state?.env?.refMap);
     
-    const info = getTarget(this.state, tableOpen, labelOf(options));
+    const info = getTarget(this.state, tableOpen, options.label);
 
     const captionTokens = [];
     if (data.args.length && data.args[0]) {
@@ -572,7 +563,7 @@ class ListTableExtended extends directivesDefault["list-table"] {
     if (options.width) tableOpen.attrSet("style", `width: ${options.width}`);
 
     // Cible et numéro
-    const info = getTarget(this.state, tableOpen, labelOf(options));
+    const info = getTarget(this.state, tableOpen, options.label);
     if (info?.number != null) {
       const caption = tokens.find((t) => t.type === "table_caption_open");
       if (caption) caption.attrSet("data-number", `${info.number}`);
@@ -628,7 +619,7 @@ class BaseNumberedV2 extends BaseAdmonitionV2 {
    */
   buildTitle(data, options, userTitle) {
     const base = displayLabel(this.state, this.name, this.kind);
-    const target = targetFor(this.state, labelOf(options));
+    const target = targetFor(this.state, options.label);
     const number = target?.number;
 
     const head = number != null ? `${base} ${number}` : base;
@@ -732,7 +723,7 @@ class MathNumbered extends directivesDefault.math {
     const token = tokens[0];
     if (!token) return tokens;
 
-    const label = labelOf(options);
+    const label = options.label;
     // Absent = on suit la configuration globale ; présent = surcharge locale.
     const explicit = "enumerated" in options ? asBool(options.enumerated) : undefined;
 
@@ -921,7 +912,7 @@ class TocDirective extends Directive {
     const maxDepth = options.depth ?? options.maxdepth ?? Infinity;
     const classes = [].concat(options.class ?? [])
       .flatMap((c) => String(c).split(/\s+/)).filter(Boolean);
-    const labelId = labelOf(options);
+    const labelId = options.label;
     // :enumerated: refers to the numbering of the table of contents itself, not the section numbers.
     // Section numbers come from numberedHeadings (enabled globally).
 
