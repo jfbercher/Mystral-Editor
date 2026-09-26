@@ -242,6 +242,118 @@ globalThis._pyodideStreamWrite = function (tag, text) {
   }
 };
 
+// ─── Namespaces ──────────────────────────────────────────────────────────────
+/**
+ * One interpreter, several namespaces.
+ *
+ * Every code cell used to write into the one `globals()` dict of `__main__`,
+ * whatever document it belonged to. That is convenient when several tabs are
+ * pieces of the same work, and a trap otherwise: a document could overwrite
+ * another's variables without either of them mentioning it, and the sidecar --
+ * which is per document -- saved the whole shared pot, so reopening a document
+ * complained about names it never wrote.
+ *
+ * A document now says in its frontmatter which namespace it runs in:
+ *
+ *   python: shared     (or absent)  the common pot, exactly as before
+ *   python: isolated                a namespace private to this document
+ *   python: tp3                     a namespace shared by the documents naming it
+ *
+ * What is separated is the variables. `sys.modules` stays common -- an
+ * `import numpy` paid once benefits everyone, which is what one wants -- and so
+ * do the library-level state (matplotlib's backend and rcParams), the current
+ * directory and any monkeypatching. Separating those would take a second
+ * interpreter, which costs a second WASM heap and its own copy of every
+ * package; the frontmatter value is a plain string, so such a mode can be added
+ * later without changing what documents are written with.
+ */
+
+/** The namespace every document uses unless it asks for another. */
+export const SHARED_SPACE = "shared";
+
+/**
+ * The registry key for a frontmatter value.
+ * `isolated` is not one namespace but one per document, hence the document id:
+ * without it two isolated documents would land in the same place, which is the
+ * very thing being avoided.
+ */
+export function spaceKey(space, docId) {
+  const value = String(space ?? "").trim();
+  if (!value || value === SHARED_SPACE) return SHARED_SPACE;
+  if (value !== "isolated") return `group:${value}`;
+  if (docId) return `doc:${docId}`;
+  console.warn('[namespace] "python: isolated" without a document id — falling back to the shared namespace');
+  return SHARED_SPACE;
+}
+
+/** What the indicator shows: the value as written, or "shared" when unset. */
+export function spaceLabel(space) {
+  const value = String(space ?? "").trim();
+  return value || SHARED_SPACE;
+}
+
+export const isSharedSpace = (key) => key === SHARED_SPACE;
+
+/**
+ * Namespace dicts, by registry key. The shared one is never stored here: it is
+ * `pyodideInstance.globals`, and pinning a second reference to it would only
+ * invite the two to drift. These are PyProxies, deliberately kept alive by this
+ * map -- letting one be collected would take the document's variables with it.
+ */
+const namespaces = new Map();
+
+/** A Python identifier built from a registry key, for `__name__`. */
+const spaceModuleName = (key) => "mystral_" + key.replace(/[^A-Za-z0-9]+/g, "_");
+
+/**
+ * The globals dict for a key, created on first use.
+ * A fresh namespace is seeded with the plain names the bootstrap binds in
+ * `__main__`, so that a cell finds the same environment wherever it runs.
+ */
+export function getNamespace(key = SHARED_SPACE, pyodide = pyodideInstance) {
+  if (!pyodide) throw new Error("getNamespace: Pyodide is not loaded yet");
+  if (isSharedSpace(key)) return pyodide.globals;
+  const existing = namespaces.get(key);
+  if (existing) return existing;
+
+  pyodide.globals.set("_ns_module_name", spaceModuleName(key));
+  const ns = pyodide.runPython(`
+import sys as _ns_sys, io as _ns_io, js as _ns_js
+_ns_created = {
+    "__name__": _ns_module_name,
+    "__doc__": None,
+    "__package__": None,
+    "__builtins__": __builtins__,
+    "sys": _ns_sys, "io": _ns_io, "js": _ns_js,
+}
+_ns_created
+`);
+  pyodide.runPython(
+    "for _k in ['_ns_module_name', '_ns_created', '_ns_sys', '_ns_io', '_ns_js']:\n"
+    + "    globals().pop(_k, None)\n"
+    + "globals().pop('_k', None)\n"
+  );
+  namespaces.set(key, ns);
+  logNamespaceEvent("space-created", { space: key });
+  return ns;
+}
+
+/** Registry keys in use, the shared one first. */
+export function listNamespaces() {
+  return [SHARED_SPACE, ...namespaces.keys()];
+}
+
+/**
+ * Forget every namespace but the shared one. Called when the interpreter is
+ * thrown away: the proxies point into a heap that no longer exists.
+ */
+function clearNamespaces() {
+  for (const ns of namespaces.values()) {
+    try { ns.destroy(); } catch { /* the interpreter may already be gone */ }
+  }
+  namespaces.clear();
+}
+
 // ─── Namespace diagnostics ───────────────────────────────────────────────────
 // A user-visible variable disappearing between two runs is invisible from the
 // code alone: every mutation path (cell run, sidecar restore, kernel restart)
@@ -270,6 +382,7 @@ function userGlobalNames(pyodide) {
 
 globalThis.__mystralNamespaceDebug = {
   get log() { return namespaceLog; },
+  spaces: () => listNamespaces(),
   names: () => (pyodideInstance ? userGlobalNames(pyodideInstance) : null),
   /** Every event that removed at least one name, oldest first. */
   losses: () => namespaceLog.filter((e) => e.removed?.length),
@@ -332,6 +445,7 @@ async function restartKernel() {
       pyodideInstance.runPython("import sys; sys.stdout = sys.__stdout__; sys.stderr = sys.__stderr__");
     } catch {/* ignore */}
   }
+  clearNamespaces();
   pyodideInstance = null;
   loadingPromise = null;
   loadState = "idle";
