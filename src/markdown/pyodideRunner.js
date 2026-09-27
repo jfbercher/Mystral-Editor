@@ -194,15 +194,14 @@ def _mystral_who(include_all=False, ns=None):
       try { pyodide.FS.mkdir("/local"); } catch { /* already exists */ }
       pyodide.runPython("import os; os.chdir('/local')");
 
-      // Installation de jedi pour la complétion Tab (best-effort, non bloquant)
-      // Et de pyodide_http pour le réseau
+      // Installation de jedi pour la complétion Tab et de pyodide_http pour le
+      // réseau (best-effort, non bloquant).
+      let httpPatched = false;
       try {
-        await pyodide.runPythonAsync(`
+        httpPatched = await pyodide.runPythonAsync(`
 import micropip as _micropip
-await _micropip.install(['jedi', 'cloudpickle'], keep_going=True) #, 'pyodide_http'
+await _micropip.install(['jedi', 'cloudpickle', 'pyodide_http'], keep_going=True)
 import jedi as _jedi_mod, json as _json_mod
-#import pyodide_http
-#pyodide_http.patch_all()
 
 def _jedi_complete(source, line, col):
     try:
@@ -214,9 +213,29 @@ def _jedi_complete(source, line, col):
         ])
     except Exception:
         return '[]'
+
+# There are no sockets here, so requests and urllib cannot work as they are.
+# pyodide_http reroutes them through the browser's own fetch -- which is what
+# makes them work at all, and also what subjects them to the page's
+# cross-origin rules, exactly like a fetch written in JavaScript.
+#
+# In its own block: micropip is asked to keep going when one package of the
+# list fails, so the absence of pyodide_http must not cost the completion that
+# was installed beside it.
+try:
+    import pyodide_http as _pyodide_http
+    _pyodide_http.patch_all()
+    _mystral_http_patched = True
+except Exception:
+    _mystral_http_patched = False
+_mystral_http_patched
 `);
         console.log('[myst] jedi loaded — completion Tab is active');
-        // console.log('[myst] pyodide_http loaded and patches applied — requests or urllib are usable');
+        console.log(
+          httpPatched
+            ? '[myst] pyodide_http loaded and patched — requests and urllib work, subject to CORS'
+            : '[myst] pyodide_http unavailable — requests and urllib will not work',
+        );
       } catch (_e) {
         console.warn('[myst] jedi unavailable, Tab will insert 4 spaces', _e);
       }

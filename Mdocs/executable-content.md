@@ -252,14 +252,53 @@ interface until it returns, and there is no way to interrupt a running cell
 short of reloading — keep an eye on loops without a bound.
 
 There are no processes and no threads: `subprocess`, `multiprocessing` and
-anything that shells out will not work. Sockets are not available either, so
-`requests` and `urllib` fail; use `pyodide.http.pyfetch` for HTTP. `input()`
-has no console to read from. Packages with C extensions exist only if someone
-built them for WebAssembly — the Pyodide distribution and the pure-Python
-wheels on PyPI are the limit.
+anything that shells out will not work. `input()` has no console to read from.
+Packages with C extensions exist only if someone built them for WebAssembly —
+the Pyodide distribution and the pure-Python wheels on PyPI are the limit.
 
 Finally, the runtime itself is fetched from a CDN on first use. The first cell
 of a session therefore needs the network, and so does a hard restart.
+
+### The network, and what a cell may read
+
+There are no sockets either, so `requests` and `urllib` cannot work as they
+are. `pyodide_http` is installed at start-up and its patches applied, which
+reroutes them through the browser's own `fetch`: `requests.get(...)` and
+`pd.read_csv("https://…")` therefore work, and `pyodide.http.pyfetch` is there
+for an explicitly asynchronous call.
+
+What that rerouting also does is place them under the page's cross-origin
+rules, exactly like a `fetch` written in JavaScript. A cell can read a URL only
+if its server *allows* it to, by answering with an `Access-Control-Allow-Origin`
+header. Most public sites do not, and a request to one fails with a message
+naming CORS — even though the server replied, and replied 200. The response
+arrived; the browser refused to hand it over. No Python library gets around
+this: it is the browser, not Pyodide.
+
+Two cases work. A server that sends the header, which many scholarly APIs do —
+Crossref and OpenAlex among them. And your own server: a document served from
+the same origin as its data reads it with no check at all, which is why a
+deployed copy of the editor reads datasets sitting beside it while the very
+same document fails in development.
+
+For data you host yourself, one line makes it readable everywhere — the
+development server, the desktop application, a colleague's browser:
+
+```apache
+<FilesMatch "\.(csv|json|txt)$">
+  Header set Access-Control-Allow-Origin "*"
+</FilesMatch>
+```
+
+It needs `mod_headers` and an `AllowOverride` that permits `FileInfo`, which a
+personal web space does not always grant; if the header does not appear, that
+is where to look. `*` makes those files readable from any page, so it suits
+public data and not private data — though it transmits no cookies or
+credentials and cannot expose anything authenticated.
+
+The desktop application is no exception. It serves its interface from an origin
+of its own, so a document that needs a third-party server needs that server's
+permission there too.
 
 ## Saved outputs and variables
 
