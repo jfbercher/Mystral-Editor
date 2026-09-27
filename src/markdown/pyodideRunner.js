@@ -195,11 +195,14 @@ def _mystral_who(include_all=False, ns=None):
       pyodide.runPython("import os; os.chdir('/local')");
 
       // Installation de jedi pour la complétion Tab (best-effort, non bloquant)
+      // Et de pyodide_http pour le réseau
       try {
         await pyodide.runPythonAsync(`
 import micropip as _micropip
-await _micropip.install(['jedi', 'cloudpickle'], keep_going=True)
+await _micropip.install(['jedi', 'cloudpickle'], keep_going=True) #, 'pyodide_http'
 import jedi as _jedi_mod, json as _json_mod
+#import pyodide_http
+#pyodide_http.patch_all()
 
 def _jedi_complete(source, line, col):
     try:
@@ -213,6 +216,7 @@ def _jedi_complete(source, line, col):
         return '[]'
 `);
         console.log('[myst] jedi loaded — completion Tab is active');
+        // console.log('[myst] pyodide_http loaded and patches applied — requests or urllib are usable');
       } catch (_e) {
         console.warn('[myst] jedi unavailable, Tab will insert 4 spaces', _e);
       }
