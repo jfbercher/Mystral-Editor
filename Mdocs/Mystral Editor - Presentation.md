@@ -64,7 +64,6 @@ Mystral Editor retains and extends all upstream editor features:
 - **Collaborative editing**: simultaneous editing via a WebSocket server (Yjs/CRDT protocol), with remote cursors and avatars in real time.
 - **Suggestions and CriticMarkup**: propose changes that others can accept or reject, using the [CriticMarkup](https://fletcher.github.io/MultiMarkdown-6/syntax/critic.html) syntax.
 - **Diff view**: display changes relative to the document's initial state, with a discard-all option.
-- **Comments**: text hidden from the preview (lines starting with `%`).
 - **Document templates**: loadable from an external JSON file to speed up document creation.
 - **HTML / PDF export**: copy rendered HTML or print to PDF from toolbar buttons. Kept in the web build; the desktop application hides them in favour of its own export menu, described below.
 - **Spell checker**: configurable Hunspell integration (language, dictionary path).
@@ -252,6 +251,10 @@ Several documents can be open simultaneously in a tabbed interface. Each tab mai
 ### Section Folding
 
 Headings can be folded individually (chevron marker in the editor gutter) or globally at load time (option `unfoldedHeadings`). The YAML frontmatter can also be folded.
+
+### Comments
+
+This follows MyST spec: lines starting with `%` are hidden from the preview. Keyboard shortcuts are `Mod-/ or Mod-:` to quckly comment or comment out a line or block of text. `Mod` = `Cmd` on macOS, `Ctrl` elsewhere.
 
 ## Theming and Interface
 
