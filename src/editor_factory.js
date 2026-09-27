@@ -4,7 +4,7 @@ import MystEditor, { predefinedButtons } from "./MystEditor.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
 import { h } from "preact";
-import { config, configReady } from "./config.js";
+import { config, configReady, getNewFileTemplate } from "./config.js";
 
 await configReady();
 
@@ -91,8 +91,9 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
       text: h("span", { style: "font-size:1.5em" }, "📄"),
       tooltip: "New file",
       action: async () => {
-        const response = await fetch("./new_file.md");
-        const newFileTemplate = await response.text();
+        //const response = await fetch("./new_file.md");
+        //const newFileTemplate = await response.text();
+        const newFileTemplate = getNewFileTemplate();
         tab.setEditorText(newFileTemplate);
         await tab.setSubtitle("a new file");
         await tab.setCurrentFile(null);
@@ -282,7 +283,7 @@ export function mountEditor(mnt_options) {
       templatelist: "linkedtemplatelist.json",
       initialText: initialContent ?? "",
       title: "Adapted from [MyST Editor](https://github.com/antmicro/myst-editor/)",
-      subtitle: "Template for new files (new_file.md)",
+      subtitle: "", //"Template for new files (new_file.md)",
       transforms: editorOptions.transforms ?? [],
       collaboration: {
         enabled: collabEnabled,
@@ -414,6 +415,7 @@ export function mountEditor(mnt_options) {
       customRoles: editorOptions.customRoles ?? [],
       customDirectives: editorOptions.customDirectives ?? [],
       includeButtons: makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab),
+      openFileInTab: openFileHandleInTab,
       spellcheckOpts: { dict: "en_US", dictionaryPath: `${window.location.pathname}dictionaries` },
       syncScroll: true,
     },

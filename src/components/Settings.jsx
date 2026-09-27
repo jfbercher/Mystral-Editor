@@ -3,7 +3,7 @@ import styled from "styled-components";
 import { MystState } from "../mystState";
 import { Compartment } from "@codemirror/state";
 import { useSignalEffect } from "@preact/signals";
-import { openConfigFile } from "../config";
+import { openConfigFile, openNewFileTemplate } from "../config";
 import { showToast } from "../utils/utils_ui";
 
 const SettingsList = styled.div`
@@ -112,7 +112,7 @@ const Toggle = ({ ...props }) => {
 export const userExtensionsCompartment = new Compartment();
 
 const Settings = () => {
-  const { userSettings } = useContext(MystState);
+  const { userSettings, options } = useContext(MystState);
 
   function changeSetting(id, enabled) {
     userSettings.value = userSettings.value.map((s) => (s.id == id ? { ...s, enabled } : s));
@@ -134,6 +134,22 @@ const Settings = () => {
         ))}
       </ul>
       <div className="settings-config">
+        <button
+          type="button"
+          title="Open new file template"
+          style = " margin-bottom: 0.5em;"
+          onClick={async () => {
+            try {
+              const { path, created, editable } = await openNewFileTemplate(options.openFileInTab.value);
+              if (created) showToast(`Created ${path} — it holds a simple default template, edit and reload.`, "success", 8000);
+              else if (!editable) showToast("newFileTemplate.md is served with the application; this tab shows it read-only.", "success", 6000);
+            } catch (err) {
+              showToast(`Could not open the template file: ${err?.message ?? err}`, "error", 0);
+            }
+          }}
+        >
+          Open newFiletemplate.md
+        </button>
         <button
           type="button"
           title="Open the configuration file of this installation"

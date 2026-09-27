@@ -1,6 +1,6 @@
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor } from "./editor_factory.js";
-import { config } from "./config.js";
+import { config, getNewFileTemplate } from "./config.js";
 import { isTauri, currentFileDir, workingDirectory } from "./utils/local_utils/fs.js";
 
 
@@ -27,7 +27,6 @@ export class TabManager {
     this.openTabs = new Map();
     this.activeTabId = null;
     this.editorOptions = editorOptions;
-    this.newFileTemplate = "";
     this.tabsBarEl = document.getElementById("tabs-bar");
     this.tabsContentEl = document.getElementById("tabs-content");
   }
@@ -37,9 +36,6 @@ export class TabManager {
   };
 
   async init() {
-    const response = await fetch("./new_file.md");
-    this.newFileTemplate = await response.text();
-
     document.getElementById("new-tab-button")?.addEventListener("click", () => {
       this.openTab();
     });
@@ -248,7 +244,10 @@ export class TabManager {
         this.updateTabLabel(editorId);
       }
     } 
-    const content = tabInfo.savedText ?? this.newFileTemplate;
+    // Read here rather than held in a field: the template is a string
+   // config.js already loaded, and a copy taken in the constructor was one more
+   // thing that could be stale.
+    const content = tabInfo.savedText ?? getNewFileTemplate();
 
     if (!tabInfo.mounted) {
       mountEditor({

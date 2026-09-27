@@ -57,6 +57,7 @@ const isTauri = "__TAURI_INTERNALS__" in window;
 
 let directives = BUILTIN_DIRECTIVES;
 let customCss  = "";
+let newFileTemplate = "";
 let ready      = null;
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,16 @@ async function loadConfigWeb() {
     if (res.ok) {
       customCss = await res.text();
       console.log("custom.css loaded (web)");
+    }
+  } catch {
+    // Missing file is normal — not an error.
+  }
+
+  try {
+    const res = await fetch("newFileTemplate.md");
+    if (res.ok) {
+      newFileTemplate = await res.text();
+      console.log("newFileTemplate.md loaded (web)");
     }
   } catch {
     // Missing file is normal — not an error.
@@ -117,6 +128,17 @@ async function loadConfigTauri() {
       console.log("custom.css loaded from", cssPath);
     } catch (err) {
       console.warn("custom.css could not be read.", err);
+    }
+  }
+
+  // newFileTemplate
+  const newFileTemplatePath = await join(dir, "newFileTemplate.md");
+  if (await exists(newFileTemplatePath)) {
+    try {
+      newFileTemplate = await readTextFile(newFileTemplatePath);
+      console.log("newFileTemplate.md loaded from", newFileTemplatePath);
+    } catch (err) {
+      console.warn("newFileTemplate.md could not be read.", err);
     }
   }
 }
@@ -189,6 +211,72 @@ export async function openConfigFile() {
   return { path, created, editable: true };
 }
 
+export async function openNewFileTemplate(openNewFileTemplateInTab=null) {
+  if (!isTauri) {
+    const url = new URL("newFileTemplate.md", import.meta.url).href;
+    window.open(url, "_blank", "noopener");
+    return { path: url, created: false, editable: false };
+  }
+
+  // The opener is still lazy: it is only reached by a click, long after
+  // everything has been evaluated.
+  const { openPath } = await import("@tauri-apps/plugin-opener");
+
+  const dir = await appConfigDir();
+  const path = await join(dir, "newFileTemplate.md");
+  const starterTemplate = `---
+title: A title
+subtitle: A subtitle
+authors:
+  - author names, one per line
+date: 2026-09-19
+license: GPL-3.0-or-later
+github: https://github.com/jfbercher/Mystral-Editor
+bibliography: references.bib
+citation-style: author-year # or numeric
+citation-template: "{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}"
+settings:
+    myst_to_tex:
+        code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+exports:
+  - format: docx
+  - format: pdf
+    template: arxiv_nips
+    article_type: article
+    chapters: []
+numbering:
+  headings: true # activate headings numbering
+  equations: true 
+  figure: true
+    #template: Fig. %s # Define the prefix
+math:
+  '\dr': '\mathrm{d}#1'
+  '\wb': '\mathbf{wx}'
+---
+
+
+:::{toc} Contents
+::: 
+
+## First section
+`;
+  let created = false;
+  if (!(await exists(path))) {
+    try { await mkdir(dir, { recursive: true }); } catch { /* already there */ }
+    await writeTextFile(path, starterTemplate + "\n");
+    created = true;
+  }
+  // Opening it in a tab is the point -- it is a document of this editor -- but
+  // the callback is optional, and an editor embedded without a tab manager has
+  // none. Falling back on the system's editor, as openConfigFile does, beats
+  // throwing at the click.
+  if (openNewFileTemplateInTab) await openNewFileTemplateInTab(path);
+  else await openPath(path);
+  return { path, created, editable: true };
+}
+
 /**
  * Loads user configuration (once). Returns a promise that resolves to config.
  * Safe to call multiple times — subsequent calls return the same promise.
@@ -218,6 +306,9 @@ export const configReady = () => ready ?? loadConfig();
 
 /** Returns the active directive map (built-in + any user overrides). */
 export const getLabelledDirectives = () => directives;
+
+/** Returns the newFileTemplate string (empty string if none was loaded). */
+export const getNewFileTemplate = () => newFileTemplate;
 
 /** Returns the custom CSS string (empty string if none was loaded). */
 export const getCustomCss = () => customCss;

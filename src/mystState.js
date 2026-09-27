@@ -239,6 +239,16 @@ const defaults = {
   backslashLineBreak: true,
   hideUsernameDelay: 5000,
   parent: null,
+  /**
+   * Open a file of the local filesystem in a tab of this editor.
+   * The tab manager owns the tabs, and the buttons built in editor_factory.js
+   * already receive it by closure; passing it here as well is what lets a
+   * component reached through the context -- the settings panel, say -- ask for
+   * the same thing. Null when the editor is embedded without a tab manager,
+   * which the caller has to expect.
+   * @type {((handleOrPath: any) => Promise<void>) | null}
+   */
+  openFileInTab: null,
   syncScroll: false,
   unfoldedHeadings: null,
   collapsibleHeadingMarker: false,
