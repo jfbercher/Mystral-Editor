@@ -57,6 +57,8 @@ export const DEFAULT_CONFIG = {
   autoSaveEnabled:   true,
   autosaveIntervalMs: 60 * 1000,      // 1 minute
 
+  editorMode: "Both",
+
   recentFilesMax:  10,
   defaultFileName: "Untitled.md",
 
