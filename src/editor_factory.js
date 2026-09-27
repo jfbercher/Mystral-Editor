@@ -285,7 +285,7 @@ export function mountEditor(mnt_options) {
       templatelist: "linkedtemplatelist.json",
       initialText: initialContent ?? "",
       title: "Adapted from [MyST Editor](https://github.com/antmicro/myst-editor/)",
-      subtitle: "", //"Template for new files (new_file.md)",
+      subtitle: "Template for new files (new_file.md)",
       transforms: editorOptions.transforms ?? [],
       collaboration: {
         enabled: collabEnabled,
