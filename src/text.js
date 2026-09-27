@@ -414,6 +414,11 @@ export class TextManager {
 
   /** Makes every heading of the preview foldable and hides the blocks under the folded ones. */
   foldSections() {
+    // There is no preview in Inline mode, and folding is a property of the
+    // preview: nothing to do. Without this the render threw while CodeMirror
+    // was building its state, so choosing that mode took the whole editor down
+    // rather than just losing the folds.
+    if (!this.preview.value) return;
     const useMarker = this.options.collapsibleHeadingMarker.value;
     let foldedAt = null;
     // Blocks are walked across chunks, since the section of an `h1`-`h3` heading spans whole chunks.
