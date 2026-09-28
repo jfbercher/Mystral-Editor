@@ -11,6 +11,9 @@ import { includeDirectives, includeCache } from "./markdown/markdownInclude";
 import { expandIncludes, scanHeadingLines } from "./markdown/includeExpansion";
 import { readTextRelative, getEditorFileKey, setEditorPythonSpace } from "./utils/local_utils/fs.js";
 import { spaceKey, spaceLabel } from "./markdown/pyodideRunner";
+
+/** A chunk containing one of these renders the document's whole heading tree. */
+const TOC_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{(?:toc|table-of-contents|tableofcontents|contents|toctree)\}/;
 import { showToast } from "./utils/utils_ui";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
 import { checkLinks } from "./markdown/markdownLinks";
@@ -692,6 +695,27 @@ export class TextManager {
     if (timing_debug) console.log("scanTargets:", (performance.now() - _t4).toFixed(2), "ms");
 
     const sectionLabelsSignature = getSectionLabelsSignature(byLabel);
+    // A {toc} renders the WHOLE document's heading tree, so the chunk holding
+    // one has to be re-rendered whenever that tree changes anywhere. None of the
+    // other signatures say so: they are built from labelled targets, and a plain
+    // heading carries no label -- so adding or removing a section left the toc's
+    // chunk untouched in the cache, and it went on showing the previous outline
+    // with its previous numbers.
+    //
+    // Only the chunks that actually contain a table of contents depend on it.
+    // Making every chunk depend on the heading tree would re-render the whole
+    // document on each keystroke inside a title, which is what the chunking is
+    // there to avoid.
+    const headingTreeSignature = (() => {
+      const parts = [];
+      (function walk(nodes) {
+        for (const node of nodes) {
+          parts.push(`${node.level}:${node.number ?? ""}:${node.text}`);
+          walk(node.children ?? []);
+        }
+      })(numberedHeadings);
+      return parts.join("|");
+    })();
     const numberedSignature = getNumberedSignature(byLabel);
 
     if (timing_debug) {const _t5 = performance.now();}
@@ -744,10 +768,11 @@ export class TextManager {
       }, [])
       .map(({ text, startLine, endLine }, chunkId) => {
         const headingSignature = numberingSectionsActive ? "on" : "off";
+        const tocSignature = TOC_DIRECTIVE_RE.test(text) ? headingTreeSignature : "";
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}`,
         42,
         ).result();
         
