@@ -13,7 +13,11 @@ import { EditorState } from "@codemirror/state";
 
 const ROLES = [
   { name: "abbr", detail: "Abbreviation — text (definition)" },
-  //{ name: "cite", detail: "Bibliographic citation" },
+  { name: "cite", detail: "Bibliographic citation — {cite}`key` or `key1; key2`" },
+  // cite:p and cite:t stay out: markdownReplacer registers `cite` alone, so
+  // offering them would propose a role the renderer does not know. They are
+  // already in CITE_ROLES, so the day they are registered their argument
+  // completion works without further change.
   //{ name: "cite:p", detail: "Parenthetical citation" },
   //{ name: "cite:t", detail: "Textual citation" },
   //{ name: "code", detail: "Inline code" },
