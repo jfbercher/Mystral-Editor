@@ -435,7 +435,6 @@ export async function loadImageFolderOnStartup() {
 }
 
 export async function selectWorkingFolder() {
-  console.log("In selectWorkingFolder")
   if (isTauri()) {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const selected = await open({ directory: true, multiple: false });
@@ -450,7 +449,6 @@ export async function selectWorkingFolder() {
     // (Firefox, Safari) and when it has one that does not deliver.
     const snapshotFallback = async (why) => {
       const snapshot = await pickDirectoryWithInput();
-      console.log("snapshot", snapshot)
       if (!snapshot) return;
       workingDirectory.value = snapshot;
       // Deliberately not persisted: it carries methods (not structured-
@@ -468,7 +466,6 @@ export async function selectWorkingFolder() {
     };
 
     if (!hasDirectoryPicker()) {
-      console.log("!hasDirectoryPicker()")
       await snapshotFallback(null);
       return;
     }
@@ -476,13 +473,10 @@ export async function selectWorkingFolder() {
     let handle = null;
     const started = performance.now();
     try {
-      console.log("Juste before showDirectoryPicker");
       handle = await window.showDirectoryPicker();
-      console.log("Directory picke: Handle --> ", handle); //toremove
     } catch (err) {
       const elapsed = performance.now() - started;
       if (looksLikeUserCancel(err, elapsed)) {
-        console.log("Canceled...?") //toremove
         return;   // the user said no
       }
       // The API is there but did not deliver. Say so and offer the fallback,
