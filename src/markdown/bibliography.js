@@ -286,21 +286,36 @@ export function formatEntryFull(entry, template = DEFAULT_TEMPLATE) {
 
 const CITE_GROUP_RE = /\[(@[^\]]+)\]/g;
 const CITE_KEY_RE = /@([a-zA-Z][\w:-]*)/g;
+const CITE_ROLE_RE = /\{cite(?::[pt])?\}`([^`]+)`/g;
+const CITE_ROLE_KEY_RE = /^[a-zA-Z][\w:-]*$/;
 
 export function scanCitations(fullText, bibEntries, style) {
   const citeMap = new Map(); // key -> { number, entry, occurrence }
   const citeOrder = [];
 
+
+  const found = [];
   let match;
+
   CITE_GROUP_RE.lastIndex = 0;
   while ((match = CITE_GROUP_RE.exec(fullText))) {
-    const group = match[1];
+    const keys = [];
     let keyMatch;
     CITE_KEY_RE.lastIndex = 0;
-    while ((keyMatch = CITE_KEY_RE.exec(group))) {
-      const key = keyMatch[1];
-      if (!citeOrder.includes(key)) citeOrder.push(key);
-    }
+    while ((keyMatch = CITE_KEY_RE.exec(match[1]))) keys.push(keyMatch[1]);
+    found.push({ at: match.index, keys });
+  }
+
+  CITE_ROLE_RE.lastIndex = 0;
+  while ((match = CITE_ROLE_RE.exec(fullText))) {
+    // Same splitting as the role itself does: "key1; key2".
+    const keys = match[1].split(";").map((k) => k.trim()).filter((k) => CITE_ROLE_KEY_RE.test(k));
+    found.push({ at: match.index, keys });
+  }
+
+  found.sort((a, b) => a.at - b.at);
+  for (const { keys } of found) {
+    for (const key of keys) if (!citeOrder.includes(key)) citeOrder.push(key);
   }
 
   const sortedForBiblio =
@@ -347,18 +362,7 @@ export function markdownItCitations(md) {
     if (silent) return true;
 
     const style = state.env.citationStyle || "numeric";
-    /*const parts = knownKeys.map((key) => {
-      const info = citeMap.get(key);
-      info.occurrence += 1;
-      const refId = info.occurrence === 1 ? `citeref:${key}` : `citeref:${key}-${info.occurrence}`;
 
-      const label =
-        style === "author-year" && info.entry
-          ? `${inlineAuthorNames(info.entry.authors)}, ${info.entry.year}`
-          : String(info.number);
-
-      return `<a id="${refId}" href="#cite:${key}" class="citation-ref">${label}</a>`;
-    });*/
     const parts = knownKeys.map((key) => {
       const info = citeMap.get(key);
       info.occurrence += 1;
