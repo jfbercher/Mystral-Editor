@@ -272,28 +272,7 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
     const end = MATH_ENVS.some((env) => line.includes(`\\end{${env}}`));
     const dollars = (line.match(/\$\$/g) ?? []).length;
 
-    // A `$$` only opens a display equation when it opens a BLOCK. markdown-it
-    // cannot start a block inside a paragraph, so
-    //
-    //     autre équation...
-    //     $$ z $$
-    //
-    // is parsed as inline math inside that paragraph -- a different token, which
-    // the renderer does not number. Counting it here anyway reserved a number
-    // nothing would ever wear, and the visible numbering jumped from 1 to 3.
-    // The blank line is what MyST asks for too, so this agrees with mystmd
-    // rather than inventing a third behaviour.
-    const previous = i === 0 ? "" : lines[i - 1];
-    // A heading is its own block, and a fence marker opens or closes one, so a
-    // `$$` on the next line starts a block in those cases as it does after a
-    // blank line. After prose, a list item or a quote, it does not: those lines
-    // are paragraph content, and the equation joins the paragraph.
-    const opensBlock =
-      i === 0 ||
-      previous.trim() === "" ||
-      /^[ \t]*(:{3,}|`{3,}|~{3,})/.test(previous) ||
-      /^[ \t]*#{1,6}\s/.test(previous);
-    if (mathLine === null && opensBlock && (begin || dollars > 0)) {
+    if (mathLine === null && (begin || dollars > 0)) {
       mathLine = lineNo;
       //const number = nextNumber("eq");
       const number = enabled.math ? (counters.eq = (counters.eq ?? 0) + 1) : null;

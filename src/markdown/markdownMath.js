@@ -205,6 +205,27 @@ const markdownItMath = (md, editorId) => {
     katexOptions: { throwOnError: false, macros },
   });
 
+  // texmath registers its block rules without `alt`, so none of them may
+  // interrupt a paragraph. A `$$` written on the line right after some prose
+  // was therefore parsed as INLINE math inside that paragraph -- a different
+  // token, which the numbering never reached, so the same equation was numbered
+  // with a blank line above it and not without.
+  //
+  // mystmd does allow the interruption (its dollarmath declares these alts), and
+  // an equation written that way is numbered in its PDF, LaTeX and Word exports.
+  // The editor follows mystmd rather than its own plugin. Inline `$x+1$` is not
+  // affected: only the block rules are touched, and they still require the `$$`
+  // to open the line.
+  //
+  // Set on the rule entries rather than through `ruler.at`, because each
+  // delimiter set registers its own `math_block` under the same name and only
+  // the first would be found; `enable([])` then drops the compiled chain cache
+  // so that the change is seen.
+  for (const rule of md.block.ruler.__rules__ ?? []) {
+    if (rule.name?.startsWith("math_block")) rule.alt = ["paragraph", "reference", "blockquote", "list"];
+  }
+  md.block.ruler.enable([]);
+
 
 /*const markdownItMath = (md) => {
   md.use(texmath, {
@@ -255,7 +276,7 @@ const markdownItMath = (md, editorId) => {
 
   md.renderer.rules.math_block = (tokens, idx, options, env, self) => {
   const token = tokens[idx];
-  token.content = token.content.replace(/\\label\{eq:[^}]+\}\s*/g, "");
+  token.content = token.content.replace(/\\label\{[^}]+\}\s*/g, "");
 
   const html = originalBlockRule(tokens, idx, options, env, self);
   if (!env.refMap) return html;
@@ -272,7 +293,6 @@ const markdownItMath = (md, editorId) => {
     const resolvedLine = sourceLineId ? lineOfId(env, sourceLineId) : null;
     eqInfo = resolvedLine != null ? env.refMap.byLine.get(resolvedLine) : null;
   }
-
   if (!eqInfo) return html;
 
     const anchorId = eqInfo.label || token.attrGet("id");
