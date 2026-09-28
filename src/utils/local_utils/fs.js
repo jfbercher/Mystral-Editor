@@ -95,7 +95,7 @@ export const hasDirectoryPicker = () =>
  * where the API exists but cannot work. Treating those as "the user changed
  * their mind" is what makes a button look dead.
  */
-const CANCEL_FLOOR_MS = 300;
+const CANCEL_FLOOR_MS = 1000; // was 300
 export const looksLikeUserCancel = (err, elapsedMs) =>
   err?.name === "AbortError" && elapsedMs >= CANCEL_FLOOR_MS;
 
@@ -235,7 +235,11 @@ export const isReadOnlyDirectory = (dir) => Boolean(dir && dir.isReadOnlySnapsho
  *
  * Returns a cancel function, to be called once the pick settles.
  */
-const NO_DIALOG_AFTER_MS = 3000;
+// Long enough that a first, slow folder dialog on a tired machine is not
+// mistaken for one that never opened. The watchdog only exists so that a dialog
+// which truly cannot appear -- a dead desktop portal, as seen on Linux -- fails
+// with a message instead of leaving the caller waiting forever.
+const NO_DIALOG_AFTER_MS = 15000;
 const DIALOG_MISSING_MESSAGE =
   "This browser could not open a file dialog. On Linux this usually means Chrome has no working one (try Firefox, or install the desktop portal); check whether any other site can open a file chooser.";
 
@@ -279,10 +283,25 @@ export function pickDirectoryWithInput() {
       }
       settle(makeReadOnlyDirectoryHandle(files, rootName));
     }, { once: true });
+    // A cancelled dialog is reported by "cancel" wherever that event exists,
+    // which is every current browser. Where it does not, the only signal is the
+    // window regaining focus -- and that one is treacherous here: choosing a
+    // folder makes the browser ask a second question ("upload N files?"), so
+    // focus comes back while the choice is still pending. Settling on it after
+    // 400 ms resolved null under the user's feet, and the real selection then
+    // arrived too late to be heard. Hence: only without "cancel", after longer,
+    // and only if nothing was in fact selected.
     input.addEventListener("cancel", () => settle(null), { once: true });
-    window.addEventListener("focus", () => setTimeout(() => settle(null), 400), { once: true });
+    if (!("oncancel" in input)) {
+      window.addEventListener(
+        "focus",
+        () => setTimeout(() => { if (!input.files?.length) settle(null); }, 2000),
+        { once: true },
+      );
+    }
 
     stopWatch = watchForMissingDialog(() => {
+      if (input.files?.length) return;   // it opened after all, and was used
       console.error("[fs] the folder dialog never opened (the browser could not show it)");
       showToast(DIALOG_MISSING_MESSAGE, "error", 0);
       settle(null);
@@ -416,6 +435,7 @@ export async function loadImageFolderOnStartup() {
 }
 
 export async function selectWorkingFolder() {
+  console.log("In selectWorkingFolder")
   if (isTauri()) {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const selected = await open({ directory: true, multiple: false });
@@ -430,6 +450,7 @@ export async function selectWorkingFolder() {
     // (Firefox, Safari) and when it has one that does not deliver.
     const snapshotFallback = async (why) => {
       const snapshot = await pickDirectoryWithInput();
+      console.log("snapshot", snapshot)
       if (!snapshot) return;
       workingDirectory.value = snapshot;
       // Deliberately not persisted: it carries methods (not structured-
@@ -447,6 +468,7 @@ export async function selectWorkingFolder() {
     };
 
     if (!hasDirectoryPicker()) {
+      console.log("!hasDirectoryPicker()")
       await snapshotFallback(null);
       return;
     }
@@ -454,10 +476,15 @@ export async function selectWorkingFolder() {
     let handle = null;
     const started = performance.now();
     try {
+      console.log("Juste before showDirectoryPicker");
       handle = await window.showDirectoryPicker();
+      console.log("Directory picke: Handle --> ", handle); //toremove
     } catch (err) {
       const elapsed = performance.now() - started;
-      if (looksLikeUserCancel(err, elapsed)) return;   // the user said no
+      if (looksLikeUserCancel(err, elapsed)) {
+        console.log("Canceled...?") //toremove
+        return;   // the user said no
+      }
       // The API is there but did not deliver. Say so and offer the fallback,
       // rather than leaving a button that appears to do nothing.
       console.error(`Error selecting working folder (Web, after ${Math.round(elapsed)} ms):`, err);
