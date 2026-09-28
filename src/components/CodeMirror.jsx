@@ -255,6 +255,13 @@ const CodeEditor = styled.div`
     display: inline !important;
   }
 
+  /* Line up the source with the 1em inset of the rendered widgets, so that a
+     block does not jump sideways when it switches to source. */
+  .cm-line.cm-inline-source-line {
+    padding-left: 1.5em !important;
+    padding-right: 1em !important;
+  }
+
   /* ...but a multi-line block must keep one row per line: inlining them laid the
      whole directive out side by side on a single row, with the gutter still
      numbering each line. Higher specificity than the rule above, so it wins. */
