@@ -28,7 +28,7 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
     lib: {
       entry: [resolve(import.meta.dirname, "src/MystEditor.jsx"), resolve(import.meta.dirname, "src/index.html"), resolve(import.meta.dirname, "src/myst-git/git.html")],
       formats: ["es"],
