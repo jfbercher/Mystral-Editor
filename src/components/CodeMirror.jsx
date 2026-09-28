@@ -206,6 +206,7 @@ const CodeEditor = styled.div`
   &:not(&.inline-custom-styles) {
     all: initial;
     display: inline-block;
+    margin: 0 1em !important;
     width: 100%;
     vertical-align: top;
     box-sizing: border-box;
@@ -225,6 +226,22 @@ const CodeEditor = styled.div`
     & > *,
     & > div > * {
       margin: 0 !important;
+    }
+
+    /* In the preview, a boxed block is inset by the preview pane's own 20px of
+       padding. An editor line has no such padding, so the same block ends up
+       against the left edge, which is what makes it look wrong beside the text.
+       The inset is put on the boxes themselves rather than on the widget: the
+       widget also renders ordinary paragraphs, and insetting those would shift
+       the text sideways every time a line switches between rendered and source.
+       !important because the blanket margin rule above would otherwise win. */
+    & aside.admonition,
+    & details.admonition,
+    & figure,
+    & table,
+    & .pyodide-wrapper {
+      margin-left: var(--inline-block-inset, 8px) !important;
+      margin-right: var(--inline-block-inset, 8px) !important;
     }
   }
 
