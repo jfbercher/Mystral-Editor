@@ -723,6 +723,8 @@ class MathNumbered extends directivesDefault.math {
     const token = tokens[0];
     if (!token) return tokens;
 
+    if (data.map) token.map = data.map;
+
     const label = options.label;
     // Absent = on suit la configuration globale ; présent = surcharge locale.
     const explicit = "enumerated" in options ? asBool(options.enumerated) : undefined;
