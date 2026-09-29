@@ -254,23 +254,27 @@ const CodeEditor = styled.div`
     font-family: monospace !important;
     font-size: 14px !important;
     line-height: 1.3em !important;
-    /* An inline-block would be sized against the whole line instead of the space left in the row, so it would move down as a whole and break the text early. */
+  }
+
+  /* On the descendants only. An inline-block span would be sized against the
+     whole line instead of the space left in the row, so it would move down as a
+     whole and break the text early. */
+  .cm-line.cm-inline-source-line * {
     display: inline !important;
   }
 
   /* Line up the source with the 1em inset of the rendered widgets, so that a
      block does not jump sideways when it switches to source. */
   .cm-line.cm-inline-source-line {
-    padding-left: 2.6em !important;
+    padding-left: 1.5em !important;
     padding-right: 2em !important;
   }
 
-  /* ...but a multi-line block must keep one row per line: inlining them laid the
-     whole directive out side by side on a single row, with the gutter still
-     numbering each line. Higher specificity than the rule above, so it wins. */
-  .cm-line.cm-inline-source-line.cm-inline-source-multiline {
-    display: block !important;
-  }
+  /* The cm-inline-source-multiline class is still set in inlinePreview.js. It
+     used to re-enable display:block for a multi-line block, whose lines were
+     otherwise laid side by side on a single row with the gutter still numbering
+     each of them. Every source line is a block again, so the class no longer
+     carries a rule; it is left as a hook for custom CSS. */
 
   .cm-editor .cm-lintRange-error {
     background-image: none;
