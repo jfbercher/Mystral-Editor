@@ -1073,6 +1073,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
   const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
   insertBtn.title = "Insert an empty code-cell below (⌘⇧↵ / Ctrl+Shift+Enter)";
+  // Only useful in the inline preview, where a code cell is never turned into
+  // its source by the caret (it is a full editor already, so replacing it would
+  // remove execution and completion). CSS shows it there and hides it elsewhere,
+  // where the source panel is one click away anyway.
+  const sourceBtn = mkBtn("pyodide-btn-source", "</>");
+  sourceBtn.title = "Edit this cell's markdown source in the document (Esc to come back)";
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
   deleteBtn.title = "Delete this cell";
 
@@ -1101,7 +1107,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     attributeFilter: ["data-python-space-label"],
   });
 
-  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, deleteBtn);
+  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -1241,6 +1247,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     clearAll:    () => { clearAllBtn.click(); },
     restart:     () => { restartBtn.click(); },
     deleteCell:  (view) => { _syncToEditor(view); deleteBtn.click(); },
+    editSource:  (view) => { _syncToEditor(view); sourceBtn.click(); },
   };
 
   // ── Extensions CM6 ───────────────────────────────────────────────────────
@@ -1408,6 +1415,17 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     }));
   };
   insertBtn.addEventListener("click", _dispatchInsertBelow);
+
+  // Ask the surrounding editor to show this cell as source.  Only the inline
+  // preview listens; anywhere else the event is simply heard by nobody.
+  // _syncToEditor first, so the source that appears is the code as it stands in
+  // the cell rather than the last version written back to the document.
+  sourceBtn.addEventListener("click", () => {
+    _syncToEditor(view);
+    document.dispatchEvent(new CustomEvent("pyodide-edit-source", {
+      detail: { lineId: _lineId(), owner }
+    }));
+  });
 
   deleteBtn.addEventListener("click", () => {
     _syncToEditor(view);

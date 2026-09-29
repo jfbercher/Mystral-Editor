@@ -129,6 +129,7 @@ key the editor already uses shadows it while the cursor is in a cell.
 | *(none by default)* | Clear every output | `clearAll` |
 | *(none by default)* | Restart the kernel | `restart` |
 | *(none by default)* | Delete this cell | `deleteCell` |
+| *(none by default)* | Inline preview: edit this cell's source | `editSource` |
 :::
 
 Configurable in `config.json` under `pyodide.keys`; an empty string means no

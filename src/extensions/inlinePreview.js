@@ -2,7 +2,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { TextManager, inlineRefreshEffect } from "../text";
 import { tags } from "@lezer/highlight";
 import { EditorView } from "codemirror";
-import { Decoration, WidgetType } from "@codemirror/view";
+import { Decoration, ViewPlugin, WidgetType, keymap } from "@codemirror/view";
 import { EditorSelection, EditorState, RangeSet, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { handlePreviewInteraction } from "../utils/previewInteractions";
 import { SECTION_LABEL_RE } from "../utils/headingNumbering";
@@ -62,6 +62,16 @@ const inInteractiveElement = (target) => {
  */
 const isCodeCellBlock = (block) =>
   typeof block.html === "string" && block.html.includes("code-cell-host");
+
+/**
+ * Lifts that shield for one cell, the one whose "</>" button was pressed.
+ *
+ * Carries the position of the cell to unlock, or null to lock it again.  At most
+ * one cell at a time: two would only make the way out harder to describe.  The
+ * exception ends by itself as soon as the caret leaves the block, so there is no
+ * mode left hanging over the document.
+ */
+const unlockEffect = StateEffect.define();
 
 const focusEffect = StateEffect.define();
 
@@ -428,7 +438,7 @@ function computeBlocks() {
         continue;
       }
 
-      if (focused && !isCodeCellBlock(block) && selectionTouchesBlock(state.selection, block, state.doc)) {
+      if (focused && !blockLocked(state, block) && selectionTouchesBlock(state.selection, block, state.doc)) {
         for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
           const line = state.doc.line(lineNo);
           const margin = sourceListMarginPx(line.text, block.listDepth);
@@ -477,6 +487,67 @@ function computeBlocks() {
 
   const blockAt = (state, selection) => blockRanges(state).find((b) => selectionTouchesBlock(selection, b, state.doc));
 
+  const unlockedField = StateField.define({
+    create: () => null,
+    update(value, tr) {
+      for (const e of tr.effects) if (e.is(unlockEffect)) return e.value;
+      if (value == null) return null;
+      // Follow the edits being made in that very source; never decide anything
+      // from the blocks while they still describe the document before them.
+      if (tr.docChanged) return tr.changes.mapPos(value, -1);
+      if (!tr.selection) return value;
+      const block = blockRanges(tr.state).find((b) => value >= b.from && value <= b.to);
+      if (!block) return value;
+      return selectionTouchesBlock(tr.selection, block, tr.state.doc) ? value : null;
+    },
+  });
+
+  /** A code cell stays rendered unless it is the one that was unlocked. */
+  const blockLocked = (state, block) => {
+    if (!isCodeCellBlock(block)) return false;
+    const pos = state.field(unlockedField);
+    return !(pos != null && pos >= block.from && pos <= block.to);
+  };
+
+  /**
+   * The "</>" button of a cell asks its editor, on `document` like the other
+   * cell events, so the owner has to be checked here too: every open editor
+   * hears it, and only the one holding that cell may answer.
+   */
+  const editSourceListener = ViewPlugin.define((view) => {
+    const handler = ({ detail: { lineId, owner } = {} }) => {
+      const mine = text.options?.id?.value ?? options?.id?.value;
+      if (owner != null && mine != null && owner !== mine) return;
+      const pos = text._posFromLineId?.(lineId);
+      if (pos == null) return;
+      const block = blockRanges(view.state).find((b) => pos >= b.from && pos <= b.to);
+      if (!block || !isCodeCellBlock(block)) return;
+      // block.from, not a position inside: the range is still atomic in the state
+      // this transaction starts from, and a caret aimed strictly inside it would
+      // be pushed back out before the effect ever lifted the shield.
+      view.dispatch({
+        selection: EditorSelection.cursor(block.from),
+        effects: [unlockEffect.of(block.from), focusEffect.of(true)],
+        userEvent: "select.pointer",
+      });
+      view.focus();
+    };
+    document.addEventListener("pyodide-edit-source", handler);
+    return { destroy: () => document.removeEventListener("pyodide-edit-source", handler) };
+  });
+
+  /** Escape renders the cell again without having to move the caret away. */
+  const lockOnEscape = keymap.of([
+    {
+      key: "Escape",
+      run: (view) => {
+        if (view.state.field(unlockedField) == null) return false;
+        view.dispatch({ effects: unlockEffect.of(null) });
+        return true;
+      },
+    },
+  ]);
+
   const decorationsField = StateField.define({
     create: buildDecorations,
     update: (value, tr) => {
@@ -484,8 +555,9 @@ function computeBlocks() {
       // Keep the current widgets while the blocks describe an older document: rebuilding from them
       // would drop every widget until the next render lands.
       if (!projectionMatches(tr.state)) return value;
-      if (tr.effects.some((e) => e.is(inlineRefreshEffect) || e.is(focusEffect))) return buildDecorations(tr.state);
+      if (tr.effects.some((e) => e.is(inlineRefreshEffect) || e.is(focusEffect) || e.is(unlockEffect))) return buildDecorations(tr.state);
       if (!tr.selection) return value;
+      if (tr.startState.field(unlockedField) !== tr.state.field(unlockedField)) return buildDecorations(tr.state);
       const from = blockAt(tr.startState, tr.startState.selection)?.from;
       return from === blockAt(tr.state, tr.selection)?.from ? value : buildDecorations(tr.state);
     },
@@ -538,7 +610,11 @@ function computeBlocks() {
   return [
     focusedField,
     blocksField,
+    // Before decorationsField: that field reads this one while it rebuilds.
+    unlockedField,
     decorationsField,
+    editSourceListener,
+    lockOnEscape,
     revealSelectedBlock,
     enterJumpedBlock,
     syntaxHighlighting(markdownHighlightStyle),
@@ -550,7 +626,7 @@ function computeBlocks() {
     EditorView.atomicRanges.of((view) => {
       const ranges = [];
       for (const block of blockRanges(view.state)) {
-        if (!block.synthetic && isCodeCellBlock(block) && block.to > block.from) {
+        if (!block.synthetic && blockLocked(view.state, block) && block.to > block.from) {
           ranges.push(atomicMark.range(block.from, block.to));
         }
       }

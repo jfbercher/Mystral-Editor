@@ -29,6 +29,11 @@
 .pyodide-btn-restart{color:#cf222e;font-weight:600}
 .pyodide-btn-insert{color:#6639ba;font-weight:600}
 .pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
+/* Turns the cell into its markdown source. Meaningless outside the inline
+   preview, where it is the only way in: the caret leaves a code cell rendered
+   on purpose, and there is no source panel beside it. */
+.pyodide-btn-source{display:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;color:#6639ba}
+.cm-inline-rendered-md .pyodide-btn-source{display:inline-flex}
 .pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
 .pyodide-editor-row{display:flex;position:relative;width:100%}
 .pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}

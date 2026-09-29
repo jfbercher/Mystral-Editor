@@ -131,6 +131,14 @@ Each cell carries the same buttons, acting on that cell or on the whole document
 
 **✕** deletes the cell, after an inline confirmation.  
 
+**`</>`** appears in the inline preview only, and turns the cell into its markdown
+source right there in the document. A code cell is the one block the inline
+preview never unfolds when the cursor reaches it — it is already an editor, and
+showing the raw fence instead would only take away execution, highlighting and
+completion — so this button is the way in for whoever edits in inline mode and
+needs to touch the fence itself, its `:label:` or its options. The cell renders
+again as soon as the cursor leaves it, or on `Escape`.  
+
 ### The status bar  
 
 Under the editor, a bar reports on the cell rather than acting on it: a message when there is one, the time of the last run, how long that run took, and the namespace the cell belongs to.  
@@ -150,7 +158,8 @@ Shortcuts apply while the cursor is inside a cell editor. They are set in `confi
 | `runAll` | *(none)* | Run every cell | 
 | `clearAll` | *(none)* | Clear every output | 
 | `restart` | *(none)* | Restart the kernel | 
-| `deleteCell` | *(none)* | Delete this cell |  
+| `deleteCell` | *(none)* | Delete this cell | 
+| `editSource` | *(none)* | Inline preview: edit this cell's source |  
 
 An empty string means the action has no shortcut. A binding CodeMirror cannot parse is reported in the browser console and ignored, so a typo costs that one shortcut rather than the cell's whole keymap. Because these bindings take precedence inside a cell, rebinding one to a key the editor already uses — say `Mod-s` — shadows the editor's own while the cursor is in a cell.  
 

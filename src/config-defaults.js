@@ -93,6 +93,7 @@ export const DEFAULT_CONFIG = {
       clearAll:    "",                  // clear every output
       restart:     "",                  // restart the kernel (clears variables)
       deleteCell:  "",                  // delete this cell
+      editSource:  "",                  // inline preview: edit this cell's source
     },
   },
 

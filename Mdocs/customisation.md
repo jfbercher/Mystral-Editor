@@ -93,6 +93,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `pyodide.keys.clearAll` | `""` | Clear every output. |
 | `pyodide.keys.restart` | `""` | Restart the kernel, clearing all variables. |
 | `pyodide.keys.deleteCell` | `""` | Delete the current cell. |
+| `pyodide.keys.editSource` | `""` | Inline preview only: show this cell as its markdown source (Escape comes back). |
 
 Which Python namespace a document's cells run in is not set here: it belongs to
 the document, through the `python:` key of its frontmatter (`shared`,

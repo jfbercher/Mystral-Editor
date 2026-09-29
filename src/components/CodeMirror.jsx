@@ -245,6 +245,7 @@ const CodeEditor = styled.div`
     & table,
     & .pyodide-wrapper {
       margin-bottom: var(--inline-block-gap, 0.75em) !important;
+      margin-top: var(--inline-block-gap, 0.5em) !important;
     }
   }
 
