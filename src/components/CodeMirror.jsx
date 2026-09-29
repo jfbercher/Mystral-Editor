@@ -206,7 +206,12 @@ const CodeEditor = styled.div`
   &:not(&.inline-custom-styles) {
     all: initial;
     display: inline-block;
-    margin: 0 1em !important;
+    /* The inset is padding, not margin: with width 100%, a horizontal margin
+       adds to the width instead of being taken out of it, so the widget stuck
+       out on the right by the sum of the two. Padding is inside the 100%
+       because of border-box below, and it is the same 1em the source line uses,
+       so a block does not shift when it switches between rendered and source. */
+    padding: 0 1em;
     width: 100%;
     vertical-align: top;
     box-sizing: border-box;
@@ -214,6 +219,10 @@ const CodeEditor = styled.div`
     font-family: "Lato";
     font-size: 16px;
     word-break: inherit;
+
+    :is(h1, h2, h3, h4, h5, h6) {
+      padding-bottom: 1em;
+    }
   }
 
     ${MdStyles}
@@ -222,26 +231,20 @@ const CodeEditor = styled.div`
       margin-bottom: 0;
     }
 
-    /* Custom directives are rendered wrapped in a div, so their content is one level deeper. */
+    /* The horizontal inset is applied once, by the widget above (Children get
+       none, whatever their depth).
+       (Custom directives are wrapped in a div too, hence the second selector.) */
     & > *,
     & > div > * {
       margin: 0 !important;
     }
 
-    /* In the preview, a boxed block is inset by the preview pane's own 20px of
-       padding. An editor line has no such padding, so the same block ends up
-       against the left edge, which is what makes it look wrong beside the text.
-       The inset is put on the boxes themselves rather than on the widget: the
-       widget also renders ordinary paragraphs, and insetting those would shift
-       the text sideways every time a line switches between rendered and source.
-       !important because the blanket margin rule above would otherwise win. */
     & aside.admonition,
     & details.admonition,
     & figure,
     & table,
     & .pyodide-wrapper {
-      margin-left: var(--inline-block-inset, 8px) !important;
-      margin-right: var(--inline-block-inset, 8px) !important;
+      margin-bottom: var(--inline-block-gap, 0.75em) !important;
     }
   }
 
@@ -258,8 +261,8 @@ const CodeEditor = styled.div`
   /* Line up the source with the 1em inset of the rendered widgets, so that a
      block does not jump sideways when it switches to source. */
   .cm-line.cm-inline-source-line {
-    padding-left: 1.5em !important;
-    padding-right: 1em !important;
+    padding-left: 2.6em !important;
+    padding-right: 2em !important;
   }
 
   /* ...but a multi-line block must keep one row per line: inlining them laid the
