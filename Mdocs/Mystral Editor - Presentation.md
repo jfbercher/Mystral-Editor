@@ -38,12 +38,12 @@ math:
 
 ## Overview
 
+
+
+**[Mystral Editor](https://github.com/jfbercher/Mystral-Editor)** addresses a concrete need: a lightweight, offline-capable editor with large [MyST Markdown](https://myst-parser.readthedocs.io/)[^MyST] support, oriented toward academic documents, with bibliography management, equations, automatic numbering of floating elements and structured navigation, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, themes).
+
 [Mystral Editor](https://github.com/jfbercher/Mystral-Editor) is a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) (Markedly Structured Text) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative **editing** in web applications, this fork uses it to build a full-featured scientific authoring tool for local use.
 
-
-MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
-
-The project addresses a concrete need: a lightweight, offline-capable editor oriented toward academic documents, with bibliography management, equations, automatic numbering of floating elements and structured navigation, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, themes).
 
 The application ships in two forms:
 
@@ -52,8 +52,10 @@ The application ships in two forms:
 
 The two following files list the Additions and Modifications of the original Editor (as required by the Apache 2.0 license): 
 
-- [Additions](additions.md)
-- [Modifications](modifications.md)
+- [List of Additions](additions.md)
+- [List of Modifications](modifications.md)
+
+[^MyST]: MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
 
 ## Features Inherited from Myst-Editor
 

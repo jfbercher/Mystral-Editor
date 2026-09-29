@@ -117,6 +117,7 @@ key the editor already uses shadows it while the cursor is in a cell.
 
 :::{table} Code-cell shortcuts
 :align: center
+:name: code_cell_shortcuts
 
 | Key | Action | Key in `config.json` |
 |---|---|---|
