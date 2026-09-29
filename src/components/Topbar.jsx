@@ -8,6 +8,8 @@ import Avatars from "./Avatars";
 import { MystState } from "../mystState";
 import { useComputed, useSignal } from "@preact/signals";
 
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
 const renderMdLinks = (title) =>
   [...(title || "").matchAll(/\[(.+)\]\(([^\s]+)\)/g)].reduce(
     (prev, match) => prev.replace(match[0], `<a href="${match[2]}">${match[1]}</a>`),
@@ -447,18 +449,25 @@ const DropdownButtonWrapper = ({ button, children }) => {
   );
 };
 
+
+
 export const EditorTopbar = ({ alert, buttons }) => {
   const { options, editorView, collab, suggestMode } = useContext(MystState);
   const titleHtml = useComputed(() => purify.sanitize(renderMdLinks(options.title.value)));
   const subtitleHtml = useComputed(() => purify.sanitize(renderMdLinks(options.subtitle.value)));
   const emptyDiff = useSignal(false);
 
+  function setMode(value) {
+    options.mode.value = value;
+    localStorage.setItem("editorMode", value);
+  }
+
   const editorModeButtons = useComputed(() => {
     const modeButtons = [
-      { id: "source", tooltip: "Source", action: () => (options.mode.value = "Source"), icon: SourceIcon },
-      { id: "preview", tooltip: "Preview", action: () => (options.mode.value = "Preview"), icon: PreviewIcon },
-      { id: "both", tooltip: "Dual Pane", action: () => (options.mode.value = "Both"), icon: BothIcon },
-      { id: "inline", tooltip: "Inline Preview", action: () => (options.mode.value = "Inline"), icon: InlinePreviewIcon },
+      { id: "source", tooltip: "Source", action: () => (setMode("Source")), icon: SourceIcon },
+      { id: "preview", tooltip: "Preview", action: () => (setMode("Preview")), icon: PreviewIcon },
+      { id: "both", tooltip: "Dual Pane", action: () => (setMode("Both")), icon: BothIcon },
+      { id: "inline", tooltip: "Inline Preview", action: () => (setMode("Inline")), icon: InlinePreviewIcon },
       {
         id: "diff",
         tooltip: emptyDiff.value ? "No changes to show" : null,

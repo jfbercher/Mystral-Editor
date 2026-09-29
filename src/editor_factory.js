@@ -277,6 +277,7 @@ export function mountEditor(mnt_options) {
   
   //type EditorMode = "Source" | "Preview" | "Both" | "Diff" | "Resolved" | "Outline" | "Inline"; // version typeScript
   const allowedModes = ["Source", "Preview", "Both", "Diff", "Resolved", "Outline", "Inline"];
+  const storedMode = localStorage.getItem("editorMode");
 
   // export function mountEditor({ editorId, tab, container, initialContent, editorOptions, getAllEditorIds, updateTabLabel }) {
    MystEditor(
@@ -414,7 +415,12 @@ export function mountEditor(mnt_options) {
         return localUtils.resolveImage(url); // async, fonctionne pour Tauri et Web
       },
       //mode: "Both", // Source
-      mode: allowedModes.includes(config.editorMode) ? config.editorMode : "Both",
+      // mode: allowedModes.includes(config.editorMode) ? config.editorMode : "Both",
+      mode: allowedModes.includes(storedMode)
+        ? storedMode
+        : allowedModes.includes(config.editorMode)
+          ? config.editorMode
+          : "Both",
       customRoles: editorOptions.customRoles ?? [],
       customDirectives: editorOptions.customDirectives ?? [],
       includeButtons: makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab),
