@@ -5,6 +5,7 @@ import { EditorView } from "codemirror";
 import { Decoration, WidgetType } from "@codemirror/view";
 import { EditorSelection, EditorState, RangeSet, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { handlePreviewInteraction } from "../utils/previewInteractions";
+import { SECTION_LABEL_RE } from "../utils/headingNumbering";
 
 /**
  * Elements inside a rendered block that own their own click.
@@ -235,6 +236,22 @@ function computeBlocks() {
     const syntheticChunks = text.chunks.filter(isSynthetic);
 
     const byLine = projectHtml(realChunks.map((c) => c.html).join(""), text.lineMap);
+
+    // A section label written above its heading -- "(hello)=" -- is dropped from
+    // the rendered tokens once it has been resolved, so it starts no block of
+    // its own. It belongs to the heading it names, so the heading's block starts at the label.
+    const lines = source.split("\n");
+    for (const key of [...byLine.keys()].sort((a, b) => a - b)) {
+      const entry = byLine.get(key);
+      if (!/^<h[1-6][\s>]/i.test(entry.html?.trimStart() ?? "")) continue;
+      let start = key;
+      // A heading may carry more than one target.
+      while (start > 1 && SECTION_LABEL_RE.test(lines[start - 2] ?? "")) start--;
+      if (start !== key && !byLine.has(start)) {
+        byLine.delete(key);
+        byLine.set(start, entry);
+      }
+    }
 
     syntheticChunks.forEach((chunk, i) => {
       byLine.set(Number.MAX_SAFE_INTEGER - syntheticChunks.length + 1 + i, { html: chunk.html, listDepth: null });

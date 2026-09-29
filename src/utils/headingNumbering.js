@@ -1,6 +1,7 @@
 // src/utils/headingNumbering.js
 export const TITLE_MARKER = /\{\s*myst-editor-title\s*\}/;
-const SECTION_LABEL_RE = /^\(([a-zA-Z][\w:-]*)\)=\s*$/;
+/** A MyST target on a line of its own: `(my-section)=`. */
+export const SECTION_LABEL_RE = /^\(([a-zA-Z][\w:-]*)\)=\s*$/;
 
 export function numberHeadings(nodes) {
   const counters = {};
