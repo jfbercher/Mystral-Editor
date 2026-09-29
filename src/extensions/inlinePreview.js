@@ -508,7 +508,23 @@ function computeBlocks() {
 
     // Only nudge a caret that would end up *inside* a rendered block, to that block's near edge.
     // Anything else (Home/End/PageUp, or a step that lands on a boundary) must keep its destination.
-    const target = blockRanges(tr.startState).find((b) => next.head > b.from && next.head < b.to);
+    const ranges = blockRanges(tr.startState);
+    let target = ranges.find((b) => next.head > b.from && next.head < b.to);
+
+    // Stepping onto a block should enter it.
+    //
+    // Restricted to a step FROM THE ADJACENT LINE so that End, PageDown and a
+    // jump from further away keep their destination.
+    if (!target) {
+      const prevLine = tr.startState.doc.lineAt(prev.head).number;
+      target = ranges.find(
+        (b) =>
+          !b.synthetic &&
+          ((next.head >= b.to && prev.head <= b.from && prevLine === b.startLine - 1) ||
+            (next.head <= b.from && prev.head >= b.to && prevLine === b.endLine + 1)),
+      );
+    }
+
     if (!target || selectionTouchesBlock(tr.startState.selection, target, tr.startState.doc)) return tr;
 
     const head = next.head > prev.head ? target.from : target.to;
