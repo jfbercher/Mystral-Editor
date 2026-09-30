@@ -247,6 +247,11 @@ const CodeEditor = styled.div`
       margin-bottom: var(--inline-block-gap, 0.75em) !important;
       margin-top: var(--inline-block-gap, 0.5em) !important;
     }
+
+    & table {
+      word-break: normal;
+      overflow-wrap: break-word;
+    }
   }
 
   /* Active inline block shown as source — match Source mode monospace. */
