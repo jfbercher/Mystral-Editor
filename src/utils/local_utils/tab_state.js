@@ -559,7 +559,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       try {
         const filePath = await tauriDialog.save({
           defaultPath: tab.currentFileName || "document.md",
-          filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }]
+          filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt", "yaml", "yml"] }]
         });
         if (filePath) {
           await tauriFs.writeTextFile(filePath, content);
@@ -583,7 +583,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       try {
         const handle = await window.showSaveFilePicker({
           suggestedName: tab.currentFileName || "document.md",
-          types: [{ description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown"] } }],
+          types: [{ description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown",  "txt", "yaml", "yml"] } }],
         });
         await tab.setCurrentFile(handle);
         await addRecentFileHandle(handle);
