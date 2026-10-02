@@ -1,34 +1,18 @@
 ---
 title: Keyboard Shortcuts
-subtitle: Some Adaptations
-authors:
-  - jfbercher
-date: 2026-08-01
-license: CC-BY-4.0
-github: https://github.com/jfbercher/Mystral-Editor
-bibliography: references.bib
-citation-style: author-year # or numeric
-citation-template: "{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}"
-numbering:
-  headings: true # activate headings numbering
-  equations: true 
-  figure: true
-    #template: Fig. %s # Define the prefix
-math:
-  '\dr': '\mathrm{d}#1'
-  '\wb': '\mathbf{wx}'
+extends: mdocs_fm.yml
 ---
 
 %# Keyboard Shortcuts
 
-`Mod` = Cmd on macOS, Ctrl elsewhere. 
+**Note**: `Mod` = Cmd on macOS, Ctrl elsewhere. 
 
-CodeMirror keymaps may change from one version to the next, so check for any edge cases on your own system.
+⚠️ CodeMirror keymaps may change from one version to the next, so check for any edge cases on your own system.
 
 ## Interface
 
 :::{table} Interface shortcuts
-:name: truc
+:name: interface_sortcuts
 :align: center
 
 | Key | Action |
@@ -37,13 +21,13 @@ CodeMirror keymaps may change from one version to the next, so check for any edg
 | `Mod-Shift-e` | Open a new (empty) tab |
 | `Mod-Shift-s` | Save current tab |
 :::
-Configurable in `config.json`.
+These keys are configurable in `config.json`; see [Customisation](customisation.md). 
 
 
 ## Editing (`defaultKeymap`)
 
 :::{table} Editing shortcuts
-:name: trac
+:name: editing_shortcuts
 :align: center
 | Key | Action |
 |---|---|

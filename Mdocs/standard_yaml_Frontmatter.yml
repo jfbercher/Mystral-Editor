@@ -1,0 +1,31 @@
+
+title: Executable content -- code cells
+subtitle: Mystral Editor
+authors:
+  - jfbercher
+  - with a draft by Claude code
+date: 2026-09-27
+license: GPL-3.0-or-later
+github: https://github.com/jfbercher/Mystral-Editor
+bibliography: references.bib
+citation-style: author-year # or numeric
+citation-template: "{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}"
+settings:
+    myst_to_tex:
+        code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+exports:
+  - format: docx
+  - format: pdf
+    template: arxiv_nips
+    article_type: article
+    chapters: []
+numbering:
+  headings: true # activate headings numbering
+  equations: true 
+  figure: true
+    #template: Fig. %s # Define the prefix
+math:
+  '\dr': '\mathrm{d}#1'
+  '\wb': '\mathbf{wx}'

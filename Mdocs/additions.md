@@ -1,6 +1,9 @@
-# Files Added in This Fork (vs. `upstream/main`)
+---
+title: Additions
+extends: mdocs_fm.yml
+---
 
-This document lists every file that exists in this fork ("Mystral Editor") but not in the upstream `antmicro/myst-editor` repository, based on `git diff --name-status upstream/main...HEAD` (merge-base comparison, so it reflects only what this fork introduced, ignoring unrelated upstream-only changes since the fork point).
+This document lists every file that exists in ``Mystral Editor'' but not in the upstream `antmicro/myst-editor` repository, based on `git diff --name-status upstream/main...HEAD` (merge-base comparison, so it reflects only what this fork introduced, ignoring unrelated upstream-only changes since the fork point).
 
 ## Desktop app (Tauri) scaffolding
 
@@ -20,18 +23,12 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 - `src-tauri/icons/**` — Full icon set (multiple PNG resolutions, `.icns` for macOS, `.ico` for Windows, an `icon.iconset` folder, and an `ios/` folder with iOS-specific sizes) used by Tauri to build the desktop and mobile app bundles' icons.
 
 **Stray/cruft files worth cleaning up** (accidental leftovers, not intentional source files):
-- `src-tauri/src/lib.rs~` — Editor backup/autosave file duplicating an earlier version of `lib.rs`.
-- `src-tauri/src/lib copy.rs`, `src-tauri/src/lib copy 2.rs`, `src-tauri/src/lib copy 3.rs` — Accidental duplicate/backup copies of `lib.rs` at different stages of editing.
-- `Topbar.jsx` (at repo root) — A stray duplicate of `src/components/Topbar.jsx`, sitting outside `src/components` by mistake.
+
 - `complete_diff_of_modified_and_added_files_in_fork.txt`, `modified_and_added_files_in_fork.txt` — Generated scratch diff dumps produced by `diffs_in_fork.sh`; dev artifacts, not meant to be tracked long-term.
-- `test.md` — Trivial one-line placeholder file with no functional role.
 
 ## Root-level scripts, docs, and misc
 
-- `Notes_encours.md` — French-language scratch/working notes (TODO-style) tracking in-progress editor features and refactoring plans; personal dev notes rather than project documentation.
 - `install_fork.md` — Short install instructions for this fork, listing extra npm dependencies to install (katex, markdown-it-texmath, js-yaml, CodeMirror Python support) before running `npm i && npm run build`.
-- `macos_app_installation_guide.md` — End-user guide explaining how to bypass macOS Gatekeeper's "unidentified developer" warning for the unsigned/unnotarized app.
-- `windows_app_installation_guide.md` — End-user guide explaining how to bypass Windows SmartScreen's "unknown publisher" warning to run the unsigned installer.
 - `myst_editor.sh` — macOS launcher script that starts `npm run dev`, opens the app in a dedicated Brave Browser app window (optionally to a file path argument), and shuts the dev server down once that window closes.
 - `myst_editor_dist.sh` — Same launcher pattern as `myst_editor.sh` but runs the built distribution via `node server.mjs` instead of the Vite dev server.
 - `run_myst_editor.sh` — Simpler launcher variant (no file-path argument support).
@@ -45,7 +42,7 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 - `src/public/assets/image-not-found.png` — The runtime copy of the "image not found" placeholder PNG served with the app, referenced by `src/public/config.json`'s `fallbackImage` setting.
 - `src/public/config.json` — Runtime configuration for the desktop app: autosave/suspend/check intervals, recent-files limit, default filename, fallback image path, keyboard shortcuts (save/open/new tab), the `pyodide` section (whether the working directory is reset before each cell, and the code-cell key bindings under `pyodide.keys`), the Tauri-only `export` section, and a table of MyST directive definitions (figure, table, math, exercise, theorem, admonition, etc.) mapping directive names to numbering/caption/label behavior.
 - `src/public/custom.css` — User-customizable CSS overrides scoped to `#myst-css-namespace`, styling emphasis/strong/heading colors via CSS variables.
-- `src/public/new_file.md` — Template/sample MyST markdown document (frontmatter, bibliography, math macros) used as the starting content for new files, demonstrating cross-references, equations, footnotes, citations, and figures.
+- `src/public/newFileTemplate` — Template/sample MyST markdown document (frontmatter, bibliography, math macros) used as the starting content for new files, demonstrating cross-references, equations, footnotes, citations, and figures.
 
 ## Core app/runtime modules
 
@@ -65,7 +62,7 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 - `src/extensions/mystComments.js` — Implements MyST-style line comments (`%` at column 0): exports `toggleMystComment` (a CodeMirror command) and `mystComments()`, a keymap binding `Mod-/`, `Mod-:` (AZERTY), and `Mod-Shift-/`.
 - `src/extensions/mystCompletions.js` — Implements the MyST-aware autocompletion source for CodeMirror: snippet completions for roles (`{ref}`, `{eq}`, etc.) and directives, cross-reference targets, and bibliography-key citations.
 
-# New markdown-processing modules
+## New markdown-processing modules
 
 - `src/markdown/bibliography.js` — Loads and parses a BibTeX (`.bib`) file per editor tab (Tauri filesystem or Web File System Access API), and provides markdown-it plugins to render `[@key]` citation groups and a `[bibliography]` marker into a formatted reference list, including a `Cite` role, numeric/author-year citation styles, and hover-preview metadata.
 - `src/markdown/frontmatterUtils.js` — `extractFrontmatter(fullText)` parses the leading YAML frontmatter block using `js-yaml` and returns the parsed object plus the line number where it ends.
@@ -119,3 +116,5 @@ This document lists every file that exists in this fork ("Mystral Editor") but n
 
 - `Mdocs/keyboard_shortcuts_en.md` — Reference document listing the editor's keyboard shortcuts, including those of the code cells, formatted as MyST tables and demonstrating the fork's frontmatter/numbering/math-macro features.
 - `src/small_presentation.md` — Sample/demo markdown document showcasing MyST Editor features (admonitions, dual-pane sync, images, Mermaid diagrams, view modes, custom transforms, collaboration) used as introductory/demo content.
+- - `macos_app_installation_guide.md` — End-user guide explaining how to bypass macOS Gatekeeper's "unidentified developer" warning for the unsigned/unnotarized app.
+- `windows_app_installation_guide.md` — End-user guide explaining how to bypass Windows SmartScreen's "unknown publisher" warning to run the unsigned installer.

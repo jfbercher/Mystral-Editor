@@ -39,6 +39,7 @@ math:
 :depth: 3
 :::
 
+
 **Mystral Editor runs Python inside the document!** A `code-cell` block becomes a small editor with its own toolbar; running it executes the code in a Python interpreter living in the page, and the result appears underneath.
 
 For a scientific editor this is more than a convenience, and it is the feature that changes how a document is written. The prose, the computation and the figure it produces live in one file and travel together, so a number in a sentence and the code that produced it cannot drift apart: change the data and re-run, and the text follows. A colleague opening the file gets the argument and the means of checking it at once, without a separate notebook to locate, a script to reconstruct or an environment to install — the interpreter comes with the page. It is the same promise as a computational notebook, made to a document that is meant to be read rather than to a notebook that happens to contain prose. 
@@ -88,11 +89,11 @@ A name gives a namespace shared by exactly the documents that ask for it:
 
 ```yaml 
 --- 
-python: tp3 
+python: lab3 
 --- 
 ```  
 
-Every document carrying `python: tp3` sees the same variables; everything else is invisible to them. Since `extends` also works on the frontmatter, a project can set this once in a shared YAML file and have all of its documents inherit it — see [frontmatter-extends](frontmatter-extends.md).  
+Every document carrying `python: lab3` sees the same variables; everything else is invisible to them. Since `extends` also works on the frontmatter, a project can set this once in a shared YAML file and have all of its documents inherit it — see [frontmatter-extends](frontmatter-extends.md).  
 
 The namespace in force is shown at the right end of each cell's status bar. It is an indicator and not a control: a document's namespace is a property of the document, written in its frontmatter, so there is one place to change it and no hidden state to wonder about. The shared namespace is drawn dimmed, with a dashed outline, since it is the default.  
 `shared` and `isolated` are reserved: a group cannot be called either.  
@@ -180,7 +181,7 @@ await micropip.install("pandas")
 
 Top-level `await` works, since cells are executed as coroutines.  
 
-Matplotlib figures are captured automatically: draw with `plt.plot(...)` and the figure appears in the output, no `plt.show()` needed. The backend is `agg` and figures are closed before each run, so a cell never inherits the previous one's canvas.  
+Matplotlib figures are captured automatically: draw with `plt.plot(...)`, and the figure appears in the output, no `plt.show()` needed. The backend is `agg`, and figures are closed before each run, so a cell never inherits the previous one's canvas.  
 
 `print()` output appears as it is produced rather than all at once at the end, which matters for a loop that reports progress. It is also mirrored to the browser console, prefixed `[py]`, where it can be read in time order alongside JavaScript messages.  
 
@@ -194,7 +195,7 @@ Cells can read the files sitting next to the document. Before a cell runs, its s
 
 Two consequences follow. A filename built at run time, for instance by joining strings in a loop, is not seen by the scan and will not be staged. And in a browser without the File System Access API — Firefox, Safari — the working folder is a read-only snapshot: cells can read it but nothing is written back, and a message in the console says so once per run.  
 
-The key `pyodide.resetCwdOnRun` decides whether the working directory persists between cells. See *Customisation*.  
+The key `pyodide.resetCwdOnRun` decides whether the working directory persists between cells. See *[Customisation](customisation.md)*.
 
 ### What it cannot do  
 

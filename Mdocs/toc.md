@@ -1,4 +1,7 @@
-# Table of contents in the page
+---
+title: Table of contents in the page
+extends: mdocs_fm.yml
+---
 
 `{toc}` inserts a table of contents built from the document's own headings. It
 is the in-page counterpart of the side outline, and unlike it, what it produces
