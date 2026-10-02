@@ -1,6 +1,9 @@
 const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s?(.*)$/;
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g;
 
+/** Directives whose body is code rather than prose. */
+const CODE_DIRECTIVE_RE = /^\{(code|code-block|code-cell|literalinclude)\}/;
+
 /** Pré-scan global : repère définitions et références, numérote par ordre de première référence. */
 
 export function scanFootnotes(fullText) {
@@ -10,9 +13,38 @@ export function scanFootnotes(fullText) {
   const refCounts = new Map(); // label -> nombre d'occurrences vues
 
   let currentDefLabel = null;
+  /** Open fences, innermost last: { char, len, code }. */
+  const fences = [];
+  const inCode = () => fences.some((f) => f.code);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // A fenced block holds code -- text to be shown rather than read -- only when
+    // its info string is empty or a bare language name. `{note}` and the like are
+    // directives: an admonition's content is ordinary document content, and the
+    // footnotes it holds must be numbered with the rest. The few directives whose
+    // body *is* code are named explicitly.
+    
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})[ \t]*(.*)$/.exec(line);
+    if (fenceMatch) {
+      const char = fenceMatch[1][0];
+      const len = fenceMatch[1].length;
+      const info = fenceMatch[2].trim();
+      const top = fences[fences.length - 1];
+      // A closing fence carries no info string, uses the same character and is at
+      // least as long -- so ```` wrapping ``` in an example does not end on the
+      // inner fence.
+      if (top && char === top.char && len >= top.len && info === "") {
+        fences.pop();
+      } else if (!inCode()) {
+        fences.push({ char, len, code: !info.startsWith("{") || CODE_DIRECTIVE_RE.test(info) });
+      }
+      currentDefLabel = null;
+      continue;
+    }
+    if (inCode()) continue;
+
     const defMatch = line.match(FOOTNOTE_DEF_RE);
 
     if (defMatch) {
@@ -29,9 +61,13 @@ export function scanFootnotes(fullText) {
       currentDefLabel = null;
     }
 
+    // For an inline code span: `[^1]` is the marker written as
+    // text, and the renderer leaves it alone. 
+    const scanLine = line.replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length));
+
     let match;
     FOOTNOTE_REF_RE.lastIndex = 0;
-    while ((match = FOOTNOTE_REF_RE.exec(line))) {
+    while ((match = FOOTNOTE_REF_RE.exec(scanLine))) {
       const label = match[1];
       if (!refOrder.includes(label)) refOrder.push(label);
     }
