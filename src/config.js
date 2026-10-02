@@ -253,7 +253,7 @@ numbering:
     #template: Fig. %s # Define the prefix
 math:
   '\dr': '\mathrm{d}#1'
-  '\wb': '\mathbf{wx}'
+  '\wb': '\mathbf{w}'
 ---
 
 
