@@ -620,7 +620,13 @@ export class TextManager {
     
     const citationsSignature = [...citeMap.entries()].map(([k, v]) => `${k}:${v.number}:${v.entry?.year}`).join("|");
     if (timing_debug) console.log("scanCitations:", (performance.now() - _t2).toFixed(2), "ms");
-    
+
+    const bibSignature = [
+      bibliographyPath,
+      fmResult?.frontmatter?.["citation-style"],
+      fmResult?.frontmatter?.["citation-template"]
+    ].join("|");
+
     // for headings numbering
     if (timing_debug) {const _t3 = performance.now();}
     const numberingSectionsActive = this.userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
@@ -772,7 +778,7 @@ export class TextManager {
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}`,
         42,
         ).result();
         
@@ -862,7 +868,7 @@ export class TextManager {
     if (citeMap.size > 0) {
       const alreadyPlaced = realChunks.some((c) => c.html.includes('class="bibliography"'));
       if (!alreadyPlaced) {
-        const bibHash = `bibliography-${citationsSignature}`;
+        const bibHash = `bibliography-${citationsSignature}\0${bibSignature}`;
         const bibHtml = chunkLookup[bibHash]?.html || renderBibliographySection(citeMap, citationStyle, citationTemplate, this.md.value);
         const lastChunk = realChunks[realChunks.length - 1];
         realChunks.push({
