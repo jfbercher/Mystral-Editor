@@ -207,6 +207,9 @@ function ensureObserver(parent, owner = "") {
         // précédent, et une cellule s'exécuterait ailleurs que ses voisines.
         evictedHost.dataset.pythonSpace = el.dataset.pythonSpace ?? "shared";
         evictedHost.dataset.pythonSpaceLabel = el.dataset.pythonSpaceLabel ?? "shared";
+        // Same reason: :figwidth: is read from the host at each render, so a
+        // reused widget would keep the width it had when it was first built.
+        evictedHost.dataset.figwidth = el.dataset.figwidth ?? "";
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.

@@ -34,13 +34,22 @@
    on purpose, and there is no source panel beside it. */
 .pyodide-btn-source{display:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;color:#6639ba}
 .cm-inline-rendered-md .pyodide-btn-source{display:inline-flex}
+/* The side panel of the completion popup carries .pyodide-completion-doc, but
+   its size and wrapping are set inline in pyodideRunner.js: it is rendered in
+   the tooltip host, outside the preview, where this sheet may not reach. */
 .pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
 .pyodide-editor-row{display:flex;position:relative;width:100%}
 .pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
-.pyodide-output{min-height:2.5rem;max-height:25rem;overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
+.pyodide-output{min-height:2.5rem;max-height:var(--pyodide-output-max-height,25rem);overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
+/* The cap keeps a long output from pushing the document away, but it also
+   stopped the resize handle: dragging clamped at 25rem and a tall figure
+   could not be revealed. Dragging writes an inline height, and that is the
+   signal that the reader has taken over -- the cap is then lifted. */
+.pyodide-output[style*="height"]{max-height:none}
 .pyodide-output[hidden]{display:none}
 .pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
 .pyodide-error,.pyodide-stderr{color:#cf222e}
+/* width is set per cell from :figwidth:, so only the ceiling is here. */
 .pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0}
 .pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}

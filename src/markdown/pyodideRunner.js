@@ -15,7 +15,7 @@ import { config, loadConfig, configReady } from "../config.js";
 import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
-import { EditorView, keymap as cmKeymap, lineNumbers, drawSelection } from "@codemirror/view";
+import { EditorView, keymap as cmKeymap, lineNumbers, drawSelection, tooltips } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import { python } from "@codemirror/lang-python";
 import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirror/commands";
@@ -203,16 +203,33 @@ import micropip as _micropip
 await _micropip.install(['jedi', 'cloudpickle', 'pyodide_http'], keep_going=True)
 import jedi as _jedi_mod, json as _json_mod
 
+# The Completion objects of the last list are kept so that their docstring can
+# be asked for afterwards, one at a time: docstring() is costly and computing it
+# for all eighty entries up front would be paid on every keystroke, while only
+# the highlighted one is ever read. Only one popup exists at a time, so the
+# index sent back always addresses this list.
+_jedi_last = []
+
 def _jedi_complete(source, line, col):
+    global _jedi_last
     try:
-        cs = _jedi_mod.Script(source).complete(line, col)
-        return _json_mod.dumps([
-            {'name': c.name, 'complete': c.complete,
-             'type': c.type,  'description': c.description}
-            for c in cs[:80]
-        ])
+        cs = _jedi_mod.Script(source).complete(line, col)[:80]
     except Exception:
+        _jedi_last = []
         return '[]'
+    _jedi_last = cs
+    return _json_mod.dumps([
+        {'name': c.name, 'complete': c.complete,
+         'type': c.type,  'description': c.description}
+        for c in cs
+    ])
+
+def _jedi_doc(i):
+    """Signature and docstring of the i-th entry of the last completion list."""
+    try:
+        return _jedi_last[i].docstring(raw=False) or ''
+    except Exception:
+        return ''
 
 # There are no sockets here, so requests and urllib cannot work as they are.
 # pyodide_http reroutes them through the browser's own fetch -- which is what
@@ -900,6 +917,38 @@ const pyodideCmTheme = EditorView.theme({
 
 // pythonHighlight importé depuis ../extensions/pythonHighlightStyle.js
 
+/**
+ * Where a cell's tooltips (the completion popup) should be rendered.
+ *
+ * Anything inside the cell is clipped by it; document.body would be outside the
+ * shadow root the preview lives in, and the adopted style sheets do not reach
+ * there. The editor's own wrapper is the first ancestor that is neither.
+ *
+ * The tooltips do not go straight into that wrapper, though: it lays its
+ * children out in columns, and an element added to it became one more of them --
+ * an empty third panel beside the editor and the preview. They go into a host of
+ * its own, taken out of the flow with position:absolute, which a flex or grid
+ * container ignores when it shares out the space. One host per wrapper, reused.
+ */
+function tooltipParent(el) {
+  const root = el.getRootNode();
+  const base =
+    el.closest(".myst-editor-wrapper") ??
+    (root instanceof ShadowRoot ? root.firstElementChild : null) ??
+    document.body;
+
+  let host = base.querySelector(":scope > .myst-cell-tooltip-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "myst-cell-tooltip-host";
+    // Zero-sized and out of flow; the tooltips it holds are position:fixed, so
+    // they are placed against the viewport and owe nothing to this box.
+    host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0";
+    base.appendChild(host);
+  }
+  return host;
+}
+
 // ─── Source de complétion jedi pour CM6 ──────────────────────────────────────
 
 /**
@@ -927,11 +976,42 @@ function jediCompletionSource(context) {
   // `from` = position courante : on insère le suffixe (c.complete) là où est le curseur.
   return {
     from: pos,
-    options: completions.map(c => ({
+    options: completions.map((c, i) => ({
       label:  c.name,
       apply:  c.complete || undefined,  // suffixe à insérer ; undefined = accept sans texte
       type:   c.type   || "text",
       detail: c.description || undefined,
+      // Asked for only when the entry is highlighted, and answered from the list
+      // jedi has just built -- hence the index rather than the name, which would
+      // not tell two overloads apart. docstring(raw=False) starts with the call
+      // signature, which is what one is usually after.
+      info: () => {
+        let doc = "";
+        try {
+          if (py.globals.has('_jedi_doc')) doc = py.runPython(`_jedi_doc(${i})`);
+        } catch { return null; }
+        if (!doc) return null;
+        const dom = document.createElement("div");
+        dom.className = "pyodide-completion-doc";
+        // Styled here rather than in the sheet: the popup is rendered in the
+        // tooltip host, outside the preview, and whether the adopted sheet
+        // reaches that root depends on how the editor was mounted. Inline, the
+        // bound always holds -- and without a bound a numpy docstring grew to
+        // the full height of the window and covered the line being typed.
+        dom.style.cssText = [
+          "max-width:44em",
+          "max-height:14em",
+          "overflow:auto",
+          "white-space:pre-wrap",
+          "line-height:1.35",
+          "font-family:ui-monospace,SFMono-Regular,Menlo,monospace",
+          "font-size:0.78rem",
+        ].join(";");
+        // Not truncated: the panel scrolls, and the text is set as textContent,
+        // so even a long scipy docstring costs nothing to hold.
+        dom.textContent = doc;
+        return dom;
+      },
     })),
     validFor: /^[\w.]*$/,
   };
@@ -967,12 +1047,22 @@ function renderOutput(outputArea, result) {
     outputArea.appendChild(pre);
   }
 
+  // How wide a matplotlib figure should be drawn: the cell's own :figwidth:, or
+  // the document-wide default from config.json. Any CSS length does ("60%",
+  // "20em"); empty means the figure keeps its natural size, bounded by the
+  // output area. Read from the host at each render rather than captured, since
+  // a re-render restamps it.
+  const figWidth =
+    outputArea.closest(".code-cell-host")?.dataset.figwidth?.trim() ||
+    (config.pyodide?.figureWidth ?? "").trim();
+
   for (const figure of result.figures ?? []) {
     hasContent = true;
     const img = document.createElement("img");
     img.src = figure;
     img.alt = "matplotlib figure";
     img.className = "pyodide-figure";
+    if (figWidth) img.style.width = figWidth;
     outputArea.appendChild(img);
   }
 
@@ -1294,6 +1384,18 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       activateOnTyping: true,
       maxRenderedOptions: 12,
     }),
+    // The completion popup is a CodeMirror tooltip, placed inside the cell's own
+    // editor by default -- and the cell is a box with overflow:hidden, so the
+    // list was cut off at its edge, or flipped above the first line when editing
+    // the last one. Rendered somewhere wide instead, it is free to hang over the
+    // rest of the preview.
+    //
+    // position:fixed alone would not be enough: the chunks of the preview carry
+    // content-visibility:auto, whose paint containment makes them a containing
+    // block for fixed descendants and clips them all the same. So the tooltip is
+    // moved out, to the nearest ancestor outside the chunks. It stays inside the
+    // same root, shadow root included, or it would lose the editor's styles.
+    tooltips({ position: "fixed", parent: tooltipParent(el) }),
     cmKeymap.of([
       ...completionKeymap,    // Tab accepte la complétion si popup visible
       indentWithTab,          // Tab indente sinon (4 espaces en Python)
