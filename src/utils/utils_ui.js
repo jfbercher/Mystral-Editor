@@ -18,16 +18,34 @@ export function showToast(message, type = "success", duration = 2000, action = n
 
   const toast = document.createElement("div");
   toast.id = "app-toast";
+  // A persistent toast is laid out in two rows: the message with the dismiss
+  // cross, then the action button under it, aligned right. Side by side, as it
+  // used to be, the message kept a column of its own and never ran under the
+  // button -- a long sentence came out squeezed into half the width.
+  let actionRow = null;
   if (persistent) {
     toast.setAttribute("role", "alert");
     toast.style.display = "flex";
-    toast.style.alignItems = "flex-start";
-    toast.style.gap = "12px";
+    toast.style.flexDirection = "column";
+    toast.style.gap = "10px";
     toast.style.maxWidth = "min(30rem, calc(100vw - 40px))";
+
+    const head = document.createElement("div");
+    head.style.display = "flex";
+    head.style.alignItems = "flex-start";
+    head.style.gap = "12px";
+
     const label = document.createElement("span");
     label.textContent = message;
     label.style.flex = "1";
-    toast.appendChild(label);
+    head.appendChild(label);
+    toast.appendChild(head);
+    toast._head = head;
+
+    actionRow = document.createElement("div");
+    actionRow.style.display = "flex";
+    actionRow.style.justifyContent = "flex-end";
+    actionRow.style.gap = "8px";
   } else {
     toast.textContent = message;
   }
@@ -85,10 +103,11 @@ export function showToast(message, type = "success", duration = 2000, action = n
         fontWeight: "600", cursor: "pointer", whiteSpace: "nowrap",
       });
       button.addEventListener("click", () => { dismiss(); action.onClick(); });
-      toast.appendChild(button);
+      actionRow.appendChild(button);
     }
 
-    toast.appendChild(close);
+    toast._head.appendChild(close);
+    if (actionRow.childElementCount) toast.appendChild(actionRow);
   }
 
   document.body.appendChild(toast);
