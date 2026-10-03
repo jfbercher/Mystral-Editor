@@ -484,7 +484,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
       tab.markSaved(contentToSave);
       await tab.saveCommentsForCurrentFile();
-      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle).catch(e => console.warn('[sidecar] save failed:', e));
+      if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle, editorId).catch(e => console.warn('[sidecar] save failed:', e));
       showToast(`Save: ${tab.currentFileName} successful.`);
       console.log(`Saved (Tauri): ${tab.currentFileName}`);
     } else if (isFallbackHandle(tab.currentFileHandle)) {
@@ -567,7 +567,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
           await addRecentFileHandle(filePath);
           tab.markSaved(content);
           await tab.saveCommentsForCurrentFile();
-          saveSidecarWithNamespace(filePath).catch(e => console.warn('[sidecar] saveAs failed:', e));
+          saveSidecarWithNamespace(filePath, editorId).catch(e => console.warn('[sidecar] saveAs failed:', e));
           showToast(`Save-as successful.`);
           return true;
         }

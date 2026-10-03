@@ -234,8 +234,24 @@ export function scheduleNamespaceRestore(sidecar) {
 
 // ── Collect for save ──────────────────────────────────────────────────────────
 
-/** How many code cells this document has, whether or not they have run. */
+/**
+ * How many code cells this document has, whether or not they have run.
+ *
+ * A count of zero makes the callers return without writing anything, which is
+ * right for a document without cells and silently wrong for a caller that
+ * forgot its editor id -- the prefix is then the separator alone, no key
+ * matches, and the sidecar simply stops being written. That is exactly what
+ * happened to the Tauri save when the owner was added to these keys, and it
+ * went unnoticed for weeks. A save path always knows which editor it saves, so
+ * a missing id while the cache holds cells is reported rather than obeyed.
+ */
 function countCells(editorId = "") {
+  if (!editorId && cellCache.size > 0) {
+    console.warn(
+      "[sidecar] countCells called without an editor id while the cell cache holds " +
+        `${cellCache.size} cell(s): nothing will be saved. The caller is missing its editorId argument.`,
+    );
+  }
   const prefix = editorId + OWNER_SEP;
   let n = 0;
   for (const key of cellCache.keys()) if (key.startsWith(prefix)) n++;
