@@ -139,7 +139,7 @@ const DIRECTIVE_OPTIONS = {
   math: ["enumerated"],
   code: ["filename", "linenos", "lineno-start", "emphasize-lines"],
   "code-block": ["filename", "linenos", "lineno-start", "emphasize-lines"],
-  "code-cell": ["tags", "linenos", "packages"],
+  "code-cell": ["tags", "linenos", "packages", "figwidth"],
   literalinclude: ["lines", "language", "linenos", "start-at", "end-at"],
   admonition: ADMONITION_OPTIONS,
   dropdown: ["open", "icon"],

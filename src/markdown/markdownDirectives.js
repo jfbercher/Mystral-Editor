@@ -998,6 +998,7 @@ class CodeCellDirective extends Directive {
     linenos:  directiveOptions.flag,         // affiche les numéros de ligne
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
+    figwidth: directiveOptions.unchanged,    // largeur des figures : "60%", "20em"...
   };
 
   run(data) {
@@ -1017,6 +1018,7 @@ class CodeCellDirective extends Directive {
       `<div id="${id}" class="code-cell-host" ` +
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
+      `data-figwidth="${escapeHtml(String(data.options?.figwidth ?? "").trim())}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
       `data-linenos="${linenos}">` +
