@@ -15,6 +15,34 @@ Three origins are distinguished throughout:
 
 The distinction matters when reading someone else's MyST document: a directive marked *Library* or *Upstream* behaves as these expects, while the others carry behaviour of our own, usually by enhancing the support of [MyST specifications](https://mystmd.org/spec).
 
+## Nesting directives
+
+A directive written inside another must use **fewer** fence characters than the
+one around it:
+
+```
+::::{note}
+
+:::{image} portrait.jpg
+:width: 40%
+:::
+
+The text of the note.
+
+::::
+```
+
+The reason is that a closing fence is a line made of the fence character alone,
+so a bare `:::` closes the innermost block that is open, and nothing says which
+one was meant. Written with three colons on both, the outer note is closed by
+the image's fence: what follows falls outside it, and the last `:::` closes
+nothing. The document is mis-structured without any error being raised -- it
+simply renders wrong.
+
+Because the mistake is silent, the editor underlines a closing fence that closes
+nothing, with the reason on hover. That mark is the symptom; the cure is to
+lengthen the outer fence.
+
 ## Directives
 
 ### Numbered content and cross-references

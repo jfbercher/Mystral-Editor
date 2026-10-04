@@ -103,11 +103,37 @@ Text inside a cell is not covered here: it keeps `--color-foreground-primary`
 and `--color-foreground-muted`, and code is highlighted with the `--tok-*`
 variables, so a cell stays consistent with the rest of the editor.
 
-A fourth knob, `--pyodide-cell-font-size`, is declared on `.pyodide-wrapper`
-itself (`0.8rem`) rather than in `MystStyles.js`, being a sizing preference
-rather than a theme color. It drives the editor, its gutter and the
-autocompletion popup inside the cell, and can be overridden from `custom.css`
-like any other variable.
+Three further knobs are declared on the cell's own rules rather than in
+`MystStyles.js`, being sizing preferences rather than theme colors. They are
+overridden from `custom.css` like any other variable.
+
+| Variable | Default | Role |
+|---|---|---|
+| `--pyodide-cell-font-size` | `0.8rem` | Drives the editor of the cell, its gutter and the autocompletion popup inside it. |
+| `--pyodide-cell-gap` | `1rem` | Space below a cell, separating it from the text that follows in the Preview. The inline widget sets its own margins with `!important`, so this has no effect there; `--inline-block-gap` is its counterpart. |
+| `--pyodide-output-max-height` | `25rem` | How tall the output area may grow before it scrolls. The cap is lifted as soon as the reader drags the resize handle, so a tall figure can always be revealed. |
+
+`--inline-block-gap` (`0.75em` below, `0.5em` above) is not specific to the
+cells: in the inline preview it spaces every rendered block that stands on its
+own -- admonitions, figures, tables and code cells alike.
+
+---
+
+## `--fence-error-*` — the unbalanced-fence mark
+
+A colon fence that closes nothing, or a block that is never closed, is marked in
+the source editor (see *Nesting directives* in
+[directives-and-roles](directives-and-roles.md)). The mark is deliberately loud:
+a plain wavy underline is what the spellchecker draws, and one more of them goes
+unnoticed, while this one says the document is structurally wrong.
+
+| Variable | Default | Role |
+|---|---|---|
+| `--fence-error-bg` | `#ffb224` | Background of the marked fence characters. |
+| `--fence-error-fg` | `#1f2328` | Their foreground. Set explicitly rather than inherited, so the mark reads the same in both themes. |
+
+The wavy underline drawn over it uses `--error-bg`, shared with the other error
+markings, and is listed below with the pre-existing variables.
 
 ---
 

@@ -13,6 +13,9 @@ project:
     output_matplotlib_strings: remove
 
   exports:
+    - format: tex
+      template: arxiv_nips
+      article_type: article
     - format: pdf
       template: arxiv_nips
       article_type: article

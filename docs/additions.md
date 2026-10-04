@@ -61,6 +61,7 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 - `src/extensions/frontmatterFold.js` — A CodeMirror `foldService` that lets the user fold the YAML frontmatter block by detecting its extent with `extractFrontmatter`.
 - `src/extensions/mystComments.js` — Implements MyST-style line comments (`%` at column 0): exports `toggleMystComment` (a CodeMirror command) and `mystComments()`, a keymap binding `Mod-/`, `Mod-:` (AZERTY), and `Mod-Shift-/`.
 - `src/extensions/mystCompletions.js` — Implements the MyST-aware autocompletion source for CodeMirror: snippet completions for roles (`{ref}`, `{eq}`, etc.) and directives, cross-reference targets, and bibliography-key citations.
+- `src/extensions/orphanFence.js` — Marks the colon fences that do not pair up: one that closes nothing, and one that opens a block never closed. Both are the symptom of a nesting written with equal fence lengths, where the inner directive's closing `:::` ends the outer block and the document is silently mis-structured. Exports `scanFences` / `findUnbalancedFences`, a line-by-line scan following CommonMark's rule — once a block is open, only a line that closes it means anything — so it does not depend on the shape the leftover fence happens to take in the syntax tree, and can be tested on its own. Also exports the `orphanFence` view plugin and its theme, which uses `--fence-error-bg` / `--fence-error-fg`.
 
 ## New markdown-processing modules
 

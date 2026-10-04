@@ -64,6 +64,8 @@ Three options are understood:
 - `:tags: hide-input` carries cell metadata. It is stored and round-tripped but not otherwise interpreted at present.  
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
+A figure opens full screen when clicked: the wheel zooms about the pointer, dragging moves it, a double-click returns to the initial view, and `Escape` or a click beside the figure closes it. Figures are captured as SVG, with their text converted to outlines so that the result does not depend on the fonts available wherever it is later shown or exported; a zoom therefore stays sharp however far it goes. A figure too dense for that -- a scatter plot of a hundred thousand points -- falls back to a PNG capture at 120 dpi, which zooms as a picture does.  
+
 A fourth form exists for a single expression in the middle of a sentence: the `{eval}` role. `` {eval}`2 + 2` `` renders as its value in the text flow, and is re-evaluated whenever a cell runs, so it follows the state of the session. It reads the document's own namespace, described next.  
 
 ## Namespaces: which Python a document runs in  

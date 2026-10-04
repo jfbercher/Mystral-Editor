@@ -1,6 +1,5 @@
 ---
 title: Customisation Reference
-extends: mdocs_fm.yml
 ---
 
 ## Overview
