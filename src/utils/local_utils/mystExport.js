@@ -15,6 +15,8 @@
 import { config } from "../../config.js";
 import { showToast } from "../utils_ui.js";
 import { workingDirectory, currentFileDir } from "./fs.js";
+import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmatterUtils.js";
+import { dump as yamlDump } from "js-yaml";
 
 /** Scope name declared in src-tauri/capabilities/default.json. */
 const LOGIN_SHELL = "login-shell";
@@ -107,30 +109,57 @@ const editorText = (tab) =>
 /** The frontmatter block of `src`, or null. */
 const frontmatterOf = (src) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
 
+/** The format an `exports` entry names, whichever shape it was written in. */
+const formatOf = (entry) => (typeof entry === "string" ? entry : entry?.format);
+
+/** The `exports` of a frontmatter, always as a list. */
+const exportsOf = (frontmatter) => {
+  const entries = frontmatter?.exports;
+  if (!entries) return [];
+  return Array.isArray(entries) ? entries : [entries];
+};
+
 /**
- * The `exports:` block of a frontmatter body: its key line and every indented
- * line under it. Walked line by line rather than matched with a regex -- with
- * the multiline flag `$` matches at every end of line, so a lazy capture stops
- * on the key line itself and finds nothing.
+ * True when the DOCUMENT's own frontmatter declares an export of this format.
+ *
+ * Deliberately narrower than the effective frontmatter: `myst build <file>`
+ * reads the page's own block and ignores the project's `exports` for a
+ * single-file build, so an entry inherited from myst.yml would let the export
+ * start and come out with the default template instead. The project's entry is
+ * still put to use -- see projectExportEntry() -- but as something to copy here,
+ * not as a substitute.
  */
-function exportsBlock(frontBody) {
-  const lines = frontBody.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^exports\s*:/.test(l));
-  if (start < 0) return null;
-  const out = [lines[start]];
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^\S/.test(lines[i])) break; // next top-level key
-    out.push(lines[i]);
-  }
-  return out.join("\n");
+export function frontmatterDeclares(tab, kind) {
+  return exportsOf(documentFrontmatter(editorText(tab))).some((e) => String(formatOf(e) ?? "").trim() === kind);
 }
 
-/** True when the frontmatter already declares an export of this format. */
-export function frontmatterDeclares(tab, kind) {
-  const front = frontmatterOf(editorText(tab));
-  if (!front) return false;
-  const block = exportsBlock(front[1]);
-  return block ? new RegExp(`format\\s*:\\s*${kind}\\b`).test(block) : false;
+/** The project's `exports` entry for this format, if myst.yml declares one. */
+function projectExportEntry(kind) {
+  return exportsOf(projectFrontmatter()).find((e) => String(formatOf(e) ?? "").trim() === kind);
+}
+
+/**
+ * The YAML item to write under `exports:` for this format.
+ *
+ * The project's entry when there is one, copied whole -- template, article
+ * type, chapters and the rest -- so that writing the exports once in myst.yml
+ * still pays off: the project file becomes the model the documents are filled
+ * from. Otherwise a bare entry, with the template config.json names for this
+ * format, if it names one.
+ */
+function exportItem(kind) {
+  const fromProject = projectExportEntry(kind);
+  if (fromProject && typeof fromProject === "object") {
+    return yamlDump([fromProject], { indent: 2, lineWidth: -1 })
+      .trimEnd()
+      .split("\n")
+      .map((l) => "  " + l)
+      .join("\n");
+  }
+  // myst ships no default template, and inventing one here would silently
+  // change how every export looks.
+  const template = (config.export?.templates?.[kind] || "").trim();
+  return `  - format: ${kind}` + (template ? `\n    template: ${template}` : "");
 }
 
 /**
@@ -142,11 +171,7 @@ export function frontmatterDeclares(tab, kind) {
  */
 function addExportToFrontmatter(tab, kind) {
   const src = editorText(tab);
-  // A template is written only when config.json names one for this format:
-  // myst ships no default template, and inventing one here would silently
-  // change how every export looks.
-  const template = (config.export?.templates?.[kind] || "").trim();
-  const item = `  - format: ${kind}` + (template ? `\n    template: ${template}` : "");
+  const item = exportItem(kind);
   const front = frontmatterOf(src);
 
   let next;
@@ -160,6 +185,15 @@ function addExportToFrontmatter(tab, kind) {
     next = src.slice(0, front.index) + `---\n${front[1]}\nexports:\n${item}\n---` + src.slice(front.index + front[0].length);
   }
   tab.setEditorText(next);
+
+  // The cached text that the save path reads is refreshed by the editor's update
+  // listener, which is debounced by about a tenth of a second. Exporting right
+  // after this edit therefore wrote the previous revision to disk, and myst,
+  // finding no export entry in the file it read, fell back to its default
+  // template -- the first export came out as plain_latex and the next ones were
+  // right. Kept in step here; the listener writes the same value when it fires.
+  const store = typeof window !== "undefined" ? window.myst_editor?.[tab?.editorId] : null;
+  if (store) store.text = next;
 }
 
 /** Make the folder a MyST project, non-interactively and in place. */
@@ -193,11 +227,15 @@ export async function exportCurrentFile(tab, kind) {
 
   const needProject = !(await hasMystYml(tab));
   const needEntry = !frontmatterDeclares(tab, kind);
+  const fromProject = needEntry && projectExportEntry(kind);
 
   if (needProject || needEntry) {
     const missing = [
       needProject ? "this folder has no myst.yml" : null,
-      needEntry ? `the document declares no "${kind}" export in its frontmatter` : null,
+      needEntry
+        ? `the document declares no "${kind}" export in its frontmatter` +
+          (fromProject ? ", (and actually myst build reads the document's own, not the project's)" : "")
+        : null,
     ]
       .filter(Boolean)
       .join(", and ");
@@ -206,7 +244,11 @@ export async function exportCurrentFile(tab, kind) {
       "error",
       0,
       {
-        label: needProject && needEntry ? "Set both up and export" : "Set it up and export",
+        label: needProject && needEntry
+          ? "Set both up and export"
+          : fromProject
+            ? "Copy the project's entry and export"
+            : "Set it up and export",
         onClick: async () => {
           if (needProject && !(await mystInit(dirName(path)))) return;
           if (needEntry) addExportToFrontmatter(tab, kind);
@@ -301,7 +343,57 @@ async function resolveExport(dir, exts, slug) {
   }
 }
 
-/** Serialize every CSS rule of a list of adopted stylesheets. */
+/** The CSSOM sheets of the <style> elements under a node. */
+const styleElementSheets = (node) =>
+  [...(node?.querySelectorAll?.("style") ?? [])].map((el) => el.sheet).filter(Boolean);
+
+/**
+ * The base the exported page needs, applied after everything that was collected.
+ *
+ * Last rather than first, and this matters, because what is collected is the
+ * styling of an application window rather than of a page. The shell sets
+ * `html, body { height: 100vh; overflow: hidden }` so that the editor fills the
+ * window and never scrolls, and the preview is a styled-components box sized to
+ * fill its pane -- `height: 100%` with its own `overflow-y: auto`. Carried into
+ * a standalone page, those two left the document stuck at the top with no
+ * scrollbar at all. Here the page itself scrolls and the box grows with its
+ * content.
+ *
+ * The theme variables are scoped to #myst-css-namespace, so nothing outside it
+ * can read them -- the page background cannot be written in terms of them. The
+ * wrapper therefore covers the viewport and carries the background itself.
+ * Without it the page stayed white while the dark theme set the text to white,
+ * which is unreadable rather than merely plain.
+ */
+const EXPORT_BASE_CSS = `
+html, body {
+  margin: 0;
+  padding: 0;
+  height: auto;
+  min-height: 100%;
+  width: auto;
+  overflow: visible;
+}
+#myst-css-namespace {
+  min-height: 100vh;
+  height: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  background: var(--panel-bg, #ffffff);
+  color: var(--char-col, #000000);
+}
+#myst-css-namespace .myst-preview {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+`;
+
+/** Serialize every CSS rule of a list of stylesheets. */
 function cssTextOf(sheets) {
   const parts = [];
   for (const sheet of sheets || []) {
@@ -344,7 +436,18 @@ export async function exportHtml(tab) {
   }
 
   const root = preview.getRootNode();
-  const css = [cssTextOf(document.adoptedStyleSheets), cssTextOf(root.adoptedStyleSheets)].join("\n");
+  // Adopted sheets carry the themes and the editor's own sheets; the <style>
+  // elements carry what styled-components injects, which is where the preview's
+  // layout and colours live. Only the adopted ones were collected, so in the
+  // light theme the result merely looked plainer than the preview -- and in the
+  // dark one it came out unreadable.
+  const css = [
+    cssTextOf(document.adoptedStyleSheets),
+    cssTextOf(root.adoptedStyleSheets),
+    cssTextOf(styleElementSheets(root)),
+    cssTextOf(styleElementSheets(document.head)),
+    EXPORT_BASE_CSS,
+  ].join("\n");
   const theme = root.host?.dataset?.theme || document.getElementById("myst-css-namespace")?.dataset?.theme || "lightTheme";
   const title = stemOf(path);
 

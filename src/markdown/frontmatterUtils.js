@@ -1,8 +1,9 @@
 import { load as yamlLoad } from "js-yaml";
-import { readTextRelative } from "../utils/local_utils/fs.js";
+import { readTextRelative, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 
 /**
- * Frontmatter inherited through `extends`, keyed by the path as written.
+ * YAML files read for the frontmatter, keyed by the path as written -- the
+ * project's myst.yml and whatever its `extends` chain names.
  *
  * Reading a file is asynchronous while extractFrontmatter() is called from
  * synchronous rendering code, so this follows the pattern of {include} and the
@@ -20,11 +21,12 @@ export const extendsCache = {
     this._map.set(key, value);
     this._listeners.forEach((fn) => fn(key));
   },
-  resolve(key) {
+  /** @param {(key: string) => Promise<string>} [reader] how to read this key. */
+  resolve(key, reader = readTextRelative) {
     if (this._map.has(key) || this._pending.has(key)) return;
     this._pending.add(key);
     const epoch = this._epoch;
-    readTextRelative(key)
+    reader(key)
       .then((text) => {
         this._pending.delete(key);
         if (this._epoch !== epoch) return;
@@ -34,7 +36,7 @@ export const extendsCache = {
       .catch((err) => {
         this._pending.delete(key);
         if (this._epoch !== epoch) return;
-        console.warn(`[frontmatter] extends: cannot read "${key}" —`, err?.message ?? err);
+        console.warn(`[frontmatter] cannot read "${key}" —`, err?.message ?? err);
         this.set(key, { error: String(err?.message ?? err) });
       });
   },
@@ -93,20 +95,77 @@ const extendsPaths = (value) =>
 
 const MAX_EXTENDS_DEPTH = 5;
 
-/**
- * Resolve the `extends` chain of a parsed frontmatter.
+/* ------------------------------------------------------------------ *
+ * The project's myst.yml
  *
- * Files are merged in the order written, then the document's own values on
- * top. An extended file may itself extend another; the depth is bounded, since
- * two files naming each other would otherwise recurse for ever.
- */
-function resolveExtends(frontmatter, depth = 0, seen = new Set()) {
-  const paths = extendsPaths(frontmatter?.extends);
-  if (!paths.length) return frontmatter;
+ * mystmd knows `extends` in a myst.yml and nowhere else: a page's frontmatter
+ * cannot extend anything. A document inherits from its project and may then
+ * override or complete what it inherited -- which is what is implemented here,
+ * so that the editor shows what `myst build` will produce.
+ *
+ * Where the file is looked for follows the mode: beside the document under
+ * Tauri, in the working folder in a local web session, and at the root of the
+ * site for a deployed build, where public/myst.yml ends up. The lookup is the
+ * one readTextRelative already performs for the first two; the third is a plain
+ * fetch, tried when there is no folder to read from.
+ * ------------------------------------------------------------------ */
 
-  const { extends: _dropped, ...own } = frontmatter;
+/** Read the project's myst.yml, wherever this mode keeps it. */
+async function readMystYml() {
+  try {
+    return await readTextRelative("myst.yml");
+  } catch (err) {
+    // No document folder and no working folder: a deployed web build. The file
+    // may have been shipped with the site, at its root.
+    if (isTauri() || typeof fetch !== "function" || typeof document === "undefined") throw err;
+    const res = await fetch(new URL("myst.yml", document.baseURI), { cache: "no-cache" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  }
+}
+
+/**
+ * Cache key of the project file. It carries the document's folder, since two
+ * documents open side by side may belong to two different projects. The leading
+ * NUL keeps it apart from the paths an `extends` chain names.
+ */
+const mystYmlKey = () => `\u0000myst.yml\u0000${currentFileDir.value ?? ""}`;
+
+/**
+ * The frontmatter a YAML file hands down to the pages.
+ *
+ * A project file wraps it in `project:`; a plain frontmatter file -- the kind
+ * an `extends` usually names -- carries it at the top level, and the few keys
+ * that belong to the project file itself are dropped.
+ */
+function frontmatterOfYaml(data) {
+  if (!isPlainObject(data)) return {};
+  if (isPlainObject(data.project)) {
+    const { extends: _chained, ...own } = data.project;
+    return own;
+  }
+  const { version: _v, site: _s, exclude: _x, extends: _e, ...own } = data;
+  return own;
+}
+
+/**
+ * The frontmatter a myst.yml hands down to its pages, with its own `extends`
+ * chain resolved underneath it.
+ *
+ * `extends` is read both at the top level, where mystmd documents it, and
+ * inside `project:`, where it is also written in practice.
+ *
+ * The chain is read through the same relative lookup as the project file, so an
+ * extended file is expected beside it -- which is where mystmd looks too, the
+ * project file being the one that names it.
+ */
+function resolveMystYml(data, depth = 0, seen = new Set()) {
+  const own = frontmatterOfYaml(data);
+  const paths = [...extendsPaths(data?.extends), ...extendsPaths(data?.project?.extends)];
+  if (!paths.length) return own;
+
   if (depth >= MAX_EXTENDS_DEPTH) {
-    console.warn("[frontmatter] extends nested more than", MAX_EXTENDS_DEPTH, "deep; stopping");
+    console.warn("[frontmatter] myst.yml extends nested more than", MAX_EXTENDS_DEPTH, "deep; stopping");
     return own;
   }
 
@@ -126,19 +185,58 @@ function resolveExtends(frontmatter, depth = 0, seen = new Set()) {
       continue;
     }
     if (entry.error) continue;          // already reported when it was read
-    const nested = resolveExtends(entry.data, depth + 1, new Set([...seen, path]));
-    inherited = mergeFrontmatter(inherited, nested);
+    inherited = mergeFrontmatter(inherited, resolveMystYml(entry.data, depth + 1, new Set([...seen, path])));
   }
   return mergeFrontmatter(inherited, own);
 }
 
 /**
- * Extrait et parse le bloc frontmatter YAML (---...---) en tête d'un texte.
+ * The project frontmatter in effect for the document being rendered, or {} when
+ * there is no project -- which is the ordinary case for a single file.
  *
- * The returned frontmatter has its `extends` chain resolved, so every caller
- * sees the effective values without knowing about it. `endLine` stays the end
- * of the block written in this document, which is what folding and the
- * rendered block need.
+ * Synchronous, like everything that renders: a first call starts the read and
+ * returns nothing, and the cache asks for another render when the file lands.
+ */
+export function projectFrontmatter() {
+  const key = mystYmlKey();
+  const entry = extendsCache.get(key);
+  if (!entry) {
+    extendsCache.resolve(key, readMystYml);
+    return {};
+  }
+  if (entry.error) return {};
+  return resolveMystYml(entry.data);
+}
+
+/** Documents whose ignored `extends` has already been reported. */
+const _warnedExtends = new Set();
+
+/**
+ * `extends` in a document is not a MyST key: mystmd would not honour it, so the
+ * editor must not either, or the preview and the build would disagree. Said
+ * once per value rather than on every render.
+ */
+function warnDocumentExtends(value) {
+  const seen = JSON.stringify(value);
+  if (_warnedExtends.has(seen)) return;
+  _warnedExtends.add(seen);
+  console.warn(
+    "[frontmatter] `extends:` in a document's frontmatter is ignored: mystmd accepts it in myst.yml only. " +
+      "Move these settings to the project file beside the document.",
+  );
+}
+
+/**
+ * Parse le bloc frontmatter YAML (---...---) en tête d'un texte.
+ *
+ * `frontmatter` is the effective one: the project's values with the document's
+ * own merged on top, so every caller sees what the build will use without
+ * knowing where each value came from. `endLine` stays the end of the block
+ * written in this document, which is what folding and the rendered block need.
+ *
+ * Returns null when the document has no block at all -- the shape the structural
+ * callers expect. Use effectiveFrontmatter() to read values, since a document
+ * without a block still belongs to its project.
  *
  * @param {string} fullText
  * @returns {{ frontmatter: any, endLine: number } | null}
@@ -159,10 +257,45 @@ export function extractFrontmatter(fullText) {
   const yamlText = lines.slice(1, endLine).join("\n");
   try {
     const parsed = yamlLoad(yamlText);
-    const frontmatter = isPlainObject(parsed) ? resolveExtends(parsed) : parsed;
-    return { frontmatter, endLine };
+    if (!isPlainObject(parsed)) return { frontmatter: parsed, endLine };
+    const { extends: ignored, ...own } = parsed;
+    if (ignored !== undefined) warnDocumentExtends(ignored);
+    return { frontmatter: mergeFrontmatter(projectFrontmatter(), own), endLine };
   } catch (e) {
     console.error("Failed to parse frontmatter YAML:", e);
     return null;
   }
+}
+
+/**
+ * The document's own frontmatter, without the project's.
+ *
+ * What `myst build <file>` honours: mystmd reads the page's own block and does
+ * not apply the project's `exports` to a single-file build, so the export check
+ * has to ask this narrower question.
+ */
+export function documentFrontmatter(fullText) {
+  const lines = fullText.split("\n");
+  if (lines[0]?.trim() !== "---") return {};
+  const endLine = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (endLine < 1) return {};
+  try {
+    const parsed = yamlLoad(lines.slice(1, endLine).join("\n"));
+    if (!isPlainObject(parsed)) return {};
+    const { extends: _ignored, ...own } = parsed;
+    return own;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The frontmatter in effect for a document, block or no block.
+ *
+ * What the renderer and the export check should read: a document with no
+ * frontmatter of its own still inherits its project's macros, numbering,
+ * bibliography and exports.
+ */
+export function effectiveFrontmatter(fullText) {
+  return extractFrontmatter(fullText)?.frontmatter ?? projectFrontmatter();
 }
