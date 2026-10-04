@@ -76,6 +76,12 @@ export const DEFAULT_CONFIG = {
     // true  = resets os.chdir("/local") before each cell  (option A)
     resetCwdOnRun: false,
 
+    // Default width of the matplotlib figures a cell produces, as a CSS length:
+    // "60%" of the output area, "20em", "480px". Empty means the figure keeps
+    // its natural size, bounded by the width of the cell. A cell overrides it
+    // with its own :figwidth: option.
+    figureWidth: "",
+
     // Keyboard shortcuts of a code-cell editor, in CodeMirror notation:
     // "Mod" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and
     // a key name ("Enter", "ArrowUp", "k"). An empty string means no shortcut;
