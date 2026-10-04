@@ -17,6 +17,7 @@ import { showToast } from "../utils_ui.js";
 import { workingDirectory, currentFileDir } from "./fs.js";
 import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmatterUtils.js";
 import { dump as yamlDump } from "js-yaml";
+import { cellCache, cellKey } from "../../markdown/pyodideRunner.js";
 
 /** Scope name declared in src-tauri/capabilities/default.json. */
 const LOGIN_SHELL = "login-shell";
@@ -282,7 +283,11 @@ async function runExport(tab, kind) {
     showToast(`myst reported success but no ${(OUTPUT_EXTENSIONS[kind] ?? [kind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`, "error", 0);
     return;
   }
-  showToast(`Exported to ${EXPORT_DIR}/${baseName(out)}`, "success", 6000);
+  // Relative to the document's folder rather than just the file name: a LaTeX
+  // export sits in a subfolder of its own, and saying "_build/exports/x.tex"
+  // would send the user looking in the wrong place.
+  const shown = out.startsWith(`${dir}/`) ? out.slice(dir.length + 1) : baseName(out);
+  showToast(`Exported to ${shown}`, "success", 6000);
 
   // Open the result in whatever the system uses for it. Not for .tex, which is
   // usually an intermediate the user processes further rather than reads.
@@ -314,29 +319,56 @@ const OUTPUT_EXTENSIONS = {
  */
 async function resolveExport(dir, exts, slug) {
   const { exists, readDir, stat } = await import("@tauri-apps/plugin-fs");
+  const suffixes = exts.map((e) => `.${e}`);
+
+  const when = async (full) => {
+    try {
+      return (await stat(full)).mtime?.getTime?.() ?? 0;
+    } catch {
+      return null;
+    }
+  };
+
   // Several candidates may exist at once -- a stale .docx beside a fresh .doc
   // from a run that changed template. Take the most recently written.
   let newest = null;
+  const consider = async (full) => {
+    const t = await when(full);
+    if (t != null && (!newest || t > newest.when)) newest = { full, when: t };
+  };
+
+  // The expected names first. LaTeX is the odd one out: myst does not drop a
+  // .tex beside the other exports, it writes a folder of its own holding the
+  // file and the images it refers to -- "small-demo_tex/small-demo.tex". Looking
+  // only beside the exports, we declared the export missing although it had just
+  // been produced.
   for (const ext of exts) {
-    try {
-      const expected = `${dir}/${slug}.${ext}`;
-      if (!(await exists(expected))) continue;
-      const when = (await stat(expected)).mtime?.getTime?.() ?? 0;
-      if (!newest || when > newest.when) newest = { full: expected, when };
-    } catch { /* fall through to the scan */ }
+    if (await exists(`${dir}/${slug}.${ext}`)) await consider(`${dir}/${slug}.${ext}`);
+    const sub = `${dir}/${slug}_${ext}/${slug}.${ext}`;
+    if (await exists(sub)) await consider(sub);
   }
   if (newest) return newest.full;
+
+  // Failing that, look through the exports folder and one level under it, which
+  // is as deep as myst goes. The name myst chose is its own -- it slugifies --
+  // so the most recent file of the right type wins.
   try {
-    const entries = await readDir(dir);
-    const suffixes = exts.map((e) => `.${e}`);
-    let best = null;
-    for (const e of entries) {
-      if (!e.isFile || !suffixes.some((sfx) => e.name.toLowerCase().endsWith(sfx))) continue;
-      const full = `${dir}/${e.name}`;
-      const when = (await stat(full)).mtime?.getTime?.() ?? 0;
-      if (!best || when > best.when) best = { full, when };
+    for (const entry of await readDir(dir)) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isFile) {
+        if (suffixes.some((sfx) => entry.name.toLowerCase().endsWith(sfx))) await consider(full);
+        continue;
+      }
+      if (!entry.isDirectory) continue;
+      try {
+        for (const child of await readDir(full)) {
+          if (child.isFile && suffixes.some((sfx) => child.name.toLowerCase().endsWith(sfx))) {
+            await consider(`${full}/${child.name}`);
+          }
+        }
+      } catch { /* an unreadable subfolder is not a reason to give up on the rest */ }
     }
-    return best?.full ?? null;
+    return newest?.full ?? null;
   } catch (err) {
     console.warn("[export] could not list", dir, err);
     return null;
@@ -423,6 +455,36 @@ function findPreview(tab) {
   return host?.shadowRoot?.querySelector(".myst-preview") ?? null;
 }
 
+/**
+ * The rendered body to export, whichever mode the editor is in.
+ *
+ * In Both and Preview the .myst-preview element holds the rendered chunks and
+ * is exported as it stands. In Inline it does not: renderText only fills it for
+ * the modes that show it, the rendered blocks living in the editor's widgets
+ * instead -- so an export made from Inline produced a page with an empty body.
+ * The chunks themselves are up to date in either mode, so the body is rebuilt
+ * from them, exactly as the preview would have.
+ *
+ * Code cells get their live element back: the chunk holds only the placeholder
+ * the widget is built from, so without this the cells would come out as empty
+ * boxes, without their code and without their output.
+ */
+function previewHtmlFor(tab, preview) {
+  if (preview.querySelector("html-chunk")) return preview.outerHTML;
+
+  const chunks = (typeof window !== "undefined" ? window.myst_editor?.[tab?.editorId]?.state?.text?.chunks : null) ?? [];
+  if (!chunks.length) return preview.outerHTML;
+
+  const clone = preview.cloneNode(false);
+  clone.innerHTML = chunks.map((c) => `<html-chunk id="html-chunk-${c.id}">${c.html}</html-chunk>`).join("");
+
+  for (const host of clone.querySelectorAll(".code-cell-host")) {
+    const live = cellCache.get(cellKey(tab.editorId, host.id, host.dataset.linenos === "true"));
+    if (live) host.replaceWith(live.cloneNode(true));
+  }
+  return clone.outerHTML;
+}
+
 export async function exportHtml(tab) {
   const path = tab?.currentFileHandle;
   const preview = findPreview(tab);
@@ -456,7 +518,7 @@ export async function exportHtml(tab) {
     `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
     `<title>${title.replace(/[<&]/g, (m) => (m === "<" ? "&lt;" : "&amp;"))}</title>\n` +
     `<style>\n${css}\n</style>\n</head>\n<body>\n` +
-    `<div id="myst-css-namespace" data-theme="${theme}">\n${preview.outerHTML}\n</div>\n` +
+    `<div id="myst-css-namespace" data-theme="${theme}">\n${previewHtmlFor(tab, preview)}\n</div>\n` +
     `</body>\n</html>\n`;
 
   try {
