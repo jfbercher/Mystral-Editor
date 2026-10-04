@@ -85,42 +85,4 @@ What is separated is the variables; imported modules, matplotlib's state and the
 Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. 
 
 There is more information on [executable-content](executable-content.md) which covers all of it.
----
-title: A title
-subtitle: A subtitle
-authors:
-  - author names, one per line
-date: 2026-09-19
-license: GPL-3.0-or-later
-github: https://github.com/jfbercher/Mystral-Editor
-bibliography: references.bib
-citation-style: author-year # or numeric
-citation-template: "{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}"
-settings:
-    myst_to_tex:
-        code_style: listings
-    output_stderr: remove
-    output_matplotlib_strings: remove
-exports:
-  - format: docx
-  - format: pdf
-    template: arxiv_nips
-    article_type: article
-    chapters: []
-numbering:
-  headings: true # activate headings numbering
-  equations: true 
-  figure: true
-    #template: Fig. %s # Define the prefix
-math:
-  '\sha': 'ш'
-  '\dr': '\mathrm{d}#1'
-  '\wb': '\mathbf{w}' 
----
-
-
-:::{toc} Contents
-::: 
-
-## First section
 
