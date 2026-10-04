@@ -26,6 +26,10 @@ y = np.random.randn(len(x))
 plt.plot(x+y)
 :::
 
+`:figwidth:` sets how wide the figure is drawn in the page. Click it to open it
+full screen: the wheel zooms, dragging moves it, `Escape` closes it. Figures are
+captured as SVG, so the zoom stays sharp.
+
 :::{figure} figures/code-cell.gif
 :name: code-cells
 :alt: 
