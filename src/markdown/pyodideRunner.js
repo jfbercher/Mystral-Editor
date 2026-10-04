@@ -815,15 +815,33 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
 
   let figures = [];
   try {
+    // SVG rather than PNG, so that zooming into a figure stays sharp instead of
+    // showing the pixels of a 120 dpi capture. Text is drawn as paths, which
+    // makes the result independent of the fonts available wherever it is later
+    // displayed or exported. A dense figure -- a scatter plot of a hundred
+    // thousand points -- produces an unreasonable SVG, so past a size limit the
+    // PNG is kept, and so it is whenever the SVG backend fails for any reason.
     const figJson = pyodide.runPython(`
 import matplotlib.pyplot as plt, io, base64, json
+_SVG_LIMIT = 2_000_000
 _figs = []
 for _n in plt.get_fignums():
     _f = plt.figure(_n)
-    _b = io.BytesIO()
-    _f.savefig(_b, format='png', bbox_inches='tight', dpi=120)
-    _b.seek(0)
-    _figs.append('data:image/png;base64,' + base64.b64encode(_b.read()).decode())
+    _data = None
+    try:
+        _b = io.BytesIO()
+        with plt.rc_context({'svg.fonttype': 'path'}):
+            _f.savefig(_b, format='svg', bbox_inches='tight')
+        _raw = _b.getvalue()
+        if len(_raw) <= _SVG_LIMIT:
+            _data = 'data:image/svg+xml;base64,' + base64.b64encode(_raw).decode()
+    except Exception:
+        _data = None
+    if _data is None:
+        _b = io.BytesIO()
+        _f.savefig(_b, format='png', bbox_inches='tight', dpi=120)
+        _data = 'data:image/png;base64,' + base64.b64encode(_b.getvalue()).decode()
+    _figs.append(_data)
     plt.close(_f)
 json.dumps(_figs)`);
     figures = JSON.parse(figJson);
@@ -1028,6 +1046,99 @@ function setStatus(statusText, message, type = "info") {
   statusText.className = `pyodide-status-text pyodide-status-${type}`;
 }
 
+/**
+ * Full-screen viewer for a figure: wheel to zoom, drag to pan, Escape to leave.
+ *
+ * Styled inline and appended to the body on purpose. The preview lives in a
+ * shadow root whose sheets do not reach the document, and an overlay placed
+ * inside the cell would be clipped by it; carrying its own styles, this one
+ * depends on no sheet at all and nothing can cut it off.
+ */
+function openFigureViewer(src, alt = "") {
+  if (typeof document === "undefined") return;
+  document.getElementById("myst-figure-viewer")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "myst-figure-viewer";
+  overlay.style.cssText = [
+    "position:fixed", "inset:0", "z-index:100000",
+    "background:rgba(0,0,0,.82)", "display:flex",
+    "align-items:center", "justify-content:center",
+    "overflow:hidden", "cursor:grab", "touch-action:none",
+  ].join(";");
+
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = alt;
+  img.draggable = false;
+  img.style.cssText = [
+    "max-width:92vw", "max-height:92vh", "user-select:none",
+    "transform-origin:0 0", "will-change:transform",
+    // A figure saved as SVG has no intrinsic background: on the dark overlay it
+    // would be black lines on black.
+    "background:#fff", "box-shadow:0 8px 40px rgba(0,0,0,.5)",
+  ].join(";");
+  overlay.appendChild(img);
+
+  const hint = document.createElement("div");
+  hint.textContent = "Wheel to zoom \u2014 drag to move \u2014 double-click to reset \u2014 Esc to close";
+  hint.style.cssText = [
+    "position:absolute", "bottom:14px", "left:0", "right:0", "text-align:center",
+    "color:rgba(255,255,255,.75)", "font:13px system-ui,sans-serif", "pointer-events:none",
+  ].join(";");
+  overlay.appendChild(hint);
+
+  let scale = 1, x = 0, y = 0;
+  const apply = () => { img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
+
+  const close = () => {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+
+  // Clicking the backdrop leaves; clicking the figure itself must not.
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+  overlay.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const rect = img.getBoundingClientRect();
+      // Zoom about the pointer: the point under it has to stay under it.
+      const px = (e.clientX - rect.left) / scale;
+      const py = (e.clientY - rect.top) / scale;
+      const next = Math.min(20, Math.max(0.2, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      x += px * (scale - next);
+      y += py * (scale - next);
+      scale = next;
+      apply();
+    },
+    { passive: false },
+  );
+
+  let dragging = null;
+  overlay.addEventListener("pointerdown", (e) => {
+    dragging = { x: e.clientX - x, y: e.clientY - y };
+    overlay.setPointerCapture(e.pointerId);
+    overlay.style.cursor = "grabbing";
+  });
+  overlay.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    x = e.clientX - dragging.x;
+    y = e.clientY - dragging.y;
+    apply();
+  });
+  const endDrag = () => { dragging = null; overlay.style.cursor = "grab"; };
+  overlay.addEventListener("pointerup", endDrag);
+  overlay.addEventListener("pointercancel", endDrag);
+
+  overlay.addEventListener("dblclick", () => { scale = 1; x = 0; y = 0; apply(); });
+
+  document.body.appendChild(overlay);
+}
+
 function renderOutput(outputArea, result) {
   outputArea.innerHTML = "";
   outputArea.hidden = false;
@@ -1062,6 +1173,7 @@ function renderOutput(outputArea, result) {
     img.src = figure;
     img.alt = "matplotlib figure";
     img.className = "pyodide-figure";
+    img.title = "Click to enlarge";
     if (figWidth) img.style.width = figWidth;
     outputArea.appendChild(img);
   }
@@ -1256,6 +1368,13 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   outputArea.className = "pyodide-output";
   outputArea.setAttribute("aria-live", "polite");
   outputArea.hidden = true;
+  // Delegated, and registered once for the life of the cell: the images are
+  // replaced at every run, and those restored from a sidecar are injected as
+  // raw HTML, which no per-image listener would ever reach.
+  outputArea.addEventListener("click", (ev) => {
+    const img = ev.target instanceof Element ? ev.target.closest(".pyodide-figure") : null;
+    if (img) openFigureViewer(img.getAttribute("src"), img.getAttribute("alt") ?? "");
+  });
 
   const widgetOutputArea = document.createElement("div");
   widgetOutputArea.className = "pyodide-widget-output";
