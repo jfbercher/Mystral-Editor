@@ -140,17 +140,35 @@ export class ExtensionBuilder {
     ]);
   }
 
-static codeLanguage(name) {
+/** Directives whose body is code, and may therefore carry a language. */
+  static CODE_DIRECTIVES = new Set(["code", "code-block", "code-cell", "literalinclude"]);
+
+  static codeLanguage(name) {
     // Normalize directive info strings like "{code-cell} python" or "{code-cell}"
     let lang = name.trim();
-    const directiveMatch = lang.match(/^\{[^}]*\}(?:\s+(\S+))?/);
+    const directiveMatch = lang.match(/^\{([^}]*)\}(?:\s+(\S+))?/);
     if (directiveMatch) {
-      lang = directiveMatch[1] || "code-cell";
+      // Only a directive whose body is code may name a language. Anything else
+      // -- an admonition, a figure, a theorem -- holds prose. Only code blocks are now
+      // colored as pyhton code. 
+      // A concern is that  lang-markdown cuts the info string at
+      // the first space before calling this (getCodeParser: /\S*/), so what the actual
+      // parameter is never passed away and we do not know what is the real language.
+      // Therefore code is highlighted as python which if the only supprted language now, 
+      // but a development is in order later if we need to support more. 
+      const directive = directiveMatch[1].trim().toLowerCase();
+      if (!ExtensionBuilder.CODE_DIRECTIVES.has(directive)) return undefined;
+      lang = directiveMatch[2] || directive;
     }
     lang = lang.split(/\s+/)[0].toLowerCase();
 
     if (lang === "yaml") return yaml().language;
-    if (lang === "python" || lang === "ipython3" || lang === "code-cell") return python().language;
+    // "code" and "code-block" are here because their own language cannot reach us
+    // (see above): Python is the one this editor runs, and it is what they were
+    // highlighted as before. "literalinclude" is left out -- its argument is a
+    // path to anything at all.
+    if (lang === "python" || lang === "ipython3" || lang === "code-cell" || lang === "code" || lang === "code-block")
+      return python().language;
   }
 
   static defaultPlugins() {
