@@ -58,15 +58,15 @@ const DIRECTIVES = [
   { name: "exercise", group: "Exercice", arg: "Titre", opts: ["label", "enumerated"] },
   //{ name: "solution", group: "Exercice", arg: "label-exercice", opts: ["label"] },
   { name: "solution", group: "Exercice", opts: ["label"] },
-  { name: "exercise-start", group: "Exercice", opts: ["label"] },
-  { name: "exercise-end", group: "Exercice" },
-  { name: "solution-start", group: "Exercice", arg: "label-exercice", opts: ["label"] },
-  { name: "solution-end", group: "Exercice" },
+  { name: "exercise-start", group: "Exercice", opts: ["label"], noBody: true },
+  { name: "exercise-end", group: "Exercice", noBody: true },
+  { name: "solution-start", group: "Exercice", arg: "label-exercice", opts: ["label"], noBody: true },
+  { name: "solution-end", group: "Exercice", noBody: true },
 
   // Figures, images, and tables
 
   { name: "figure", group: "Media", arg: "path/to/image.png", opts: ["name", "alt", "width"] },
-  { name: "image", group: "Media", arg: "path/to/image.png", opts: ["alt", "width"] },
+  { name: "image", group: "Media", arg: "path/to/image.png", opts: ["alt", "width"], noBody: true },
   { name: "table", group: "Media", arg: "Title", opts: ["label"] },
   { name: "list-table", group: "Media", arg: "Title", opts: ["header-rows"] },
   //{ name: "csv-table", group: "Media", arg: "Title", opts: ["header-rows"] },
@@ -118,7 +118,7 @@ const DIRECTIVES = [
   // The path is required: an {include} without one is an error, so the snippet
   // puts the cursor on it. Its options are all optional, and most documents use
   // none, so none are pre-written.
-  { name: "include", group: "Document", arg: "path/to/file.md" },
+  { name: "include", group: "Document", arg: "path/to/file.md", noBody: true },
   // Table of contents
   { name: "toc", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
   { name: "table-of-contents", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
@@ -220,14 +220,27 @@ const roleOptions = ROLES.map(({ name, detail }) =>
   ),
 );
 
+/**
+ * Values the snippet pre-fills for the options where one default is obviously
+ * more useful than an empty field. Written as a snippet placeholder, so it is
+ * selected on arrival: typing replaces it, Tab keeps it.
+ */
+const OPTION_PLACEHOLDERS = { width: "100%" };
+
 /** Les options MyST se mettent juste après la ligne d'ouverture, une par ligne. */
-const optionLines = (opts) => (opts ? opts.map((o) => ":" + o + ": ${}\n").join("") + "\n" : "");
+const optionLines = (opts, blankAfter = true) =>
+  opts ? opts.map((o) => ":" + o + ": ${" + (OPTION_PLACEHOLDERS[o] ?? "") + "}\n").join("") + (blankAfter ? "\n" : "") : "";
 
 const directiveOptions = (fence, hasBrace) =>
-  DIRECTIVES.map(({ name, arg, opts, group }) => {
+  DIRECTIVES.map(({ name, arg, opts, group, noBody }) => {
     const head = (hasBrace ? "" : "{") + name + "}" + (arg ? " ${" + arg + "}" : "");
+    // A directive that takes no content must not be given any: markdown-it-docutils
+    // refuses it outright ("Has content but content not allowed"), and the body
+    // placeholder -- with the blank line that separates it from the options -- was
+    // enough to trigger that. For those, the closing fence follows the options.
+    const body = noBody ? optionLines(opts, false) : optionLines(opts) + "${}\n";
     return swallowBrace(
-      snippetCompletion(head + "\n" + optionLines(opts) + "${}\n" + fence, {
+      snippetCompletion(head + "\n" + body + fence, {
         label: name,
         detail: group,
         type: "class",
