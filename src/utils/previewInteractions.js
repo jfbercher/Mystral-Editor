@@ -25,6 +25,25 @@ export function handlePreviewInteraction(ev, root, view, refMap, headingMap) {
 
 
   if (view) {
+  // A heading with no explicit (label)= gets id="hpos-{offset}", and that is what
+  // a {toc} links to -- see anchorFor() in markdownDirectives.js. It is not a
+  // label, so the lookup below cannot find it, and the DOM fallback at the end of
+  // this function cannot help either: CodeMirror only renders the part of the
+  // document around the viewport, so the heading being aimed at is usually not in
+  // the DOM at all. Those links did nothing at all.
+  //
+  // The offset is a position in this document, so this is the side outline's own
+  // move, scrollToPos() in utils.js: set the selection, ask CodeMirror to bring it
+  // into view, and leave the geometry alone. "hpos-v123" is a heading of an
+  // included file, which has no position here; it is left to the fallback.
+  if (targetId.startsWith("hpos-")) {
+    const pos = Number(targetId.slice(5));
+    if (Number.isInteger(pos) && pos >= 0 && pos <= view.state.doc.length) {
+      view.dispatch({ selection: { anchor: pos, head: pos }, effects: EditorView.scrollIntoView(pos, { y: "start" }) });
+      return true;
+    }
+  }
+
   const lineNumber = resolveLabelToLine(targetId, refMap);
   if (lineNumber != null && lineNumber <= view.state.doc.lines) {
     const pos = view.state.doc.line(lineNumber).from;

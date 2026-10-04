@@ -32,7 +32,7 @@ import { criticMarkup } from "./markdown/markdownCriticMarkup";
 import { markdownFrontmatter } from "./markdown/markdownFrontmatter";
 import markdownItMath from "./markdown/markdownMath";
 import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./markdown/scanTargets";
-import { extractFrontmatter, extendsCache } from "./markdown/frontmatterUtils";
+import { effectiveFrontmatter, extendsCache } from "./markdown/frontmatterUtils";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
 import { nestHeadings } from "./extensions/trackHeadings";
@@ -58,7 +58,8 @@ import { scanReferenceLinks, markdownItRefLinks } from "./markdown/markdownRefLi
  * Retourne [{ lineStart, codeStart, codeEnd, blockEnd, inside }], dans l'ordre
  * du document.
  *   lineStart : début de la ligne du marqueur d'ouverture
- *   codeStart : fin de la ligne d'ouverture (le \n qui suit l'info string)
+ *   codeStart : début du corps -- le \n qui termine la ligne d'ouverture, ou
+ *               celui qui termine le bloc d'options s'il y en a un
  *   codeEnd   : position du \n qui fait partie du match de fermeture
  *   blockEnd  : fin du match de fermeture
  */
@@ -84,12 +85,37 @@ function listFenceBlocks(src) {
       const closeM = closeRe.exec(src);
       if (!closeM) { pos = openIdx + 1; continue; }
       const codeEnd = closeM.index;
+
+      // The ":key: value" lines that follow the opening marker are the
+      // directive's options, not the cell's code: the widget is built from the
+      // body alone (data.body in CodeCellDirective). Counting them in made
+      // `inside` differ from what the widget holds, so findFenceBlock() matched
+      // nothing and an edit made in the preview was never written back -- and
+      // had it matched, the replacement would have wiped the options.
+      //
+      // bodyStart therefore skips them, and the blank line that separates them
+      // from the body, keeping the same meaning as codeStart: the \n that ends
+      // the last line before the code.
+      let bodyStart = codeStart;
+      for (let scan = codeStart + 1; scan < codeEnd; ) {
+        const eol = src.indexOf("\n", scan);
+        const lineEnd = eol === -1 || eol > codeEnd ? codeEnd : eol;
+        if (!/^[ \t]*:[A-Za-z0-9_-]+:/.test(src.slice(scan, lineEnd))) break;
+        bodyStart = lineEnd;
+        scan = lineEnd + 1;
+      }
+      if (bodyStart !== codeStart && bodyStart < codeEnd) {
+        const eol = src.indexOf("\n", bodyStart + 1);
+        const lineEnd = eol === -1 || eol > codeEnd ? codeEnd : eol;
+        if (src.slice(bodyStart + 1, lineEnd).trim() === "") bodyStart = lineEnd;
+      }
+
       blocks.push({
         lineStart: openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1,
-        codeStart,
+        codeStart: bodyStart,
         codeEnd,
         blockEnd: codeEnd + closeM[0].length,
-        inside: src.slice(codeStart, codeEnd).trim(),
+        inside: src.slice(bodyStart, codeEnd).trim(),
       });
       pos = closeM.index + closeM[0].length;
     }
@@ -520,19 +546,21 @@ export class TextManager {
   splitTextIntoChunks(chunkLookup = {}) {
     
     if (timing_debug) {const _t0 = performance.now();}
-    const fmResult = extractFrontmatter(this.text.value);
-    updateMathMacros(this.options.id.value, fmResult?.frontmatter);
+    // Effective: the project's myst.yml with this document's own frontmatter on
+    // top. A document with no block of its own still belongs to its project.
+    const fm = effectiveFrontmatter(this.text.value);
+    updateMathMacros(this.options.id.value, fm);
     const macrosSignature = getMacrosSignature(this.options.id.value);
     if (timing_debug) console.log("frontmatter+macros:", (performance.now() - _t0).toFixed(2), "ms");
     //
-    //const refsKindLabel = getKindLabel(fmResult?.frontmatter)
-    const { kindLabel, numberingEnabled } = getNumberingConfig(fmResult?.frontmatter);
+    //const refsKindLabel = getKindLabel(fm)
+    const { kindLabel, numberingEnabled } = getNumberingConfig(fm);
 
     // Which Python namespace this document's code cells run in.
     // `python: isolated` means one namespace per document, so it is keyed by the
     // file -- not by the tab -- which keeps a document in the same namespace
     // when it is closed and reopened, and lines it up with its sidecar.
-    const pythonSpaceValue = fmResult?.frontmatter?.python;
+    const pythonSpaceValue = fm?.python;
     // A document that has never been saved has no file key; it is then keyed by
     // its tab, so `python: isolated` still isolates it. It will not find that
     // namespace again after a reload, which is true of everything about an
@@ -595,11 +623,11 @@ export class TextManager {
 
     // bibliography
 
-    const bibliographyPath = fmResult?.frontmatter?.bibliography;
-    const citationStyle = fmResult?.frontmatter?.["citation-style"] || "numeric";
-    const citationTemplate = fmResult?.frontmatter?.["citation-template"];
-    const numberingFrontmatter = fmResult?.frontmatter?.["numbering"];
-    const numberingSectionsFrontmatter = fmResult?.frontmatter?.["numbering"]?.["headings"];
+    const bibliographyPath = fm?.bibliography;
+    const citationStyle = fm?.["citation-style"] || "numeric";
+    const citationTemplate = fm?.["citation-template"];
+    const numberingFrontmatter = fm?.["numbering"];
+    const numberingSectionsFrontmatter = fm?.["numbering"]?.["headings"];
     const numberingSignature = JSON.stringify(numberingFrontmatter)
 
     const numberingSetting = this.userSettings.value.find(
@@ -623,8 +651,8 @@ export class TextManager {
 
     const bibSignature = [
       bibliographyPath,
-      fmResult?.frontmatter?.["citation-style"],
-      fmResult?.frontmatter?.["citation-template"]
+      fm?.["citation-style"],
+      fm?.["citation-template"]
     ].join("|");
 
     // for headings numbering
