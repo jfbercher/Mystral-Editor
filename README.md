@@ -1,340 +1,61 @@
-# Mystral Editor
+[![License](https://img.shields.io/pypi/l/labquizbundle.svg)](https://pypi.org/project/labquizbundle/)
+[![Documentation Status](https://readthedocs.org/projects/mystral-editor/badge/?version=latest)](https://mystral-editor.readthedocs.io/en/latest/)   
 
-This project is based on the excellent [antmicro Myst-Editor](https://github.com/antmicro/myst-editor/). Several modifications and additions have been made to expand its capabilities for creating documents and conducting scientific editing locally, including a local version (built with Tauri). The original document is provided below.
+Sponsor:
 
-# Additions
+[![ESIEE Paris](https://github.com/jfbercher/labquiz/raw/main/esiee_logo_moyen.png)](https://www.esiee.fr)   
 
-## Local File Management
 
-A dedicated menu bar has been added for managing documents locally:
 
-* **Open local files**, with recent-file history and quick open
-* **Save** and **Save As**
-* **Automatic saving**, with a configurable interval in `config.json`
-* **Working directory** management, used for **local image insertion**
+**[Mystral Editor](https://github.com/jfbercher/Mystral-Editor)** is a lightweight, offline-capable editor with large [MyST Markdown](https://myst-parser.readthedocs.io/) support and live-preview, oriented toward academic documents, with equations, bibliography management, automatic numbering of floating elements and structured navigation.
 
-## Scientific Authoring
+[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder). 
 
-The fork provides extended support for scientific and technical documents, including:
+ 📑 Mystral Documentation available at [readthedocs](https://mystral-editor.readthedocs.io/en/latest/).
 
-* **$\LaTeX$ equation support** via KaTeX
-* **YAML frontmatter management**, presented as a collapsible section, for bibliographic references and MyST-specific settings
-* **BibTeX bibliography support**, with a dedicated bibliography section
+## What distinguishes Mystral
 
-  * Two preview formats: **numeric** and **author–date**
-  * Customizable bibliography rendering template
-* **Numbering and cross-referencing** of equations, tables, and figures, which can be enabled or disabled independently
-* **Customizable reference format** through the YAML frontmatter
-* Reference-target **preview popovers**, displaying the rendered figure, equation, or table
-* Support for markdown **footnotes**
-* **Comments**, with any line beginning with `%` ignored in the preview
-* **Enhanced admonitions**, with support for titles, dropdowns, and parameters such as `open`, `align`, etc.
-* **Figure and table**: support for alignment and scaling
+* ****A complete, offline MyST editor, with no server or build chain.**** What the preview displays is what `myst build` will produce: numbering, cross-references, bibliography, and mathematical macros.
+* ****Executable Python code-cells directly in the document****, powered by Pyodide: no kernel, no installation, and no network connection once loaded, — and results persist across sessions.
+* ****Four viewing modes****, including an **inline** mode that renders each block in place and opens only the block containing the cursor in source mode.
+* ****One codebase, two forms****: a desktop application for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application deployable anywhere without installation.
 
-## Document Organization and Navigation
+## Scientific authoring
 
-* **Table of contents** displayed as a collapsible and resizable panel on the left
-* **Drag-and-drop reorganization** of document sections directly from the table of contents
-* **Multi-document editing** through a tabbed interface
+Mystral provides full **scientific authoring** with KaTeX-rendered and automatically numbered LaTeX equations, document-specific macros, configurable numbering for headings, figures, tables, equations,... , and live cross-references with hover previews. Per-document **BibTeX bibliographies**, footnotes, and enhanced, collapsible admonitions (`note`, `tips`, (`warning`, `theorem`, `exercise`, `solution`, etc.) are also supported.
 
-## Theming
+## Executable content
 
-* **CodeMirror theme** support
-* **Light and dark themes** for both the editor and preview
+**`{code-cell}`** blocks provide editable, executable Python with persistent namespaces, text and graphical output, and matplotlib figures, while **`{eval}`** embeds computed values directly in prose. A variable inspector and *sidecar* files preserve state and outputs, SVG figures remain fully zoomable, and additional packages can be installed with `micropip`.
 
+## Suggestions and completions
 
-# MyST Editor
+Mystral provides context-aware completion for **directives, options, document labels, and BibTeX keys**, including searchable labels and references. Python cells offer `jedi` completion with signatures and docstrings.
 
-Copyright (c) 2022-2026 [Antmicro](https://antmicro.com)
+## Document organization
 
-![MyST Editor logo](./assets/MyST-Editor--GH-readme.png)
+A **collapsible document outline** makes it possible to navigate and *reorder sections by drag and drop*; while `{toc}` and `{include}` integrate tables of contents and external files with the document's numbering and cross-references. Sections can be collapsed, documents opened in tabs, and comments anchored to the text.
 
-This is a Markdown web editor that uses the [MyST Markdown](https://myst-parser.readthedocs.io/en/v0.16.0/) flavor.
-It is implemented as a [Preact](https://preactjs.com/) component.
-The intended way to use it is by embedding the editor in various websites/webapps.
-It is written with collaborative editing in mind.
+## Export
 
-## User Manual
+Mystral uses **`mystmd` for PDF, LaTeX, and Word exports**, with project-specific templates, and can produce self-contained HTML from the preview. MyST project commands (`build`, `start`) and inherited frontmatter from `myst.yml` are integrated into the application.
 
-For an overview of the editor usage, see the [User Manual](https://antmicro.github.io/myst-editor/docs/).
+## Configuration and customization
 
-## Demo
+The editor is extensively customizable through documented `config.json` settings, `custom.css` and CSS variables, keyboard shortcuts, Vim mode, and CodeMirror themes. Custom transformations can also convert application-specific syntax into HTML.
 
-A demo of the editor is available [here](https://antmicro.github.io/myst-editor/).
+## Inherited from Myst-Editor, and preserved
 
-## Main features
+* ****Real-time collaborative editing**** (Yjs/CRDT), with remote cursors and avatars.
+* ****CriticMarkup suggestions****, which can be accepted or rejected, together with a ****diff view**** against the initial state.
+* ****Configurable Hunspell spell checking**** and ****document templates**** loadable from JSON.
 
-### Live preview and dual pane sync
 
-Changes in the text editor are immediately reflected in the preview.
-The editor also keeps track of where your cursor is and highlight and scroll the preview based on what you are editing.
 
-![Live Preview Demo](./assets/dual-pane.gif)
+The original Myst-Editor is distributed under an Apache 2.0 license. The two following files list the Additions and Modifications over the original Editor (as required by the Apache 2.0 license): 
 
-### Inline Markdown rendering
+- [List of Additions](docs/additions.md)
+- [List of Modifications](docs/modifications.md)
 
-You can toggle a mode where the Markdown will be rendered right in the editor.
-
-![Inline Mode Demo](./assets/inline.gif)
-
-### Collaborative editing
-
-You can work on a document with multiple people at the same time.
-
-![Collaboration Demo](./assets/collab.gif)
-
-### Comments
-
-The editor has a comments feature, allowing you to add text that will not appear in the preview.
-
-![Comments Demo](./assets/comments.gif)
-
-### Suggestions
-
-You can suggest changes that others can accept or reject later.
-Suggestions are based on the [CriticMarkup](https://fletcher.github.io/MultiMarkdown-6/syntax/critic.html) syntax.
-
-![Suggestions Demo](./assets/suggestions.gif)
-
-### Templates
-
-You can use document templates to quickly prepare documents and skip repetitive work.
-
-![Template Demo](./assets/templates.gif)
-
-### Diff
-
-You can use the diff view to see exactly what changes have been made to the document as compared to the original state.
-There is also an option to discard all the changes.
-
-![Diff Demo](./assets/diff.gif)
-
-### Exporting the document
-
-Using the buttons in the top-left, you can copy the rendered HTML or export the document to a PDF file.
-
-![Copy Demo](./assets/copy.gif)
-
-### User settings
-
-Users can customize the editor with the settings dropdown.
-In the example below, we can see settings that allow for scrolling past the last line of the editor and a Vim emulation mode.
-
-![Settings Demo](./assets/settings.gif)
-
-### Custom transforms
-
-The editor allows you to extend the standard Markdown syntax with custom transforms.
-You can specify regular expressions that turn some input to custom HTML output.
-This is useful for implementing functionalities such as issue links, for example (as showcased in the demo):
-
-```js
-const transforms = [{
-  target: /[0-9a-z\-]+\/[0-9a-z\-]+#\d{1,10}/g,
-  transform: (match) => {
-    const [repo, issueId] = match.split('#');
-    return `<a href="https://github.com/${repo}/issues/${issueId}">${match}</a>`
-  }
-}]
-```
-
-Then provide the transforms array as the `transforms` option for the editor.
-
-For more examples, see the `exampleTransforms` object in [the demo HTML](src/index.html).
-
-## Usage
-
-### Building the component
-
-```bash
-npm i && npm run build
-```
-
-### Using as a library
-
-You can embed this editor on another website.
-
-After building, you should see a `dist` folder with `MystEditor.css` and `MystEditor.js` in it.
-Put those files alongside your HTML.
-
-Add a link to the CSS file into your HTML:
-
-```html
-<link rel="stylesheet" href="MystEditor.css">
-```
-
-You need an HTML element that MyST Editor will attach to:
-
-```html
-<div id="myst"></div>
-```
-
-Add the following JavaScript as a module (of course add any options as needed):
-
-```js
-import MystEditor from 'MystEditor.js';
-MystEditor({ /* options */ }, document.getElementById("myst"));
-```
-
-And voilà!
-
-### Developing / running the demo
-
-There is a demo available for the editor with some example Markdown and templates, also useful for development of the component itself.
-
-To run it locally, use:
-
-```bash
-npm run dev
-```
-
-Your terminal will display what URL to open to see the demo.
-You can edit the source files in `src/` to modify the behavior of the component, with hot reload, thanks to Vite.
-
-An analogous demo deployed with GH actions from latest main should be deployed at https://antmicro.github.io/myst-editor/
-
-### Collaboration server
-
-The example server is located in the `bin` directory. To run it use:
-
-```bash
-cd bin
-npm i && npm run server
-```
-You can change the port it runs on by setting a `PORT` environment variable.
-
-### Running tests
-
-The Playwright test suite (including the `MystEditorGit` tests) runs against the **built and previewed** app, so it needs the app preview and the collaboration server running alongside the test runner. Use three terminals.
-
-> [!IMPORTANT]
-> Run the tests with **Node 20**.
-
-First-time setup (once):
-
-```bash
-npm i
-npx playwright install
-```
-
-Terminal 1:
-
-```bash
-npm run build && npm run preview
-```
-
-Terminal 2:
-
-```bash
-cd bin
-npm i
-YPERSISTENCE=/tmp/myst-yjs-db PORT=4455 node server.js
-```
-
-Terminal 3 (ensuring you run Node 20, otherwise it may not work):
-
-```bash
-npx -y node@20 /usr/bin/npm run test
-```
-
-To run a single test (or a subset), pass a `-g` name filter through to Playwright:
-
-```bash
-npx -y node@20 node_modules/@playwright/test/cli.js test -c tests/playwright.config.js -g "Commits changes"
-```
-
-> [!NOTE]
-> Without `YPERSISTENCE`, some git-wrapper tests may fail because change-status tracking is disabled on the server.
-
-### Customizing the CSS
-
-Note that MyST Editor uses the Shadow DOM to encapsulate the styles from the rest of the page.
-In order to customize the look and feel, you can change the CSS variables
-listed in [MystStyles.js](./src/styles/MystStyles.js) with the `additionalStyles` option
-of the `MystEditor` function.
-The editor exports an example `darkTheme` stylesheet.
-
-### MystEditor options
-
-Here are the options you can pass to the MystEditor function:
-
-- `id` *(default: `crypto.randomUUID()`)* - this changes where the global state of an editor is stored, it is used when accessing `window.myst_editor` and is part of the CodeMirror parent DOM id
-- `name` *(default: "myst_editor_textarea")* - this will change the name of the textarea element which contains your markdown. Useful if you want the editor to be part of an HTML `form`.
-- `additionalStyles` *(`CSSStylesheet` | `CSSStylesheet[]`)* - extra CSS stylesheets to customize the component
-- `title` - the document title displayed in the topbar. You can include Markdown links in here.
-- `mode` *(default: "Both", possibleValues: "Source" | "Preview" | "Both" | "Diff" | "Resolved" | "Outline" | "Inline")* - changes what is visible when you open the editor. By default, you will see a split view with the text editor and preview.
-- `initialText` *(default: "")* - initial Markdown text
-- `includeButtons` *(default: defaultButtons)* - An array of button definitions. A button definition is an object which has an `action: () => void` and either `icon` or `text`. As an example, a button could be defined as `{ text: "Button title", action: () => alert('clicked!') }`
-- `topbar` *(default: true)* - whether to show the topbar
-- `templateList` - path/url to a JSON file containing your document templates. For an example, see `public/linkedtemplatelist.json`.
-- `collaboration` - options related to live collaboration:
-  - `enabled` *(default: false)*
-  - `commentsEnabled` *(default: false)* - enable basic comment functionality,
-  - `resolvingCommentsEnabled` *(default: false)* - enable resolving comments,
-  - `wsUrl` *(example: ws://example:4444)* - URL of the websocket server
-  - `username`
-  - `room` *(default: "0")* - name of the room to join, users will see others in the same room
-  - `color` *(default: "#ff0000")* - color of the cursor seen by other users
-  - `mode` *(default: "websocket")* - determines how the document will be synced. You can set it to `"local"` for testing without a server (using BroadcastChannel API)
-- `spellcheckOpts` - Configuration for the spellchecker. If the value is *null* or *false* then the spellchecker will be disabled.
-  - `dict` *(default: "en_US")* - Name of the desired dictionary. For an example, see `public/dictionaries/en_US`.
-  - `dictionaryPath` *(default: "/dictionaries")*  - Path to a folder with dictionaries. For an example, see `public/dictionaries/`.
-- `customRoles` - custom MyST roles. See the `exampleCustomRoles` object in [the demo HTML](./src/index.html) for examples.
-- `transforms` - [custom transforms](#custom-transforms)
-- `customDirectives` - custom MyST directives. See the `exampleCustomDirectives` object in [the demo HTML](./src/index.html) for examples.
-- `getAvatar` *(default: (login) => `https://secure.gravatar.com/avatar/${login}?s=30&d=identicon`)* - a function that returns the avatar for a given username
-- `getUserUrl` *(default: (login) => `#`)* - a function that returns the URL to the web page with the user's profile
-  It is used when an avatar is clicked.
-- `backslashLineBreak` *(default: true)* - treat `\` as a line break even when it is at the end of a paragraph/block
-- `hideUsernameDelay` *(default: 5000)* - milliseconds of inactivity after which the username attached to a remote cursor will be hidden
-- `syncScroll` *(default: false)* - synchronize scrolling of the editor and preview in `Dual Pane` view mode.
-  - > NOTE: This only works if you set a height limit on the editor parent element.
-- `unfoldedHeadings` *(`number?`)* - fold all but the given number of top level syntax nodes on startup.
-  If the option is not set, nothing will be folded by default.
-- `collapsibleHeadingMarker` *(default: false)* - if enabled, any heading ending in `(^)` (e.g. `## Section (^)`) starts folded on startup.
-  The marker itself is hidden from the preview, inline mode and the outline.
-- `mapUrl` *(default: (tag, url) => url)* - function used to map `href` and `src` attributes. Tag is the name of the HTML element and url is the source url you can transform.
-- `yamlSchema` - must be an absoulte URL. If provided, a language server will launch in the background to provide tooltips, diagnostics and autocompletions based on the schema in YAML code blocks.
-- `onPreviewClick` *(`(ev: MouseEvent) => boolean`)* - callback for when the preview is clicked, if the builtin click actions should be skipped, it should return `true`
-- `onDiscardChanges` *(`() => void`)* - callback for when changes are discarded from the diff view mode
-- `mermaidTheme` *(default: "neutral")* - theme to use for Mermaid.js diagrams
-- `cmDarkTheme` *(default: false)* - whether to use a dark theme for CodeMirror
-- `onExit` *(`() => void | false`)* - If provided an exit button will be shown. The button will execute the provided hook.
-
-Also see [the demo HTML](./src/index.html) for an example on how you can set these options.
-Using `window.myst_editor` or the return value of the `MystEditor` function, you can modify these options at runtime.
-
-## Myst Editor for Git
-
-There is an additonal wrapper around the base editor that is meant to be easy to integrate with Git version control.
-The wrapper is provided as a component located in [src/myst-git/MystEditorGit.jsx](src/myst-git/MystEditorGit.jsx).
-You can import it from a build of Myst Editor with the following syntax:
-```js
-import { MystEditorGit } from "MystEditor.js";
-```
-There is an example page that makes use of this wrapper in [src/myst-git/git.html](src/myst-git/git.html).
-The example page can be accessed while the Editor is running in development mode via the following URL: `/myst-git/git.html`.
-
-### Running the stub git mode locally
-
-The git demo runs against an in-memory stub git backend ([src/myst-git/stubGitBackend.js](src/myst-git/stubGitBackend.js)), so you can try the
-branch/commit/file navigation and the commit flow without a real git server. The demo repository state (branches, commits and file
-snapshots) comes from [src/myst-git/demo-data.js](src/myst-git/demo-data.js). Any commits you make are kept in `localStorage`, so clearing
-site data resets the "repo".
-
-Start the dev server and open the git demo:
-
-```bash
-npm run dev
-# then open /myst-git/git.html on the URL Vite prints (typically http://localhost:5173)
-```
-
-By default collaboration runs in local mode, so no collaboration server is required. To test real-time collaboration against a local server:
-
-```
-/myst-git/git.html?collab_server=ws://localhost:4455&username=alice
-```
-
-## License
-
-[Apache 2.0](./LICENSE)
+---
+ 📑 `Documentation` available at [readthedocs](https://mystral-editor.readthedocs.io/en/latest/).
