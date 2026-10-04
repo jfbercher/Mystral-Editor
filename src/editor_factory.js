@@ -285,7 +285,7 @@ export function mountEditor(mnt_options) {
       id: editorId,
       templatelist: "linkedtemplatelist.json",
       initialText: initialContent ?? "",
-      title: "[Mystral Editor](https://github.com/jfbercher/mystral-editor/)",
+      title: "[Mystral Editor](https://mystral-editor.readthedocs.io/en/latest/)",
       subtitle: "Template for new files (new_file.md)",
       transforms: editorOptions.transforms ?? [],
       collaboration: {
