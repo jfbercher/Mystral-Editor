@@ -1,0 +1,35 @@
+version: 1
+
+extends:
+  - mdocs_fm.yml
+
+project:
+  id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
+  toc:
+    - file: index.md
+    - title: Mystral Editor 
+      children:
+        - file: presentation.md
+        - file: additions.md
+        - file: modifications.md
+    - title: Mystral Editor - Further notes
+      children:
+        - file: myst-editor-css-variables.md
+        - file: windows_app_installation_guide.md
+        - file: macos_app_installation_guide.md   
+  settings:
+    myst_to_tex:
+      code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+
+site:
+  template: book-theme
+  title: "Mystral Editor Doc & Notes"
+  logo_text: "Mystral Editor Doc & Notes"
+  parts:
+    footer: "Mystral Editor Doc & Notes (footer)"
+    primary_sidebar_footer: "Mystral Editor Doc & Notes (footer)"
+
+exclude:
+  - "*/"

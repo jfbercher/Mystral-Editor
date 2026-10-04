@@ -1,59 +1,57 @@
-# See docs at: https://mystmd.org/guide/frontmatter
 version: 1
+
+extends:
+  - mdocs_fm.yml
+
 project:
   id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
-  settings:
-    myst_to_tex:
-        code_style: listings
-    output_stderr: remove
-    output_matplotlib_strings: remove
-  exports:
-    - format: docx
-    - format: pdf
-      template: arxiv_nips
-      article_type: article
-      chapters: []
-  # title: Apprentissage automatique 1
-  # description:
-  # keywords: []
-  # authors: []
-  # github:
-  # To autogenerate a Table of Contents, run "myst init --write-toc"
   toc:
-
     - file: index.md
-
-    - title: Mystral Editor 
+    - title: Mystral Editor - General documentation
       children:
-        - file: Mystral Editor - Presentation.md
+        - file: presentation.md
+        - file: overview-and-heritage.md
+        - file: local-file-management.md
+        - file: scientific-authoring.md
+        - file: executable-code.md
+        - file: document-organisation.md
+        - file: theming.md
+        - file: desktop-apps.md
+        - file: customisation-presentation.md
+        - file: getting-started.md
+        - file: contributing.md
+        - file: table-of-differences.md
         - file: additions.md
         - file: modifications.md
-
-    - title: Mystral Editor - Further notes
+    - title: Mystral Editor - Precisions and further notes
       children:
+        - file: completion.md  
+        - file: export.md
+        - file: toc.md
+        - file: include.md   
+        - file: directives-and-roles.md  
+        - file: executable-content.md
+        - file: project-frontmatter-extends.md
+        - file: customisation.md  
         - file: myst-editor-css-variables.md
         - file: windows_app_installation_guide.md
-        - file: macos_app_installation_guide.md   
+        - file: macos_app_installation_guide.md  
+        - file: keyboard_shortcuts_en.md 
+                                         
 
-  bibliography:
-    - references.bib
-    - paper.bib
+  settings:
+    myst_to_tex:
+      code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
 
 site:
   template: book-theme
-  # options:
-  #   favicon: favicon.ico
-  #   logo: site_logo.png
-  #base_url: ~bercherj/4201A/ # FAIRE export BASE_URL="/~bercherj/4201A"
-  #template: article-theme
   title: "Mystral Editor Doc & Notes"
   logo_text: "Mystral Editor Doc & Notes"
   parts:
     footer: "Mystral Editor Doc & Notes (footer)"
     primary_sidebar_footer: "Mystral Editor Doc & Notes (footer)"
 
-# Configuration d'exclusion
 exclude:
-  # Exclut tous les dossiers et leur contenu, 
-  # SAUF le dossier courant et ses sous-dossiers spécifiés.
   - "*/"

@@ -1,10 +1,13 @@
 ---
 title: Mystral Editor - General Presentation
-extends: mdocs_fm.yml
 numbering:
   figure: true
+exports:
+  - format: docx
+  - format: pdf
+    template: arxiv_nips
+    article_type: article
 ---
-
 
 
 
@@ -82,7 +85,7 @@ Each tab's state (file name, dirty flag, Yjs comments) is saved and restored acr
 (scientific_authoring)=
 ## Scientific Authoring
 
-This is the core contribution of Mystral Editor over upstream.
+This is a major contribution of Mystral Editor over upstream.
 
 ### Equations and Mathematics
 
@@ -187,11 +190,7 @@ This admonition has a **title** and is collapsible.
 Add `:open:` to start it pre-expanded.
 :::
 ```
-:::{note} A custom title
-:class: dropdown
-This admonition has a **title** and is collapsible.
-Add `:open:` to start it pre-expanded.
-:::
+
 
 :::{figure} figures/admonition.gif
 :name: admonition
@@ -199,6 +198,21 @@ Add `:open:` to start it pre-expanded.
 :width: 95%
 
 Example of admonitions with completions, dropdown, custom title, with or without icon.
+:::
+
+:::{figure} figures/admonition2.gif
+:name: admonition2
+:alt: Admonition2
+:width: 95%
+
+Example of admonition (continued) with a change of type.
+:::
+
+
+:::{note} A custom title
+:class: dropdown
+This admonition has a **title** and is collapsible.
+Add `:open:` to start it pre-expanded.
 :::
 
 This renders as a `<details>`/`<summary>` block: the icon and custom title form the summary bar, and the body stays hidden until the user clicks to expand it.
@@ -273,7 +287,7 @@ Mystral Editor integrates [Pyodide](https://pyodide.org/), which is a WebAssembl
 
 A fenced code block with the `{code-cell}` directive (or ` ```{code-cell} python ` shorthand) renders as an editable Python editor cell with a **Run** button. Clicking it executes the code in the browser via Pyodide and displays stdout, return values, and errors below the cell.
 
-```md
+```python
 :::{code-cell} python
 :packages: numpy
 
@@ -281,6 +295,35 @@ import numpy as np
 print(np.linspace(0, 1, 5))
 :::
 ```
+
+
+:::{code-cell} python
+:packages: numpy
+:figwidth: 60%
+
+import numpy as np
+x = np.linspace(0, 1, 500)
+y = np.random.randn(len(x))
+plt.plot(x+y)
+:::
+
+:::{figure} figures/code-cell.gif
+:name: code-cells
+:alt: 
+:width: 95%
+
+Definition and excution of a code-cell, also showcasting completions and suggestions, bi-directional synchronization between source and preview.  
+
+:::
+
+:::{figure} figures/code-cell-vars.gif
+:name: code-cells-vars
+:alt: 
+:width: 95%
+
+Code-cell: example showing the variable inspector, to explore current variables, modules and functions (with the possibility to delete variables).  
+:::
+
 
 Supported options:
 
@@ -296,8 +339,21 @@ Supported options:
 
 Shortcuts are configurable in `config.json` under `pyodide.keys`.
 
-A **`{eval}` role** evaluates a single expression in the middle of a sentence: `` {eval}`2 + 2` `` renders as its value and follows the state of the session.
+A **`{eval}` role** evaluates a single expression in the middle of a sentence: `` {eval}`2 + 2` `` renders as its value and follows the state of the session. An approximate value of $\pi$ is {eval}`round(np.pi,4)` and of $\pi^2$ is {eval}`round(np.pi,3)**2`. Of course, calculated values in code-cells cans also be used in text: for instance, the sum of elements in $x+y$ is {eval}`np.sum(x+y)`, while its mean is {eval}`np.mean(x+y)`. 
 
+:::{figure} figures/eval.gif
+:name: eval1
+:width: 95%
+
+Demo of `{eval}`directive (1 of 2)
+:::
+
+:::{figure} figures/eval2.gif
+:name: eval2
+:width: 95%
+
+Demo of `{eval}`directive (2 of 2)
+:::
 ℹ️ **Workspaces** Which Python  runs in each document is chosen by specifying a `python:` key in its frontmatter: 
 - `shared` (the default) for the namespace common to every document that asks for nothing else,
 - `isolated` for one of its own, 
@@ -309,25 +365,49 @@ What is separated is the variables; imported modules, matplotlib's state and the
 
 Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. 
 
-There is more information on [executable-content](executable-content.md) covers all of it.
+There is more information on [executable-content](executable-content.md) which covers all of it.
 
 ## Document Organization and Navigation
-
 ### Table of Contents
-
 A collapsible, resizable left side panel displays a table of contents generated dynamically from document headings. When heading numbering is enabled, numbers appear in the panel. Clicking an entry scrolls both the editor and the preview to the corresponding section. Headings coming from an included file appear there too, in their place in the numbering, shown in italics: they belong to another file, so they cannot be dragged, and clicking one scrolls the preview alone.
 
-
-
-A `:::{toc}` directive (aliases: `table-of-contents`, `contents`, `toctree`) can also insert a table of contents **inline inside the document body**, where it is exported and printed with the rest. It supports an optional title argument, `:depth:` to limit the levels shown, `:context: section` to restrict the list to the section it is written in, and a `:dropdown:` flag that wraps it in a collapsible `<details>/<summary>` block. When heading numbering is active, section numbers are preserved in the inline TOC links. See [toc](toc.md).
-
-### Drag-and-Drop Section Reordering
+**Drag-and-Drop Section Reordering**
 
 Document sections can be reordered directly from the table-of-contents panel by drag and drop. The operation moves in the Markdown source the full text spanning from the heading to the end of its subtree.
+
+:::{figure} figures/table-of-contents.gif
+:name: toc
+:alt: toc
+:width: 95%
+
+Table of contents is a collapsible and resizable panel, with drag & drop capabilities to quickly reorder document contents.  
+:::
+
+A `:::{toc}` directive (aliases: `table-of-contents`, `contents`, `toctree`) can also insert a table of contents **inline inside the document body**, where it is exported and printed with the rest. It supports an optional title argument, `:depth:` to limit the levels shown, `:context: section` to restrict the list to the section it is written in, and a `:dropdown:` flag that wraps it in a collapsible `<details>/<summary>` block. When heading numbering is active, section numbers are preserved in the inline TOC links. 
+
+:::{figure} figures/toc.gif
+:name: toc2
+:alt: toc2
+:width: 
+
+Demo for inline toc (in section context).
+:::
+
+👉🏼 Also see the dedicated [toc](toc.md) document.
+
 
 ### Multi-Document Tabbed Editing
 
 Several documents can be open simultaneously in a tabbed interface. Each tab maintains its own state (file, scroll position, comments, bibliography, theme). Tabs are reordered by drag and drop. Inactive tabs are suspended after a configurable timeout to limit memory use, then restored on reactivation.
+
+:::{figure} figures/tabs.gif
+:name: tabs
+:alt: 
+:width: 95%
+
+Several documents on the tabbed interface, which can be reorganized by drag & drop. 
+:::
+  
 
 ### Section Folding
 
@@ -360,6 +440,13 @@ Key Tauri-specific features:
 - **Logging** via the Tauri logging plugin
 
 The desktop application also carries an **export menu**, which the web build cannot have since it shells out to [mystmd](https://mystmd.org): PDF, LaTeX and Word through `myst build`, an HTML export that writes out the rendered preview with the editor's stylesheets inlined, and the project-level `myst build` and `myst start` commands. When the folder has no `myst.yml`, or the document declares no export entry for the format, the editor says which is missing and offers to set both up and export in one go. See [export](export.md).
+
+:::{figure} figures/exports.gif
+:name: exports
+:width: 95%
+
+Demo of export possibilities. In Tauri apps, mystmd is called to build the output
+:::
 
 A GitHub Actions workflow (`release.yaml`) builds and signs all platform variants on every `v*` tag push, producing installer artifacts published to GitHub Releases. A `Makefile` `release` target automates version bumping, tagging and pushing.
 
@@ -437,7 +524,7 @@ updater described below, and `latest.json` is the manifest it reads.
 
 After downloading the `.dmg`, drag **Mystral Editor** into your Applications folder. Because the app is not notarized, macOS Gatekeeper will warn that it is from an "unidentified developer."
 
-To open it the first time, right-click (or Control-click) the app icon and choose **Open**. When the dialog appears saying the developer cannot be verified, click **Open** to proceed. Alternatively, open **System Settings → Privacy & Security** and click **Open Anyway** next to the blocked entry. This one-time approval is all that is needed; subsequent launches proceed normally.
+To open it the first time, right-click (or Control-click) the app icon and choose **Open**. When the dialog appears saying the developer cannot be verified, click **Open** to proceed. Alternatively, open **System Settings --> Privacy & Security** and click **Open Anyway** next to the blocked entry. This one-time approval is all that is needed; subsequent launches proceed normally.
 
 ### Windows
 
@@ -449,7 +536,7 @@ Install the `.deb` (Debian, Ubuntu and derivatives) or the `.rpm` (Fedora, openS
 
 ### First Launch and File Associations
 
-On first launch the app registers itself as the default handler for `.myst`, `.md`, `.markdown`, and `.txt` files. You can open documents from the OS file manager, by dragging them onto the app window, or from **File → Open** inside the app.
+On first launch the app registers itself as the default handler for `.myst`, `.md`, `.markdown`, and `.txt` files. You can open documents from the OS file manager, by dragging them onto the app window, or from **File -> Open** inside the app.
 
 ### Automatic Updates
 

@@ -130,9 +130,9 @@ Two definitions of the same label are a conflict, not a merge. The host's defini
 
 A document's frontmatter chooses the Python namespace its code cells run in: `shared` (the default) for the namespace common to every document that asks for nothing else, `isolated` for one of its own, or a name for a namespace shared by the documents that give the same one. Variables are what is separated; imported modules, matplotlib's state and the working directory stay common. The complementary doc [executable-content](executable-content.md) covers it.
 
-### Frontmatter: `extends`
+### Frontmatter: inheriting from the project
 
-A document's frontmatter can inherit from one or more YAML files, so that settings shared by several documents are written once. Lists are combined, objects deep-merged, and local values win.
+A document inherits the frontmatter written in its project's `myst.yml`, which may itself inherit from other YAML files through `extends`. Lists are combined, objects deep-merged, and the document's own values win. `extends` written in a document's own frontmatter is not a MyST key and is ignored, as mystmd ignores it.
 The complementary doc [frontmatter-extends](frontmatter-extends.md) covers it.
 
 ### Extending the set of Directives and Roles

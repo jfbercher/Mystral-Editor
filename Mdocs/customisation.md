@@ -75,6 +75,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | Key | Default | Meaning |
 |---|-----------|---|
 | `pyodide.resetCwdOnRun` | `false` | `false` keeps notebook behaviour: the working directory persists from one cell to the next, so a cell may `os.chdir()` and the following ones stay there. `true` resets to `/local` before every run, which makes each cell reproducible in isolation at the cost of that continuity. |
+| `pyodide.figureWidth` | `""` | Default width of the matplotlib figures a cell produces, as a CSS length (`"60%"`, `"20em"`, `"480px"`). Empty leaves each figure at its natural size, bounded by the width of the cell. A cell overrides it with its own `:figwidth:` option. |
 | `pyodide.keys.run` | `"Shift-Enter"` | Run the current cell. |
 | `pyodide.keys.insertBelow` | `"Mod-Shift-Enter"` | Insert an empty cell below the current one. |
 | `pyodide.keys.inspect` | `"Alt-v"` | Open the variable window. |
@@ -89,7 +90,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 
 
 
-Which Python namespace a document's cells run in is not set here: it belongs to the document, through the `python:` key of its frontmatter (`shared`, `isolated`, or a group name). A project can still set it once for all of its documents, through a shared YAML file and `extends`. See [executable-content](executable-content.md).
+Which Python namespace a document's cells run in is not set here: it belongs to the document, through the `python:` key of its frontmatter (`shared`, `isolated`, or a group name). A project can still set it once for all of its documents, in the `project:` block of its `myst.yml`. See [executable-content](executable-content.md).
 
 These shortcuts apply only while the cursor is inside a code-cell editor, and they take precedence there over the editor's own bindings: giving one a key the editor already uses, `"Mod-s"` for instance, shadows it inside cells. An empty string means the action has no shortcut. A binding CodeMirror cannot parse is reported in the browser console and dropped, so a typo costs that one shortcut rather than the cell's whole keymap.
 

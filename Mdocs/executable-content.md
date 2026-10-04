@@ -62,6 +62,7 @@ Three options are understood:
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
 - `:tags: hide-input` carries cell metadata. It is stored and round-tripped but not otherwise interpreted at present.  
+- `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
 A fourth form exists for a single expression in the middle of a sentence: the `{eval}` role. `` {eval}`2 + 2` `` renders as its value in the text flow, and is re-evaluated whenever a cell runs, so it follows the state of the session. It reads the document's own namespace, described next.  
 

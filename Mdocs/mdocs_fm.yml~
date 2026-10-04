@@ -1,0 +1,24 @@
+title: A title
+subtitle: Mystral Editor
+authors:
+  - jfbercher
+  - with a draft by Claude code
+date: 2026-09-30
+license: GPL-3.0-or-later
+github: https://github.com/jfbercher/Mystral-Editor
+settings:
+    myst_to_tex:
+        code_style: listings
+    output_stderr: remove
+    output_matplotlib_strings: remove
+exports:
+  - format: docx
+  - format: pdf
+    template: arxiv_nips
+    article_type: article
+    chapters: []
+numbering:
+  headings: true # activate headings numbering
+  equations: true 
+  figure: true
+    #template: Fig. %s # Define the prefix
