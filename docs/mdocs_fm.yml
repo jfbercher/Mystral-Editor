@@ -3,9 +3,6 @@ version: 1
 project:
   title: Mystral Editor
   subtitle: Mystral Editor
-  #authors:
-  #  - name: jfbercher
-  #  - name: (with a draft by Claude code)
   date: 2026-10-04
   license: GPL-3.0-or-later
   github: https://github.com/jfbercher/Mystral-Editor
