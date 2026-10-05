@@ -1,3 +1,4 @@
+
 [![License](https://img.shields.io/pypi/l/labquizbundle.svg)](https://pypi.org/project/labquizbundle/)
 [![Documentation Status](https://readthedocs.org/projects/mystral-editor/badge/?version=latest)](https://mystral-editor.readthedocs.io/en/latest/)   
 
@@ -11,7 +12,11 @@ Sponsor:
 
 [Mystral Editor](https://github.com/jfbercher/Mystral-Editor) begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder). 
 
- 📑 Mystral Documentation available at [readthedocs](https://mystral-editor.readthedocs.io/en/latest/).
+
+---
+👉🏼 📑 **[Mystral Documentation available at readthedocs](https://mystral-editor.readthedocs.io/en/latest/)**.
+
+--- 
 
 ## What distinguishes Mystral
 
@@ -22,7 +27,7 @@ Sponsor:
 
 ## Scientific authoring
 
-Mystral provides full **scientific authoring** with KaTeX-rendered and automatically numbered LaTeX equations, document-specific macros, configurable numbering for headings, figures, tables, equations,... , and live cross-references with hover previews. Per-document **BibTeX bibliographies**, footnotes, and enhanced, collapsible admonitions (`note`, `tips`, (`warning`, `theorem`, `exercise`, `solution`, etc.) are also supported.
+Mystral provides full **scientific authoring** with KaTeX-rendered and automatically numbered LaTeX equations, document-specific macros, configurable numbering for headings, figures, tables, equations,... , and live cross-references with hover previews. Per-document **BibTeX bibliographies**, footnotes, and enhanced, collapsible admonitions (`note`, `tips`, `warning`, `theorem`, `exercise`, `solution`, etc.) are also supported.
 
 ## Executable content
 
