@@ -50,7 +50,23 @@ lengthen the outer fence.
 This work's central addition is a shared numbering and cross-reference system.
 Every directive below can take a `(label)=` anchor or a `:label:` option, gets a number when its kind is numbered, and can be pointed at from `{ref}`, `{numref}` or a `[](#label)` link. Which kinds are numbered, and under which words, is set by the `data_directives` registry in `config.json` — see [customisation](customisation.md). 
 👉🏼 This work resolves labels through a document-wide reference map. Anchors are posed upstream (through `:name:` option) but links do not redirect to the element - a numbered class is also posed but has no effect). There was no support for equations. The document-wide reference map enables a reference to remain correct across the chunked rendering (which breaks upstream, since the markdown-it-docutils uses local counters -- chunked rendering has the interest of speed and potential progressive rendering). Every numbered kind below is supported in the current implementation (numbering was not supported Upstream). 
-Roles, presented [](#Roles), also follow the same logic. 
+Roles, presented [](#Roles), also follow the same logic.
+
+A `[](#label)` link with no text of its own is filled in entirely — "Figure 3",
+"(2)", and so on. A link that carries its own text may place the target's values
+in it, with the placeholders mystmd defines:
+
+| Placeholder | Inserts |
+|---|---|
+| `{number}` | The number of the target. |
+| `%s` | The same, in its legacy spelling. |
+| `{name}` | The name of the target: the text of the heading, the caption when it has one, and the label itself when it has neither. |
+
+```
+[Exercise {number}](#my-exercise)      ->  Exercise 4
+[see {name}](#sec:method)              ->  see Method and materials
+```
+
 
 :::{table} Directives's origins
 :label: directives_origins
@@ -85,6 +101,8 @@ All come from the library and are all rewritten here: they accept an optional **
 :::
 
 The `-start` / `-end` pairs open and close a numbered block around arbitrary content, for cases where the body cannot be nested inside a directive. The `solution` refers back to the exercise it answers rather than carrying a number of its own.
+
+A reference to a solution is therefore written with the exercise's number: `[](#my-solution)` and `` {ref}`my-solution` `` both render as *Solution to Exercise 1*. The joining word comes from `data_directives.solution.refJoiner` in `config.json` (`"to"` by default), and the two names from the `label` of the `solution` and `exercise` entries, so a document in another language renames all three. A solution whose exercise has no number shows the bare word.
 
 ### Executable content
 

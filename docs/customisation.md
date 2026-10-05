@@ -138,6 +138,8 @@ Two conditions must hold before a file can be exported, and myst provides neithe
 | `numbered` | Whether instances receive a number. |
 | `caption` | Where the caption comes from: `"arg"` (the directive argument), `"body"`, or `"both"`. |
 | `argIsLabel` | When true, the directive's argument is its label rather than its caption. |
+| `reference` | When true, the directive's argument names another target rather than being a caption — the `solution` case, which takes the number of the exercise it answers. |
+| `refJoiner` | Read on the `solution` entry only: the word between the two names in a reference, *Solution **to** Exercise 1*. Defaults to `"to"`. |
 
 ```json
 {

@@ -7,6 +7,14 @@ import { getLabelledDirectives } from "../config";
 
 
 const LABELLED_DIRECTIVES = getLabelledDirectives();
+
+/**
+ * Joins a solution to its exercise: "Solution <joiner> Exercise 1". A word, so
+ * it lives beside the labels it is written with rather than inside the display
+ * function; `data_directives.solution.refJoiner` in config.json overrides it,
+ * which is what a document in another language needs.
+ */
+const SOLUTION_REF_JOINER = LABELLED_DIRECTIVES.solution?.refJoiner ?? "to";
 export const katexMacros = {};
 
 // --- multitabs
@@ -161,6 +169,20 @@ export function refDisplayText(info, state) {
   const currentLabel = kindLabel[info.name] ?? kindLabel[info.kind] ?? info.kind;
   // const currentLabel = kindLabel[info.kind] ?? info.kind;
   const isNumberingEnabled = numberingEnabled[info.kind] ?? false;
+
+  // A solution carries no number of its own -- it is not a numbered kind -- it
+  // is named after the exercise it answers: "Solution to Exercise 1". Without
+  // this it fell through to the branch below and came out as "Solution ??",
+  // which is what an unnumbered kind is supposed to look like but says nothing
+  // here. The exercise's number is already inherited by the scan (scanTargets),
+  // and the two words come from the directive table, so a document that renames
+  // "Exercise" renames it here too.
+  if (info.kind === "solution") {
+    const source = info.reference ? state.env?.refMap?.byLabel?.get(info.reference) : null;
+    if (!source || source.number == null || source.number === "") return currentLabel;
+    const sourceLabel = kindLabel[source.name] ?? kindLabel[source.kind] ?? source.kind;
+    return `${currentLabel} ${SOLUTION_REF_JOINER} ${sourceLabel} ${source.number}`;
+  }
 
   // Numbering explicitly disabled
   if (!isNumberingEnabled) {
@@ -371,14 +393,19 @@ const markdownItMath = (md, editorId) => {
           textToken.content = refDisplayText(info, state);//info.kind === "fig" ? `Figure ${info.number}` : `(${info.number})`;
           blockToken.children.splice(i + 1, 0, textToken);
           i++;
-        } else if (next && next.type === "text" &&
-          (next.content.includes("{number}") || next.content.includes("%s"))) {
-
-          // Link with explicit text containing {number} or %s:
-          // we replace the placeholder with the number
+        } else if (
+          next &&
+          next.type === "text" &&
+          (next.content.includes("{number}") || next.content.includes("{name}") || next.content.includes("%s"))
+        ) {
+          // Link with an explicit text holding a placeholder, as mystmd defines
+          // them: {number} (or its legacy spelling %s) for the number of the
+          // target, {name} for its name -- the text of the heading, the caption
+          // when the target has one, and the label itself when it has neither.
           next.content = next.content
             .replace(/\{number\}/g, String(info.number))
-            .replace(/%s/g, String(info.number));
+            .replace(/%s/g, String(info.number))
+            .replace(/\{name\}/g, String(info.title || label));
         }
       }
     });
@@ -480,6 +507,13 @@ md.core.ruler.push("external_link_title", (state) => {
             } else if (tok.meta.kind === "ref" && tok.meta.value) {
               // value contient le texte du lien à compléter par le titre
               textTok.content = tok.meta.value + ' ' + info.title
+            } else if (tok.meta.kind === "ref") {
+              // {ref}`label` with no text of its own. The library resolves it to
+              // the target's title through its own, chunk-local reference table,
+              // which finds nothing here -- hence a reference that rendered as
+              // nothing at all. A target without a title, a solution typically,
+              // falls back to the text a bare [](#label) would produce.
+              textTok.content = info.title || refDisplayText(info, state);
             } else if (tok.meta.kind === "cite" && tok.meta.value) {
               // value contient le texte du lien à compléter par le titre
               textTok.content = tok.meta.value + ' ' + info.title
@@ -490,6 +524,13 @@ md.core.ruler.push("external_link_title", (state) => {
               textTok.content = tok.meta.value
                 .replace(/%s/g, String(info.number))
                 .replace(/\{number\}/g, String(info.number));
+            } else if (tok.meta.kind === "numref") {
+              // {numref}`label` with no text of its own -- the same as a bare
+              // [](#label): "Exercise 1", "Figure 3", and for a solution the
+              // number of the exercise it answers. Same cause as the {ref} case
+              // above: the library resolves this through its chunk-local table,
+              // which finds nothing here, so the reference rendered as nothing.
+              textTok.content = refDisplayText(info, state);
             }
           }
           else {
