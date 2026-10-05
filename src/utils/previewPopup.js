@@ -91,6 +91,51 @@ const popupByRoot = new WeakMap();
 
 const HIDE_DELAY = 150;
 
+/**
+ * Neutralises what the preview's own class says about being a pane.
+ *
+ * The content of a popup is wrapped in the preview's styled-components class so
+ * that it is styled like the document -- admonitions as boxes, figures with
+ * their captions, tables with their rules. That class also carries the panel's
+ * chrome, which has no business here: its height, its scrolling, its border and
+ * its background. Inline, so it wins over the class whatever the sheet order.
+ */
+const POPUP_CONTENT_RESET =
+  "height:auto;max-height:none;overflow:visible;background:transparent;border:0;box-shadow:none;padding:0;border-radius:0";
+
+/**
+ * Wrap rendered HTML so that it is styled as it is in the preview.
+ *
+ * The popup is a sibling of the preview, not a descendant: styled-components
+ * writes descendant selectors prefixed by the generated class, so none of them
+ * reached it, and an admonition came out as its bare text with no box around
+ * it. Borrowing the class is enough -- the markup already holds everything,
+ * since the preview map stores each element's outerHTML.
+ */
+function styledAsPreview(html, root) {
+  const previewEl = root.querySelector?.(".myst-preview");
+  if (!previewEl?.className) return html;
+  return `<div class="${previewEl.className}" style="${POPUP_CONTENT_RESET}">${html}</div>`;
+}
+
+/**
+ * Where the popup is attached.
+ *
+ * Beside the preview, not at the root of the shadow tree. Attached to the root
+ * it was outside the container the preview lives in, and inherited none of the
+ * theme variables declared on it -- `var(--green-500)` resolved to nothing, so
+ * an admonition came out with no colour at all, white on white for the kinds
+ * whose title is light. Being a sibling of the preview puts it back under the
+ * same ancestry, for the variables and for anything else scoped to it.
+ *
+ * It stays out of the flow (`position: absolute` in the sheet), so a parent
+ * laid out in flex or grid does not count it as one more column -- the mistake
+ * made with the completion tooltips, which produced an empty third panel.
+ */
+function popupMountPoint(root) {
+  return root.querySelector?.(".myst-preview")?.parentElement ?? root;
+}
+
 function popupStateFor(root) {
   let state = popupByRoot.get(root);
   if (state?.el.isConnected) return state;
@@ -98,7 +143,14 @@ function popupStateFor(root) {
   const el = document.createElement("div");
   el.className = "myst-preview-popup";
   el.style.display = "none";
-  root.appendChild(el);
+  // Being a sibling of the preview means being a child of the flex wrapper,
+  // whose `& > * { min-height: 500px }` gives the panes their size. The popup is
+  // not a pane: it is as tall as what it shows. Inline rather than in the sheet
+  // because both selectors weigh the same and the order of the sheets would
+  // decide the winner.
+  el.style.minHeight = "0";
+  el.style.height = "auto";
+  popupMountPoint(root).appendChild(el);
   state = { el, showTimeout: null, hideTimeout: null };
 
   // Attached here rather than at setup time: the element did not exist yet when
@@ -147,7 +199,7 @@ export function setupPreviewPopups(root, text) {
       const html = resolvePreviewHtml(id, text);
       if (!html) return;
 
-      state.el.innerHTML = html;
+      state.el.innerHTML = styledAsPreview(html, root);
       positionPopup(state.el, target.getBoundingClientRect(), root);
     }, showDelay);
   });
