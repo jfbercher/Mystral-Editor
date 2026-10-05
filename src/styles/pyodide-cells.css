@@ -9,7 +9,10 @@
  * Colours come from the --pyodide-* variables, documented in
  * Mdocs/myst-editor-css-variables.md.
  */
-.pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-radius:6px;overflow:hidden;background:var(--pyodide-cell-bg,#f2f6fc);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
+/* The gap below a cell separates it from the text that follows in the Preview.
+   The inline widget sets its own margins, with !important, so it is unaffected;
+   --pyodide-cell-gap is there for custom.css. */
+.pyodide-wrapper{--pyodide-cell-font-size:0.8rem;box-sizing:border-box;margin:0 0 var(--pyodide-cell-gap,1rem);border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-radius:6px;overflow:hidden;background:var(--pyodide-cell-bg,#f2f6fc);color:var(--color-foreground-primary,#1f2328);font:var(--pyodide-cell-font-size) ui-monospace,SFMono-Regular,Menlo,monospace}
 .pyodide-header,.pyodide-status-bar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--pyodide-cell-bg,#f2f6fc);filter:brightness(0.97);border-bottom:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));gap:.5rem}
 .pyodide-status-bar{border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));border-bottom:0;min-height:1.6rem;flex-wrap:wrap;row-gap:.15rem}
 /* While a cell runs, redefining --pyodide-cell-bg on the wrapper tints the
@@ -49,8 +52,11 @@
 .pyodide-output[hidden]{display:none}
 .pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
 .pyodide-error,.pyodide-stderr{color:#cf222e}
-/* width is set per cell from :figwidth:, so only the ceiling is here. */
-.pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0}
+/* width is set per cell from :figwidth:, so only the ceiling is here.
+   zoom-in says the figure opens in the full-screen viewer on click; it is in the
+   sheet rather than on the element so that a figure restored from a sidecar,
+   injected as raw HTML, says the same thing. */
+.pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0;cursor:zoom-in}
 .pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
 .pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap}
