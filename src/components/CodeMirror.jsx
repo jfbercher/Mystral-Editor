@@ -431,6 +431,7 @@ const tA = performance.now();
           getBibEntries: () => text.bibArray,
         })
         .useMystComments()
+        .useOrphanFenceCheck()
         .useFoldKeys()
         .useExceptionSink(error)
         .useLogger(logger)

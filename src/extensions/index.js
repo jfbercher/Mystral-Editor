@@ -29,6 +29,7 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
 import { yamlSchema } from "./yamlSchema";
+import { orphanFence, orphanFenceTheme } from "./orphanFence";
 import { CollaborationClient } from "../collaboration";
 import { inlinePreview } from "./inlinePreview";
 import { Autolink, Strikethrough } from "@lezer/markdown";
@@ -206,6 +207,15 @@ export class ExtensionBuilder {
     return this;
   }
 
+
+  /**
+   * Underline a closing fence that closes nothing -- the symptom of a nesting
+   * written with equal fence lengths. See orphanFence.js.
+   */
+  useOrphanFenceCheck() {
+    this.extensions.push(orphanFence, orphanFenceTheme);
+    return this;
+  }
 
   useMystCompletions(providers) {
     this.extensions.push(mystCompletions(providers));
