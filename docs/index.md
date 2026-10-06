@@ -3,7 +3,7 @@
 
 These few pages contain documentation and notes for the Mystral Editor (work in progress).
 
-- [Mystral Editor - Presentation](presentation.md>) introduces the editor and its features.
+- [Mystral Editor - Presentation](presentation.md) introduces the editor and its features.
 
 Then a series of deeper and more technical notes follows:
 
