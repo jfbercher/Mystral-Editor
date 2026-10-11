@@ -6,6 +6,7 @@ import { scrollToPos, scrollToVirtualLine } from "../utils";
 import { numberHeadings } from "../utils/headingNumbering";
 // For drag & drop of sections
 import { moveSectionInText } from "../utils/sectionReorder";
+import { headingInlineHtml } from "../utils/headingInline";
 
 const Wrapper = styled.div`
   background-color: var(--panel-bg);
@@ -104,6 +105,10 @@ function findSiblingsArray(nodes, target, parentChildren = nodes) {
 
 
 function Heading({ heading, dragState, setDragState, onDrop }) {
+  // Read here rather than threaded through the recursion: an entry shows the
+  // heading as the document renders it -- emphasis, code, maths -- and the tree
+  // only holds the source text.
+  const { text } = useContext(MystState);
   const isDragged = dragState.dragged === heading;
   const isDropBefore = dragState.overNode === heading && dragState.overPosition === "before";
   const isDropAfter = dragState.overNode === heading && dragState.overPosition === "after";
@@ -167,7 +172,7 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
         data-heading-pos={heading.pos}
       >
         {heading.number ? `${heading.number} ` : ""}
-        {heading.text}
+        <span dangerouslySetInnerHTML={{ __html: headingInlineHtml(text?.md?.value, heading.text) }} />
       </span>
       {children}
     </li>
@@ -193,7 +198,10 @@ export const TableOfContents = ({ compact = false }) => {
   );
 
   function handleClick(ev) {
-    const posAttr = ev.target?.dataset?.headingPos;
+    // closest, not the target itself: the entry now holds rendered markup, so a
+    // click can land on a <strong> or a KaTeX span inside the span that carries
+    // the position, and reading the target's own dataset found nothing.
+    const posAttr = ev.target?.closest?.("[data-heading-pos]")?.dataset?.headingPos;
     if (!posAttr) return;
     // "v<line>" is a heading of an included file: a virtual line, which
     // addresses the preview but nothing in the editor.

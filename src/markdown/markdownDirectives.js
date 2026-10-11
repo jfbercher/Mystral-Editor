@@ -1,3 +1,4 @@
+import { headingInlineHtml } from "../utils/headingInline";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
 import IMurMurHash from "imurmurhash";
 
@@ -865,7 +866,7 @@ function tocScope(tree, context, line) {
 }
 
 /** Recursively builds the nested <ul> HTML with links. */
-function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1) {
+function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1, md = null) {
   if (!nodes?.length || depth > maxDepth) return "";
   const items = nodes
     .filter((n) => !n.isTitle)
@@ -877,9 +878,11 @@ function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1) {
         : "";
       const children =
         node.children?.length && depth + 1 <= maxDepth
-          ? buildTocList(node.children, maxDepth, sectionLabelMap, depth + 1)
+          ? buildTocList(node.children, maxDepth, sectionLabelMap, depth + 1, md)
           : "";
-      return `<li><a href="#${escapeHtml(anchor)}">${num}${escapeHtml(node.text)}</a>${children}</li>`;
+      // The heading tree stores the source text, so an entry showed its markup
+      // as written -- asterisks, backticks, dollars. Rendered inline here.
+      return `<li><a href="#${escapeHtml(anchor)}">${num}${headingInlineHtml(md, node.text)}</a>${children}</li>`;
     })
     .join("\n");
   return `<ul>\n${items}\n</ul>`;
@@ -937,7 +940,7 @@ class TocDirective extends Directive {
 
     // Depth counts levels below the context, so a sectioned toc with :depth: 1
     // lists that section's direct subsections.
-    const listHtml = buildTocList(scoped, maxDepth, sectionLabelMap, 1);
+    const listHtml = buildTocList(scoped, maxDepth, sectionLabelMap, 1, this.state?.md);
 
     const classAttr = ["toc", ...classes].join(" ");
     const idAttr = labelId ? ` id="${escapeHtml(labelId)}"` : "";
