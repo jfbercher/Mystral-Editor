@@ -22,6 +22,26 @@ async function areHandlesEqual(handleA, handleB) {
   return handleA === handleB;
 }
 
+/**
+ * Matches a DOM keydown against a shortcut written in CodeMirror notation
+ * ("Mod-Shift-s"), so the app shortcuts can be recognised outside the editor.
+ * Mod is Cmd on macOS and Ctrl elsewhere, as CodeMirror resolves it.
+ */
+function matchesShortcut(ev, spec) {
+  if (!spec || !ev.key) return false;
+  const parts = spec.split("-");
+  const key = parts.pop();
+  const mods = parts.map((m) => m.toLowerCase());
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
+  const primary = isMac ? ev.metaKey : ev.ctrlKey;
+  if (mods.includes("mod") !== primary) return false;
+  if (mods.includes("ctrl") && !ev.ctrlKey) return false;
+  if ((mods.includes("cmd") || mods.includes("meta")) && !ev.metaKey) return false;
+  if (mods.includes("shift") !== ev.shiftKey) return false;
+  if (mods.includes("alt") !== ev.altKey) return false;
+  return ev.key.toLowerCase() === key.toLowerCase() || ev.code === `Key${key.toUpperCase()}`;
+}
+
 export class TabManager {
   constructor(editorOptions = {}) {
     this.openTabs = new Map();
@@ -38,6 +58,31 @@ export class TabManager {
   async init() {
     document.getElementById("new-tab-button")?.addEventListener("click", () => {
       this.openTab();
+    });
+
+    // The app shortcuts are registered in the editor's keymap, so they only
+    // fire while CodeMirror has focus: pressing them with the preview pane (or
+    // the tab bar) active did nothing.  This fallback runs the same actions on
+    // the active tab when no one else has handled the event -- CodeMirror calls
+    // preventDefault on the keys it owns, so the two never both fire.
+    document.addEventListener("keydown", (ev) => {
+      if (ev.defaultPrevented || ev.repeat) return;
+      const tabInfo = this.openTabs.get(this.activeTabId);
+      if (!tabInfo?.mounted) return;
+      const { save, open, newTab } = config.shortcuts;
+      if (matchesShortcut(ev, save)) {
+        ev.preventDefault();
+        tabInfo.tabState.smartSave()?.catch?.((err) => console.error("Save error:", err));
+      } else if (matchesShortcut(ev, open)) {
+        ev.preventDefault();
+        (async () => {
+          const handle = await tabInfo.tabState.selectMarkdownFile();
+          if (handle) await this.openFileHandleInTab(handle);
+        })().catch((err) => console.error("Open file error:", err));
+      } else if (matchesShortcut(ev, newTab)) {
+        ev.preventDefault();
+        setTimeout(() => this.openTab(), 0);
+      }
     });
 
     await this.restoreTabs();
