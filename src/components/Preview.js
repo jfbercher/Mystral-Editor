@@ -562,7 +562,15 @@ aside[class="admonition"] {
   input[type="checkbox"] {
     margin: 0;
     margin-right: 8px;
-    transform: translateY(2px);
+    /* The default baseline alignment of a form control is engine-dependent
+       (WKWebView under Tauri sits lower than Blink), so align on the middle of
+       the x-height instead of nudging the baseline by a fixed amount. */
+    vertical-align: middle;
+  }
+
+  /* A task item carries its own box: drop the list marker, as mystmd does. */
+  li:has(> label > input[type="checkbox"]) {
+    list-style: none;
   }
 
   figcaption {

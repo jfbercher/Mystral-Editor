@@ -110,6 +110,7 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
     ".cm-widgetBuffer:has(+ .cm-inline-rendered-md), .cm-inline-rendered-md + .cm-widgetBuffer": {
       display: "none",
     },
+    ".cm-inline-rendered-md input[type=checkbox]": { margin: "0 8px 0 0", verticalAlign: "middle" },
   });
 
   const minLineIn = (lineOfId, el, { skipNestedLists = false } = {}) => {
@@ -206,7 +207,9 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
           if (nested.tagName === "UL" || nested.tagName === "OL") nested.remove();
         }
         const depth = Math.max(1, listDepthOf(li));
-        const listStyle = types[(depth - 1) % 3];
+        // A task item shows its checkbox where the marker would be.
+        const isTask = !!li.querySelector(':scope > label > input[type="checkbox"]');
+        const listStyle = isTask ? "none" : types[(depth - 1) % 3];
         const pad = `${listPadEm(depth)}em`;
         let liAttrs = "";
         if (ordered) {
