@@ -141,6 +141,54 @@ const markdownReplacer = (transforms, cache) => (markdownIt) => {
  * A transformation which will be applied to the content of a MyST role specified as `target`
  */
 
+/**
+ * Three inline roles markdown-it-docutils does not ship: small caps, underline
+ * and struck-out text. Written in the shape its own `sub` and `sup` use -- an
+ * opening token, a text token, a closing one -- so the default renderer prints
+ * them and nothing has to be escaped by hand.
+ *
+ * The content is not parsed as Markdown, exactly as `sub` and `sup` do not parse
+ * theirs: `{u}` is for a run of text, not for a nested construction.
+ */
+const wrappingRoleOld = (tag, className) =>
+  class extends Role {
+    run({ content }) {
+      const open = new this.state.Token(`${tag}_open`, tag, 1);
+      if (className) open.attrSet("class", className);
+      const text = new this.state.Token("text", "", 0);
+      text.content = content;  //state.md.inline.parse
+      const close = new this.state.Token(`${tag}_close`, tag, -1);
+      return [open, text, close];
+    }
+  };
+
+const wrappingRole = (tag, className) =>
+  class extends Role {
+    run({ content }) {
+      const open = new this.state.Token(`${tag}_open`, tag, 1);
+
+      if (className) open.attrSet("class", className);
+
+      const children = [];
+      this.state.md.inline.parse(
+        content,
+        this.state.md,
+        {},
+        children
+      );
+
+      const close = new this.state.Token(`${tag}_close`, tag, -1);
+
+      return [open, ...children, close];
+    }
+  };
+
+
+/** Small caps have no element of their own: a class, styled in preview.css. */
+const SmallCaps = wrappingRole("span", "smallcaps");
+const Underline = wrappingRole("u");
+const Deleted = wrappingRole("del");
+
 const CUSTOM_ROLE_RULE = "custom_role";
 
 /**
@@ -171,7 +219,7 @@ const useCustomRoles = (transforms, cache) => (markdownIt) => {
       roles[name] = role;
       return roles;
     }, {});
-  customRoles = { ...customRoles, ...{cite: Cite, eval: EvalRole}}
+  customRoles = { ...customRoles, ...{ cite: Cite, eval: EvalRole, sc: SmallCaps, u: Underline, del: Deleted } };
 
   // Usually a markdownIt renderer rule would escape all html code. Here we create a rule
   // which explicitly does nothing so that all html returned by transforms is rendered.
@@ -257,6 +305,7 @@ export function stripMystComments(src) {
     }
     if (fence) continue;
     if (/^[ \t]*%/.test(line)) lines[i] = "";
+    if (/^[ \t]*\+{3}/.test(line)) lines[i] = ''; //'<hr style="height: 0 !important; border: none !important; border-top: 0.5px solid #ccc !important; padding: 0; margin: 1em 0;">'; // remove the display of cells separations (ipynb conversion)
   }
   return lines.join("\n");
 }

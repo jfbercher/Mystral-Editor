@@ -21,6 +21,11 @@
    box-sizing: border-box !important;
  }
 
+ /* {sc}`…` has no element of its own, only this class (markdownReplacer.js). */
+ .smallcaps {
+   font-variant: small-caps;
+ }
+
  .myst-preview-popup {
    position: absolute;
    z-index: 1000;

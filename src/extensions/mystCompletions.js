@@ -21,7 +21,7 @@ const ROLES = [
   //{ name: "cite:p", detail: "Parenthetical citation" },
   //{ name: "cite:t", detail: "Textual citation" },
   //{ name: "code", detail: "Inline code" },
-  //{ name: "del", detail: "Deleted text" },
+  { name: "del", detail: "Struck-out text" },
   //{ name: "doc", detail: "Link to another document" },
   //{ name: "download", detail: "Download link" },
   { name: "eq", detail: "Reference to a numbered equation" },
@@ -30,10 +30,11 @@ const ROLES = [
   { name: "numref", detail: "Numbered reference" },
   { name: "ref", detail: "Cross-reference" },
   //{ name: "si", detail: "SI unit" },
+  { name: "sc", detail: "Small caps" },
   { name: "sub", detail: "Subscript" },
   { name: "sup", detail: "Superscript" },
   //{ name: "term", detail: "Glossary term" },
-  //{ name: "underline", detail: "Underlined text" },
+  { name: "u", detail: "Underlined text" },
 ];
 
 /**
