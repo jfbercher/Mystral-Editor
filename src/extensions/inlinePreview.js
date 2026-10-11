@@ -181,12 +181,17 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
       if (parts.length <= 1) {
         const startLine = parts[0]?.line ?? minLineIn(lineOfId, contentEl, { skipNestedLists: true });
         if (startLine === Infinity || byLine.has(startLine)) return;
-        byLine.set(startLine, { html: toHtml([...el.childNodes]), listDepth: depth });
+        byLine.set(startLine, { html: toHtml([...el.childNodes], true), listDepth: depth });
         return;
       }
-      for (const part of parts) {
-        if (!byLine.has(part.line)) byLine.set(part.line, { html: toHtml(part.nodes), listDepth: depth });
-      }
+      // `first` says whether this part opens the block. It matters for a list
+      // item spread over several source lines: each part is wrapped in a list of
+      // its own to keep its indent, so without this they each carried a marker
+      // and one entry showed as many bullets as it had lines -- while the
+      // Preview, which does not split anything, showed one.
+      parts.forEach((part, i) => {
+        if (!byLine.has(part.line)) byLine.set(part.line, { html: toHtml(part.nodes, i === 0), listDepth: depth });
+      });
     };
 
     const addListItems = (listEl) => {
@@ -209,10 +214,14 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
           nextNum = num + 1;
           liAttrs = ` value="${num}"`;
         }
-        const toHtml = (nodes) => {
+        const toHtml = (nodes, first = true) => {
           const tmp = document.createElement("div");
           for (const n of nodes) tmp.appendChild(n.cloneNode(true));
-          return `<${tag} class="cm-inline-list-item" style="list-style-type:${listStyle};padding-left:${pad}"><li${liAttrs}>${tmp.innerHTML}</li></${tag}>`;
+          // A continuation line keeps the structure and the indent of the item,
+          // so the text stays aligned, and loses only the marker.
+          const style = first ? listStyle : "none";
+          const attrs = first ? liAttrs : "";
+          return `<${tag} class="cm-inline-list-item" style="list-style-type:${style};padding-left:${pad}"><li${attrs}>${tmp.innerHTML}</li></${tag}>`;
         };
         addSoftbroken(clone, depth, toHtml);
         for (const nested of li.children) {
