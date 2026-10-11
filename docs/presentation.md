@@ -61,6 +61,7 @@ A dedicated menu bar handles documents on the local file system:
 - **Working directory management**: used for local image path resolution
 - **Document statistics** (word, paragraph, line and character counts)
 - **Zoom** (Cmd/Ctrl +/-/0) in Tauri mode
+- **Jupyter notebook import and export**: a `.ipynb` file can be opened directly, converted to MyST Markdown on the fly, and *Save As* can write the document back to `.ipynb` -- code and text are carried over, cell outputs are not
 
 In web mode (outside Tauri), file access goes through the browser File System Access API (Chrome/Edge) with IndexedDB for tab-state persistence.
 
@@ -87,7 +88,7 @@ Each tab's state (file name, dirty flag, Yjs comments) is saved and restored acr
 
 This is a major contribution of Mystral Editor over upstream.
 
-### Equations and Mathematics
+### Equations and *Mathematics*
 
 LaTeX equations are rendered via [KaTeX](https://katex.org/) and [markdown-it-texmath](https://github.com/goessner/markdown-it-texmath). Per-editor math macro maps are supported. Numbered equation blocks and cross-references (`{eq}`, `{numref}`) are resolved automatically.
 

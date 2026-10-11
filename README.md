@@ -43,7 +43,7 @@ A **collapsible document outline** makes it possible to navigate and *reorder se
 
 ## Export
 
-Mystral uses **`mystmd` for PDF, LaTeX, and Word exports**, with project-specific templates, and can produce self-contained HTML from the preview. MyST project commands (`build`, `start`) and inherited frontmatter from `myst.yml` are integrated into the application.
+Mystral uses **`mystmd` for PDF, LaTeX, and Word exports**, with project-specific templates, and can produce self-contained HTML from the preview. MyST project commands (`build`, `start`) and inherited frontmatter from `myst.yml` are integrated into the application. **Jupyter notebooks** can also be opened directly, converted to MyST Markdown on the fly, and written back out as `.ipynb` -- the conversion carries code and text, not cell outputs.
 
 ## Configuration and customization
 

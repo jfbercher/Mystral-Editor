@@ -48,6 +48,9 @@ The project file is still the place to write it once. When the document has no e
 ## Web build
 The web build has no myst, since it cannot execute local commands, so it offers the two things a page can do on its own, in the top bar: **Copy document as HTML** puts the rendered document on the clipboard, and **Print document as pdf** opens the browser's print dialogue, from which "*Save as PDF*" produces a file. Both are hidden in the desktop application, which has the export menu instead.
 
+## Jupyter notebooks
+A `.ipynb` file can be opened like any other document: it is converted to MyST Markdown as it is read, and *Save As* offers `.ipynb` among its formats to write one back. The conversion carries the code cells, their options and the prose; it does not carry the stored outputs, nor the kernel metadata, so a notebook written from the editor comes back with its cells unexecuted. Opening a notebook never modifies it: in the desktop application the editor works on a Markdown file beside it, which the first save creates, and in the browser the document starts out unattached, so the first save asks where to write it.
+
 ## PDF: which route to choose
 The two PDF routes are not the same thing, and the difference matters for a scientific document. Printing from the browser prints the preview: it is immediate, needs nothing installed, and gives you the document as the editor renders it. The command `myst build --pdf` goes through LaTeX and produces a typeset document — proper floats, a bibliography, a template that a journal may require — at the cost of a working mystmd and TeX installation.
 

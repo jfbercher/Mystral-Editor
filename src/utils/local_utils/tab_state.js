@@ -24,6 +24,7 @@ import {
   saveBackupFile
 } from './fs.js';
 import { loadSidecar, applySidecarOutputs, scheduleNamespaceRestore, saveSidecarWithNamespace, saveSidecarToFile } from "./sidecar.js";
+import { convertNotebookToMyst, convertMystToNotebook } from "../ipynb2mystLib.js";
 
 
 let timing_debug = false;
@@ -50,6 +51,22 @@ function getFileName(fileHandleOrPath) {
     return fileHandleOrPath.split('/').pop().split('\\').pop();
   }
   return fileHandleOrPath.name || config.defaultFileName;
+}
+
+// A Jupyter notebook opened in the editor is converted to MyST Markdown on the
+// fly.  The tab is then mounted on the sibling .md path (Tauri) or left without
+// a write target (web, where a FileSystemFileHandle cannot be renamed).  The
+// .ipynb itself is never written to except through an explicit "Save as", and
+// that export carries code and text only -- not outputs, not kernel metadata.
+function isNotebookFile(fileHandleOrPath) {
+  const name = typeof fileHandleOrPath === "string"
+    ? fileHandleOrPath
+    : (fileHandleOrPath?.name ?? "");
+  return /\.ipynb$/i.test(name);
+}
+
+function toMarkdownName(name) {
+  return name.replace(/\.ipynb$/i, ".md");
 }
 
 // Fonction utilitaire pour construire une clé de sauvegarde
@@ -265,7 +282,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       while (!tauriDialog) await new Promise(r => setTimeout(r, 50));
       const selected = await tauriDialog.open({
           multiple: false,
-          filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt", "yml", "yaml"] }]
+          filters: [{ description: "Markdown Files", name: "Markdown", extensions: ["md", "markdown", "txt", "yml", "yaml", "ipynb"] }]
         });
       if (selected) {
         localStorage.setItem(`storedFileHandle:${editorId}`, selected);
@@ -288,7 +305,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         return fallback;
       }
       const [fileHandle] = await window.showOpenFilePicker({
-        types: [{ description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown", ".txt"] } }],
+        types: [{
+          description: "Markdown & notebooks",
+          accept: { "text/markdown": [".md", ".markdown", ".txt"], "application/x-ipynb+json": [".ipynb"] },
+        }],
         multiple: false,
       });
       await set(`storedFileHandle:${editorId}`, fileHandle);
@@ -300,25 +320,44 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     try {
       if (isTauri) {
         // fileHandleOrPath est une chaîne de caractères (chemin d'accès absolu)
-        const textContent = await tauriFs.readTextFile(fileHandleOrPath);
+        let textContent = await tauriFs.readTextFile(fileHandleOrPath);
+        // A notebook is converted on the fly and the tab is mounted on the
+        // sibling .md path, which may not exist yet: the first save creates it
+        // and the notebook is left untouched.
+        let mountedPath = fileHandleOrPath;
+        if (isNotebookFile(fileHandleOrPath)) {
+          textContent = convertNotebookToMyst(textContent);
+          mountedPath = toMarkdownName(fileHandleOrPath);
+          let clash = false;
+          try { clash = await tauriFs.exists(mountedPath); } catch { /* best effort */ }
+          showToast(
+            clash
+              ? `Notebook converted to MyST Markdown. Careful: saving overwrites the existing ${getFileName(mountedPath)}.`
+              : `Notebook converted to MyST Markdown. Saving writes ${getFileName(mountedPath)}; the notebook is left untouched.`,
+            clash ? "error" : "success",
+            clash ? 0 : 6000,
+          );
+        }
         tab.fileLoaded = true;
         tab.lastLoadError = null;
-        tab.currentFileHandle = fileHandleOrPath;
-        tab.selectedFileHandle = fileHandleOrPath;
-        tab.currentFileName = getFileName(fileHandleOrPath);
-        tab.currentFileKey =  getFileKey(fileHandleOrPath);
+        tab.currentFileHandle = mountedPath;
+        tab.selectedFileHandle = mountedPath;
+        tab.currentFileName = getFileName(mountedPath);
+        tab.currentFileKey =  getFileKey(mountedPath);
         setEditorFileKey(editorId, tab.currentFileKey);
         clearEditorPythonSpace(editorId);
-        currentFileDir.value = typeof fileHandleOrPath === 'string'  
-          ? fileHandleOrPath.split('/').slice(0, -1).join('/')
+        currentFileDir.value = typeof mountedPath === 'string'  
+          ? mountedPath.split('/').slice(0, -1).join('/')
           : null;
-        localStorage.setItem(`storedFileHandle:${editorId}`, tab.currentFileHandle);
+        // Remember the file that actually exists on disk, so a restart reopens
+        // (and reconverts) the notebook rather than a .md that is not there yet.
+        localStorage.setItem(`storedFileHandle:${editorId}`, fileHandleOrPath);
         await tab.setSubtitle(tab.currentFileName);
         onFileChanged?.();
         // Simule l'objet File pour conserver la compatibilité de retour (.text())
         // Load sidecar synchronously before returning so the next render finds
         // restoredOutputCache already populated (no race with markdown render).
-        const _sidecar = await loadSidecar(fileHandleOrPath);
+        const _sidecar = await loadSidecar(mountedPath);
         if (_sidecar) {
           applySidecarOutputs(_sidecar, editorId);       // sync – populates restoredOutputCache
           scheduleNamespaceRestore(_sidecar);  // async fire-and-forget
@@ -334,6 +373,34 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
           return null;
         }
         const fileData = await fileHandleOrPath.getFile();
+        if (isNotebookFile(fileHandleOrPath)) {
+          // A FileSystemFileHandle's name is read-only, so the tab cannot be
+          // re-mounted on a sibling .md as it is under Tauri: it is left with no
+          // write target and the first save goes through "Save as".
+          const notebookText = convertNotebookToMyst(await fileData.text());
+          tab.fileLoaded = false;
+          tab.lastLoadError = null;
+          tab.currentFileHandle = null;
+          tab.selectedFileHandle = null;
+          tab.currentFileName = toMarkdownName(fileHandleOrPath.name);
+          tab.currentFileKey = getFileKey(fileHandleOrPath);
+          setEditorFileKey(editorId, tab.currentFileKey);
+          clearEditorPythonSpace(editorId);
+          await set(`storedFileHandle:${editorId}`, null);
+          await tab.setSubtitle(tab.currentFileName);
+          onFileChanged?.();
+          const nbSidecar = await loadSidecar(tab.currentFileKey);
+          if (nbSidecar) {
+            applySidecarOutputs(nbSidecar, editorId);
+            scheduleNamespaceRestore(nbSidecar);
+          }
+          showToast(
+            `Notebook converted to MyST Markdown. Use "Save as" to write ${tab.currentFileName}; the notebook is left untouched.`,
+            "success",
+            6000,
+          );
+          return { text: async () => notebookText };
+        }
         tab.fileLoaded = true;
         tab.lastLoadError = null;
         tab.currentFileHandle = fileHandleOrPath;
@@ -419,7 +486,9 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       const file = await tab.loadFileFromHandle(fileHandleOrPath);
       if (file) {
         await addRecentFileHandle(fileHandleOrPath);
-        await tab.setCurrentFile(fileHandleOrPath);
+        // A notebook has already been mounted (or deliberately left unbound) by
+        // loadFileFromHandle: rebinding here would point the tab at the .ipynb.
+        if (!isNotebookFile(fileHandleOrPath)) await tab.setCurrentFile(fileHandleOrPath);
         const content = await file.text();
         tab.setEditorText(content);
         tab.markSaved(content);
@@ -466,7 +535,11 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.saveCurrentDoc = async ({ skipSidecar = false } = {}) => {
-    const contentToSave = window.myst_editor[editorId].text;
+    const editorText = window.myst_editor[editorId].text;
+    // Belt and braces: a tab is never mounted on a notebook, but if one ever is
+    // (path param, restored handle), write notebook JSON rather than Markdown.
+    const notebookTarget = isNotebookFile(tab.currentFilePathParam || tab.currentFileHandle);
+    const contentToSave = notebookTarget ? convertMystToNotebook(editorText) : editorText;
 
     // Never write through a handle we never managed to read: the editor would
     // then be holding the new-file template, not that document's content.
@@ -477,12 +550,12 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
 
     if (tab.currentFilePathParam) {
       await saveFileToPathParam(tab.currentFilePathParam, contentToSave);
-      tab.markSaved(contentToSave);
+      tab.markSaved(editorText);
       await tab.saveCommentsForCurrentFile(); 
       console.log(`Saved (via path param): ${tab.currentFilePathParam}`);
     } else if (isTauri) {
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
-      tab.markSaved(contentToSave);
+      tab.markSaved(editorText);
       await tab.saveCommentsForCurrentFile();
       if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle, editorId).catch(e => console.warn('[sidecar] save failed:', e));
       showToast(`Save: ${tab.currentFileName} successful.`);
@@ -495,7 +568,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       const writable = await tab.currentFileHandle.createWritable();
       await writable.write(contentToSave);
       await writable.close();
-      tab.markSaved(contentToSave);
+      tab.markSaved(editorText);
       await tab.saveCommentsForCurrentFile(); 
       if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey, editorId).catch(e => console.warn('[sidecar] save failed:', e));
       showToast(`Save: ${tab.currentFileName} successful.`);
@@ -559,8 +632,18 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       try {
         const filePath = await tauriDialog.save({
           defaultPath: tab.currentFileName || "document.md",
-          filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt", "yaml", "yml"] }]
+          filters: [
+            { name: "Markdown", extensions: ["md", "markdown", "txt", "yaml", "yml"] },
+            { name: "Jupyter notebook", extensions: ["ipynb"] },
+          ]
         });
+        if (filePath && isNotebookFile(filePath)) {
+          // Export, not a move: the tab keeps editing its Markdown target,
+          // because the notebook we write carries no outputs.
+          await tauriFs.writeTextFile(filePath, convertMystToNotebook(content));
+          showToast(`Exported ${getFileName(filePath)} (code and text only: outputs are not included).`, "success", 6000);
+          return true;
+        }
         if (filePath) {
           await tauriFs.writeTextFile(filePath, content);
           await tab.setCurrentFile(filePath);
@@ -583,8 +666,18 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       try {
         const handle = await window.showSaveFilePicker({
           suggestedName: tab.currentFileName || "document.md",
-          types: [{ description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown",  "txt", "yaml", "yml"] } }],
+          types: [
+            { description: "Markdown Files", accept: { "text/markdown": [".md", ".markdown", ".txt", ".yaml", ".yml"] } },
+            { description: "Jupyter notebook", accept: { "application/x-ipynb+json": [".ipynb"] } },
+          ],
         });
+        if (isNotebookFile(handle)) {
+          const nbWritable = await handle.createWritable();
+          await nbWritable.write(convertMystToNotebook(content));
+          await nbWritable.close();
+          showToast(`Exported ${handle.name} (code and text only: outputs are not included).`, "success", 6000);
+          return true;
+        }
         await tab.setCurrentFile(handle);
         await addRecentFileHandle(handle);
         await tab.saveCurrentDoc();
@@ -596,7 +689,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     }
 
     // 3. Fallback Web basique (Firefox, Safari Web)
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const asNotebook = isNotebookFile(tab.currentFileName);
+    const blob = new Blob([asNotebook ? convertMystToNotebook(content) : content], {
+      type: asNotebook ? "application/x-ipynb+json" : "text/markdown;charset=utf-8",
+    });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = tab.currentFileName || "document.md";
