@@ -30,6 +30,7 @@ import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
 import { yamlSchema } from "./yamlSchema";
 import { orphanFence, orphanFenceTheme } from "./orphanFence";
+import { proofLabelCase, proofLabelCaseTheme } from "./proofLabelCase";
 import { CollaborationClient } from "../collaboration";
 import { inlinePreview } from "./inlinePreview";
 import { Autolink, Strikethrough } from "@lezer/markdown";
@@ -214,6 +215,16 @@ export class ExtensionBuilder {
    */
   useOrphanFenceCheck() {
     this.extensions.push(orphanFence, orphanFenceTheme);
+    return this;
+  }
+
+  /**
+   * Underline a label of the proof family that is not all lowercase: mystmd
+   * lowercases it in an export while the references to it keep their case.
+   * A workaround for an upstream bug; see proofLabelCase.js.
+   */
+  useProofLabelCaseCheck() {
+    this.extensions.push(proofLabelCase, proofLabelCaseTheme);
     return this;
   }
 

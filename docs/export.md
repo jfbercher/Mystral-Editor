@@ -50,6 +50,11 @@ What leaves the editor is the source, not the rendered preview: `mystmd` parses 
 
 This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair has no equivalent at all in `mystmd` and does not survive an export for now.
 
+### Labels of the proof family: lowercase only
+A theorem, a proposition or any other member of the proof family must be given a **lowercase** label in a document meant to be exported. `mystmd` writes its anchor in the `.tex` with the normalised form of the label, which is lowercased, while it writes every cross-reference with the label as it was typed: a `:label: My-Theorem` therefore produces `\label{my-theorem}` and `\ref{My-Theorem}` in the same file, LaTeX resolves neither, and the number comes out as `??` in the PDF. Headings, equations, figures and tables are not affected -- their handlers write the label unchanged.
+
+Nothing in the editor itself needs this, which is why the case is underlined in the source as a warning: everything resolves correctly in the preview, and the problem only appears in the exported document. This is a bug in `myst-to-tex` rather than a rule of MyST, so both the warning and this paragraph are meant to disappear once it is fixed upstream.
+
 ## Web build
 The web build has no myst, since it cannot execute local commands, so it offers the two things a page can do on its own, in the top bar: **Copy document as HTML** puts the rendered document on the clipboard, and **Print document as pdf** opens the browser's print dialogue, from which "*Save as PDF*" produces a file. Both are hidden in the desktop application, which has the export menu instead.
 

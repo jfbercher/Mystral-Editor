@@ -432,6 +432,7 @@ const tA = performance.now();
         })
         .useMystComments()
         .useOrphanFenceCheck()
+        .useProofLabelCaseCheck()
         .useFoldKeys()
         .useExceptionSink(error)
         .useLogger(logger)
