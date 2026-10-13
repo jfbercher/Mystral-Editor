@@ -113,32 +113,70 @@ const POPUP_CONTENT_RESET =
  * since the preview map stores each element's outerHTML.
  */
 function styledAsPreview(html, root) {
-  const previewEl = root.querySelector?.(".myst-preview");
+  const previewEl = previewPane(root);
   if (!previewEl?.className) return html;
-  return `<div class="${previewEl.className}" style="${POPUP_CONTENT_RESET}">${html}</div>`;
+  // Everything but our own hook: the generated classes are what carry the
+  // styles, while `myst-preview` is how the pane is found. Copied as it was,
+  // the wrapper made the popup look like a second preview pane to every
+  // querySelector in this file -- including the one choosing where to mount it,
+  // which then tried to append the popup into itself (HierarchyRequestError).
+  const styleClasses = previewEl.className.split(/\s+/).filter((c) => c && c !== "myst-preview").join(" ");
+  if (!styleClasses) return html;
+  return `<div class="${styleClasses}" style="${POPUP_CONTENT_RESET}">${html}</div>`;
 }
 
 /**
  * Where the popup is attached.
  *
- * Beside the preview, not at the root of the shadow tree. Attached to the root
- * it was outside the container the preview lives in, and inherited none of the
- * theme variables declared on it -- `var(--green-500)` resolved to nothing, so
- * an admonition came out with no colour at all, white on white for the kinds
- * whose title is light. Being a sibling of the preview puts it back under the
- * same ancestry, for the variables and for anything else scoped to it.
+ * Inside the panes, not at the root of the shadow tree. Attached to the root it
+ * was outside the container the panes live in, and inherited none of the theme
+ * variables declared on it -- `var(--green-500)` resolved to nothing, so an
+ * admonition came out with no colour at all, white on white for the kinds whose
+ * title is light. Any descendant of that container restores the ancestry, for
+ * the variables and for anything else scoped to it.
+ *
+ * Which pane, though, is not a detail: the modes hide a pane with
+ * `display: none` rather than unmounting it, so the preview's wrapper is still
+ * in the DOM in Inline mode -- and a popup put inside it is hidden with it,
+ * which is exactly how the popups disappeared from the inline preview. Hence
+ * the visibility test, and the editor's wrapper as the other home: the two are
+ * never hidden at the same time, and neither is positioned, so the popup keeps
+ * the same offset parent and `positionPopup` needs to know nothing about this.
  *
  * It stays out of the flow (`position: absolute` in the sheet), so a parent
  * laid out in flex or grid does not count it as one more column -- the mistake
  * made with the completion tooltips, which produced an empty third panel.
  */
+const isDisplayed = (el) => !!el && el.offsetParent !== null;
+
+/** The preview pane itself, never a popup that borrowed its classes. */
+function previewPane(root) {
+  for (const el of root.querySelectorAll?.(".myst-preview") ?? []) {
+    if (!el.closest?.(".myst-preview-popup")) return el;
+  }
+  return null;
+}
+
 function popupMountPoint(root) {
-  return root.querySelector?.(".myst-preview")?.parentElement ?? root;
+  const besidePreview = previewPane(root)?.parentElement;
+  if (isDisplayed(besidePreview)) return besidePreview;
+  const editorWrapper = root.getElementById?.("editor-wrapper") ?? root.querySelector?.("#editor-wrapper");
+  if (isDisplayed(editorWrapper)) return editorWrapper;
+  return besidePreview ?? editorWrapper ?? root;
 }
 
 function popupStateFor(root) {
   let state = popupByRoot.get(root);
-  if (state?.el.isConnected) return state;
+  if (state?.el.isConnected) {
+    // The mode can have changed since the popup was created, taking its host
+    // pane out of sight; moving the element keeps its listeners and its state.
+    const mount = popupMountPoint(root);
+    // Never into itself, whatever the mount point resolved to.
+    if (mount && mount !== state.el && !state.el.contains(mount) && state.el.parentElement !== mount) {
+      mount.appendChild(state.el);
+    }
+    return state;
+  }
 
   const el = document.createElement("div");
   el.className = "myst-preview-popup";
