@@ -1,5 +1,5 @@
 import MarkdownIt from "markdown-it";
-import { Directive, directivePlugin, Role, rolePlugin } from "markdown-it-docutils";
+import { Directive, directivePlugin, Role, rolePlugin, rolesDefault } from "markdown-it-docutils";
 import { escapeRE } from "markdown-it/lib/common/utils";
 import { Cite } from "../markdown/bibliography"
 import { EvalRole } from "../markdown/markdownPyodide"
@@ -220,6 +220,11 @@ const useCustomRoles = (transforms, cache) => (markdownIt) => {
       return roles;
     }, {});
   customRoles = { ...customRoles, ...{ cite: Cite, eval: EvalRole, sc: SmallCaps, u: Underline, del: Deleted } };
+  // The proof family's own reference role, under both of mystmd's spellings.
+  // It is an alias of {numref} there -- only the kind "ref" substitutes the
+  // target's title, every other kind goes through the numbered template -- so
+  // the same class answers for all three, and markdownMath resolves them alike.
+  customRoles = { ...customRoles, "prf:ref": rolesDefault.numref, "proof:ref": rolesDefault.numref };
 
   // Usually a markdownIt renderer rule would escape all html code. Here we create a rule
   // which explicitly does nothing so that all html returned by transforms is rendered.

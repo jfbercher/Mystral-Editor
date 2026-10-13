@@ -239,7 +239,17 @@ details.admonition {
   // THEOREM
   // ==========================================================
 
-  &.theorem {
+  /* The theorem-like statements of the proof family: one counter each (see
+     PROOF_FAMILY in config-defaults.js), but one and the same box. */
+  &.theorem,
+  &.corollary,
+  &.proposition,
+  &.property,
+  &.axiom,
+  &.conjecture,
+  &.observation,
+  &.criterion,
+  &.assumption {
     border: 3px solid var(--blue-50);
 
     & > header,

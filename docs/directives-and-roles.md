@@ -95,10 +95,14 @@ All come from the library and are all rewritten here: they accept an optional **
 
 | Directive | Origin |
 | --- | --- |
-| `proof`, `theorem`, `lemma`, `corollary`, `definition`, `example`, `remark`, `algorithm` | This work |
+| `proof:theorem`, `proof:lemma`, `proof:corollary`, `proof:proposition`, `proof:property`, `proof:axiom`, `proof:conjecture`, `proof:observation`, `proof:criterion`, `proof:assumption`, `proof:definition`, `proof:example`, `proof:remark`, `proof:proof`, `proof:algorithm` | This work |
 | `exercise`, `solution` | This work |
 | `exercise-start` / `exercise-end`, `solution-start` / `solution-end` | This work |
 :::
+
+These are the fifteen kinds mystmd knows, and each is also accepted under the `prf:` prefix and under its bare name -- `{prf:theorem}` and `{theorem}` are the same directive as `{proof:theorem}`, share its numbering and its label, and differ only in what they become outside the editor. `mystmd` registers these directives under `prf:<kind>` and, since version 1.11.0, under `proof:<kind>`; it knows no bare `{theorem}`, and an unknown directive loses its content at parse time, so a bare one disappears from a LaTeX, PDF or Word export without a trace in the document. The `proof:` form is therefore the one the editor proposes and the one to write; `prf:` is its equivalent for an older `mystmd`, and the bare names are kept for the documents that already use them.
+
+Numbering is configured per family under the unprefixed name: a single `theorem:` entry in the frontmatter governs the three spellings. Each statement counts on its own -- Theorem 1, Theorem 2, Proposition 1 -- with one exception: `lemma` shares the theorem counter, as it does in LaTeX. Putting two of them back on a single sequence is a matter of giving them the same `kind` in the registry. One difference with an exported PDF remains: LaTeX resets most of these counters at every section, numbering them 2.1 and 2.2, where the numbers here run through the document.
 
 The `-start` / `-end` pairs open and close a numbered block around arbitrary content, for cases where the body cannot be nested inside a directive. The `solution` refers back to the exercise it answers rather than carrying a number of its own.
 
@@ -141,6 +145,7 @@ Two directives are added that address or enhance the documents stucture. The `to
 | `eq` | Library | Reference to a numbered equation |
 | `ref` | Library | Reference to a label |
 | `numref` | Library | Numbered reference, `%s` substituted with the number |
+| `proof:ref`, `prf:ref` | This work | `numref` under the names mystmd gives it for the proof family |
 | `math` | Library | Inline mathematics |
 | `abbr`, `abbreviation` | Library | Abbreviation with a title |
 | `sub`, `subscript`, `sup`, `superscript` | Library | |
@@ -150,7 +155,7 @@ Two directives are added that address or enhance the documents stucture. The `to
 
 :::
 
-The three reference roles — `eq`, `ref`, `numref` — are the ones Library already supported, and they are used here **unchanged**. 
+The three reference roles — `eq`, `ref`, `numref` — are the ones Library already supported, and they are used here **unchanged**. `proof:ref` and `prf:ref` are added as aliases of `numref`, which is what they are in mystmd: there, only the kind `ref` substitutes the target's title, every other kind goes through the numbered template. Writing `` {proof:ref}`my-theorem` `` therefore renders *Theorem 1* here and exports as it stands. 
 👉🏼 What *really changed* beneath them is what they point to something: this work resolves labels through a document-wide reference map. 
 
 ## Other MyST syntax

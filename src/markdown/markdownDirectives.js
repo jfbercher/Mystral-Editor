@@ -1,4 +1,5 @@
 import { headingInlineHtml } from "../utils/headingInline";
+import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
 import IMurMurHash from "imurmurhash";
 
@@ -588,14 +589,9 @@ class ListTableExtended extends directivesDefault["list-table"] {
 const NUMBERED_TITLES = {
   exercise: "Exercise",
   solution: "Solution",
-  proof: "Proof",
-  theorem: "Theorem",
-  lemma: "Lemma",
-  corollary: "Corollary",
-  definition: "Definition",
-  example: "Example",
-  remark: "Remark",
-  algorithm: "Algorithm",
+  // The proof family's labels come from the same table as its numbering, so a
+  // kind cannot be added to one and forgotten in the other.
+  ...Object.fromEntries(Object.entries(PROOF_FAMILY).map(([name, [, label]]) => [name, label])),
 };
 
 /** Entrée de refMap correspondant à cette directive, par label. */
@@ -690,22 +686,38 @@ function makeGatedEnd(kind) {
   };
 }
 
+/**
+ * The proof family, in its three spellings.
+ *
+ * mystmd registers these directives only under `prf:<kind>` and, since 1.11.0,
+ * `proof:<kind>`; a bare `{theorem}` is unknown to it, and an unknown directive
+ * loses its children at parse time, so the block vanishes from a LaTeX or PDF
+ * export without ever reaching the template. The prefixed spellings are
+ * therefore what makes a document exportable, `proof:` being the one mystmd now
+ * prefers and `prf:` the one that also works with 1.10 and earlier. The bare
+ * names stay registered: they are what the documents written before this use.
+ *
+ * The key is the spelling in the document; the name passed to makeNumbered is
+ * the internal identity, which drives the label, the CSS class and the
+ * frontmatter key -- so the three spellings are one and the same directive, and
+ * share one counter through their kind. The table itself lives in
+ * config-defaults.js, beside the numbering it governs.
+ */
+const proofDirectives = Object.fromEntries(
+  Object.entries(PROOF_FAMILY).flatMap(([name, [kind]]) => {
+    const directive = makeNumbered(name, kind);
+    return [[name, directive], [`proof:${name}`, directive], [`prf:${name}`, directive]];
+  }),
+);
+
 export const numberedDirectives = {
+  ...proofDirectives,
   exercise: makeNumbered("exercise", "exercise"),
   solution: Solution,
   "exercise-start": makeGatedStart("exercise", "exercise"),
   "exercise-end": makeGatedEnd("exercise"),
   "solution-start": makeGatedStart("solution", "solution"),
   "solution-end": makeGatedEnd("solution"),
-
-  proof: makeNumbered("proof", "proof"),
-  theorem: makeNumbered("theorem", "theorem"),
-  lemma: makeNumbered("lemma", "theorem"),
-  corollary: makeNumbered("corollary", "theorem"),
-  definition: makeNumbered("definition", "definition"),
-  example: makeNumbered("example", "example"),
-  remark: makeNumbered("remark", "remark"),
-  algorithm: makeNumbered("algorithm", "algorithm"),
 };
 
 /* ------------------------------------------------------------------ *

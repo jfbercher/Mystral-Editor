@@ -1,4 +1,50 @@
 /**
+ * The proof family, as `name: [kind, label]`.
+ *
+ * The fifteen kinds mystmd knows, so that a document written here exports
+ * without rewriting. The `kind` is what carries the numbering, and the
+ * topology is mystmd's own LaTeX preamble: each statement counts on its own,
+ * `lemma` alone sharing the theorem counter (`\newtheorem{lemma}[theorem]`).
+ * Two statements can be put back on one sequence by giving them the same kind
+ * here -- that is the whole of it.
+ *
+ * One difference with the PDF remains: LaTeX resets most of these counters at
+ * every section (`[section]`), which numbers them 2.1, 2.2, while the numbers
+ * here run through the document. See BACKLOG.md.
+ */
+export const PROOF_FAMILY = {
+  proof:       ["proof",       "Proof"],
+  theorem:     ["theorem",     "Theorem"],
+  lemma:       ["theorem",     "Lemma"],
+  corollary:   ["corollary",   "Corollary"],
+  proposition: ["proposition", "Proposition"],
+  property:    ["property",    "Property"],
+  axiom:       ["axiom",       "Axiom"],
+  conjecture:  ["conjecture",  "Conjecture"],
+  observation: ["observation", "Observation"],
+  criterion:   ["criterion",   "Criterion"],
+  assumption:  ["assumption",  "Assumption"],
+  definition:  ["definition",  "Definition"],
+  example:     ["example",     "Example"],
+  remark:      ["remark",      "Remark"],
+  algorithm:   ["algorithm",   "Algorithm"],
+};
+
+/**
+ * Each of them under its bare name and under the two prefixes mystmd answers
+ * to. `fmKey` keeps the frontmatter numbering keys unprefixed, so one
+ * `theorem:` setting governs the three spellings.
+ */
+const proofFamilyEntries = Object.entries(PROOF_FAMILY).flatMap(([name, [kind, label]]) => {
+  const spec = { kind, label, numbered: true, caption: "arg" };
+  return [
+    [name, spec],
+    [`proof:${name}`, { ...spec, fmKey: name }],
+    [`prf:${name}`, { ...spec, fmKey: name }],
+  ];
+});
+
+/**
  * Built-in directive definitions used by the labelling/numbering system.
  * These can be extended or overridden via the `data_directives` key in config.json.
  */
@@ -23,15 +69,8 @@ export const BUILTIN_DIRECTIVES = {
   "solution-start": { kind: "solution",  label: "Solution", numbered: false, caption: "arg", reference: true },
   "solution-end":   { kind: null },
 
-  // Proof family
-  proof:      { kind: "proof",     label: "Proof",      numbered: true,  caption: "arg" },
-  theorem:    { kind: "theorem",   label: "Theorem",    numbered: true,  caption: "arg" },
-  lemma:      { kind: "theorem",   label: "Lemma",      numbered: true,  caption: "arg" },
-  corollary:  { kind: "theorem",   label: "Corollary",  numbered: true,  caption: "arg" },
-  definition: { kind: "definition",label: "Definition", numbered: true,  caption: "arg" },
-  example:    { kind: "example",   label: "Example",    numbered: true,  caption: "arg" },
-  remark:     { kind: "remark",    label: "Remark",     numbered: true,  caption: "arg" },
-  algorithm:  { kind: "algorithm", label: "Algorithm",  numbered: true,  caption: "arg" },
+  // Proof family: bare names and the `proof:` / `prf:` spellings.
+  ...Object.fromEntries(proofFamilyEntries),
 
   // Admonitions: referenceable but not numbered
   admonition: { kind: "adm", label: "Admonition", numbered: false, caption: "arg" },

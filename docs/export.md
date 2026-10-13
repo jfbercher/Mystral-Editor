@@ -45,6 +45,11 @@ The project file is still the place to write it once. When the document has no e
 
 `export.mystPath` is the command used to invoke myst. It runs through a login shell, so the plain name works as long as it is on the `PATH` of your shell profile; set an absolute path if it is installed somewhere unusual. `export.sitePort` is the port `myst start` uses. See [customisation](customisation.md).
 
+### Directives mystmd does not know
+What leaves the editor is the source, not the rendered preview: `mystmd` parses the document again, with its own set of directives. One it does not know is not left as it is and is not reported in the exported file -- it is emptied of its content at parse time, so the block and everything inside it are simply absent from the PDF, the LaTeX or the Word file, while `myst build` says `unknown directive: <name>` in its output.
+
+This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair has no equivalent at all in `mystmd` and does not survive an export for now.
+
 ## Web build
 The web build has no myst, since it cannot execute local commands, so it offers the two things a page can do on its own, in the top bar: **Copy document as HTML** puts the rendered document on the clipboard, and **Print document as pdf** opens the browser's print dialogue, from which "*Save as PDF*" produces a file. Both are hidden in the desktop application, which has the export menu instead.
 
