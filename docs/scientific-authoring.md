@@ -16,6 +16,18 @@ LaTeX equations are rendered via [KaTeX](https://katex.org/) and [markdown-it-te
 Inserting equations in Mystral - supports standard LaTeX as well as `math`directive. Equations can be labelled and referenced anywhere in the document. 
 :::
 
+A display equation is labelled in either of two ways, and both are recognised wherever the equation sits -- in the flow of the text, inside an admonition, inside a theorem or a proposition. The TeX form puts `\label{my-eq}` on a line of the formula; the MyST form puts the name in parentheses at the end of the line that closes it:
+
+```markdown
+$$
+\hat{f}(\nu) = \int_{-\infty}^{+\infty} f(t)\, e^{-2i\pi \nu t}\, dt
+$$ (fourier-transform)
+```
+
+The parenthesis has to close that line, which is what distinguishes it from a section target written `(my-section)=` on the line that follows an equation. If both forms are given, the TeX one wins. A labelled equation is then reachable through `` {eq}`fourier-transform` ``, `{numref}` or `[](#fourier-transform)`, and appears in the completion list with its current number.
+
+Equations are numbered in reading order throughout the document, those written inside a directive included, so a formula moved into a theorem keeps its place in the sequence.
+
 ### YAML Frontmatter
 
 A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor. A YAML language server can be activated via an external JSON schema for tooltips and autocompletion.

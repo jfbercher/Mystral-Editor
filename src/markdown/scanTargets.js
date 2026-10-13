@@ -70,6 +70,18 @@ const LABEL_OPTION = /^\s*:(?:label|name):\s*(\S+)/;
 const ENUMERATED = /^\s*:(?:enumerated|numbered):\s*(\S*)\s*$/i;
 const ANY_OPTION = /^\s*:[\w-]+:/;
 const TEX_LABEL = /\\label\{([^}]+)\}/;
+/**
+ * Le numéro d'équation de MyST : `$$ … $$ (mon-label)`.
+ *
+ * Deux exigences, et la seconde n'est pas cosmétique. Les `$$` doivent précéder
+ * immédiatement la parenthèse, donc le label est sur la ligne qui ferme la
+ * formule ; et la parenthèse doit terminer la ligne, ce qui écarte la cible de
+ * section `(mon-label)=` -- le `=` empêche l'ancre `$` de filer. C'est le même
+ * piège que celui déjà corrigé dans la règle `math_block_eqno` de texmath : une
+ * section qui s'ouvre par `(label)=` juste après une équation voyait son label
+ * avalé comme numéro d'équation.
+ */
+const EQ_PAREN_LABEL = /\$\$\s*\(([^()\s]+)\)\s*$/;
 
 const MATH_ENVS = ["equation", "align", "gather", "multline"];
 
@@ -121,6 +133,52 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
     frame.number = counters[frame.spec.kind];
     const entry = byLine.get(frame.line);
     if (entry) entry.number = frame.number;
+  };
+
+  /**
+   * Équation isolée ($$ … $$, \begin{equation} …), où qu'elle soit.
+   *
+   * Appelée aussi depuis le corps d'une directive : une équation écrite dans
+   * une proposition ou une admonition est une équation comme une autre et doit
+   * recevoir son numéro. Elle ne l'est pas depuis un bloc {math}, dont le corps
+   * est du TeX et dont la frame porte déjà le numéro.
+   *
+   * `mathLine` est l'état de l'automate : la ligne d'ouverture tant que la
+   * formule n'est pas refermée.
+   */
+  /** Étiquette l'équation ouverte, si elle n'en a pas déjà une. */
+  const attachEqLabel = (label) => {
+    if (!label || mathLine === null) return;
+    const entry = byLine.get(mathLine);
+    if (!entry || entry.label) return;
+    entry.label = label;
+    setLabel(label, { number: entry.number, kind: "eq", title: "", line: mathLine });
+  };
+
+  const scanDisplayMath = (line, lineNo) => {
+    const begin = MATH_ENVS.some((env) => line.includes(`\\begin{${env}}`));
+    const end = MATH_ENVS.some((env) => line.includes(`\\end{${env}}`));
+    const dollars = (line.match(/\$\$/g) ?? []).length;
+
+    if (mathLine === null) {
+      if (!begin && dollars === 0) return;
+      mathLine = lineNo;
+      const number = enabled.math ? (counters.eq = (counters.eq ?? 0) + 1) : null;
+      byLine.set(mathLine, { number, label: null, kind: "eq", title: "" });
+      attachEqLabel(TEX_LABEL.exec(line)?.[1]);
+      if (dollars >= 2) {
+        // $$ … $$ sur une seule ligne : elle porte aussi sa propre fermeture.
+        attachEqLabel(EQ_PAREN_LABEL.exec(line)?.[1]);
+        mathLine = null;
+      }
+      return;
+    }
+
+    attachEqLabel(TEX_LABEL.exec(line)?.[1]);
+    if (end || dollars > 0) {
+      attachEqLabel(EQ_PAREN_LABEL.exec(line)?.[1]);
+      mathLine = null;
+    }
   };
 
   /** Pile des blocs ouverts, pour gérer l'imbrication. */
@@ -264,36 +322,13 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
           frame.caption.push(line.trim());
         }
       }
+
+      if (frame.spec.kind !== "eq") scanDisplayMath(line, lineNo);
       continue;
     }
 
     // ---------- Équations hors directive ----------
-    const begin = MATH_ENVS.some((env) => line.includes(`\\begin{${env}}`));
-    const end = MATH_ENVS.some((env) => line.includes(`\\end{${env}}`));
-    const dollars = (line.match(/\$\$/g) ?? []).length;
-
-    if (mathLine === null && (begin || dollars > 0)) {
-      mathLine = lineNo;
-      //const number = nextNumber("eq");
-      const number = enabled.math ? (counters.eq = (counters.eq ?? 0) + 1) : null;
-      
-      const inlineLabel = TEX_LABEL.exec(line)?.[1] ?? null;
-      byLine.set(mathLine, { number, label: inlineLabel, kind: "eq", title: "" });
-      if (inlineLabel) setLabel(inlineLabel, { number, kind: "eq", title: "", line: mathLine });
-      if (dollars >= 2) mathLine = null; // $$ … $$ sur une seule ligne
-      continue;
-    }
-
-    if (mathLine === null) continue;
-
-    const tex = TEX_LABEL.exec(line);
-    if (tex) {
-      const entry = byLine.get(mathLine);
-      entry.label = tex[1];
-      setLabel(tex[1], { number: entry.number, kind: "eq", title: "", line: mathLine });
-    }
-
-    if (end || dollars > 0) mathLine = null;
+    scanDisplayMath(line, lineNo);
   }
 
   // Blocs non refermés en fin de document : on enregistre quand même.
