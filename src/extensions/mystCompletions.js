@@ -1,4 +1,5 @@
 import { snippetCompletion, startCompletion } from "@codemirror/autocomplete";
+import { PROOF_FAMILY } from "../config-defaults.js";
 import { syntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 
@@ -29,6 +30,9 @@ const ROLES = [
   { name: "math", detail: "Inline mathematics" },
   { name: "numref", detail: "Numbered reference" },
   { name: "ref", detail: "Cross-reference" },
+  // mystmd's reference role for the proof family; an alias of {numref}. The
+  // `prf:ref` spelling works too but is not proposed, as for the directives.
+  { name: "proof:ref", detail: "Numbered reference to a proof, theorem, …" },
   //{ name: "si", detail: "SI unit" },
   { name: "sc", detail: "Small caps" },
   { name: "sub", detail: "Subscript" },
@@ -77,14 +81,16 @@ const DIRECTIVES = [
   // Mathematics and proofs
 
   { name: "math", group: "Math", opts: ["label"] },
-  { name: "proof", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "theorem", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "lemma", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "corollary", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "definition", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "remark", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "example", group: "Math", arg: "Title", opts: ["label"] },
-  { name: "algorithm", group: "Math", arg: "Title", opts: ["label"] },
+  // The whole proof family, in the `proof:` spelling only: it is the one mystmd
+  // prefers, and the one that survives a LaTeX or PDF export. The bare names
+  // and the `prf:` ones are still parsed and numbered (markdownDirectives.js),
+  // just not proposed.
+  ...Object.keys(PROOF_FAMILY).map((name) => ({
+    name: `proof:${name}`,
+    group: "Math",
+    arg: "Title",
+    opts: ["label"],
+  })),
    
 
   // Code
@@ -187,7 +193,7 @@ const KIND_META = {
 };
 
 /** Rôles qui prennent une cible du document, et les `kind` acceptés (null = tous). */
-const TARGET_ROLES = { ref: null, numref: null, eq: ["eq"] };
+const TARGET_ROLES = { ref: null, numref: null, "proof:ref": null, "prf:ref": null, eq: ["eq"] };
 const CITE_ROLES = new Set(["cite", "cite:p", "cite:t"]);
 const ARG_ROLES = new Set([...CITE_ROLES, ...Object.keys(TARGET_ROLES)]);
 
@@ -345,10 +351,36 @@ const bibCompletions = (entries) =>
  * ------------------------------------------------------------------ */
 
 /** Ne pas proposer de rôle à l'intérieur d'un code inline ou d'un bloc de code. */
+/**
+ * Directives dont le corps n'est pas du markdown : on n'y propose rien.
+ * Les autres -- admonitions, théorèmes, exercices, figures -- ont un corps
+ * markdown où les rôles et les citations s'écrivent normalement.
+ */
+const VERBATIM_DIRECTIVE = /^\s*(?::{3,}|`{3,})\s*\{(code|code-block|code-cell|literalinclude|math|mermaid|raw)\}/;
+
+/** Une fence qui ouvre une directive à corps markdown. */
+const isMarkdownDirectiveFence = (state, node) => {
+  if (!node || node.name !== "FencedCode") return false;
+  const first = state.doc.lineAt(node.from).text;
+  if (VERBATIM_DIRECTIVE.test(first)) return false;
+  return /^\s*(?::{3,}|`{3,})\s*\{[\w:-]+\}/.test(first);
+};
+
+/**
+ * Pour le parseur, une directive est un bloc de code : le `colonFencedCodeParser`
+ * de notre lezer fait des `:::` des nœuds `FencedCode`, dont le corps est un
+ * `CodeText`. Sans la distinction ci-dessous, `inCode` répondait « oui » dans
+ * une note ou un théorème, et la complétion de rôles ({ref}, {cite}…) comme
+ * celle des citations y étaient tout simplement coupées.
+ */
 const inCode = (state, pos) => {
   let node = syntaxTree(state).resolveInner(pos, -1);
   for (; node; node = node.parent) {
-    if (node.name === "InlineCode" || node.name === "CodeText") return true;
+    if (node.name === "InlineCode") return true;
+    if (node.name === "CodeText" || node.name === "FencedCode") {
+      const fence = node.name === "FencedCode" ? node : node.parent;
+      return !isMarkdownDirectiveFence(state, fence);
+    }
   }
   return false;
 };
