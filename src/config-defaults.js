@@ -108,6 +108,13 @@ export const DEFAULT_CONFIG = {
     save:   "Mod-Shift-s",
     open:   "Mod-Shift-o",
     newTab: "Mod-Shift-e",
+    // Switch the view. Free under Tauri, and in a browser on macOS too. On
+    // Windows and Linux the browser keeps Ctrl-Shift-I (developer tools) and,
+    // in Firefox, Ctrl-Shift-P (private window) for itself, which is one of
+    // the reasons these are configurable.
+    modeDual:    "Mod-Shift-d",
+    modePreview: "Mod-Shift-p",
+    modeInline:  "Mod-Shift-i",
   },
 
   pyodide: {

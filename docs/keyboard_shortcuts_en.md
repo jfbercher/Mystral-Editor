@@ -20,8 +20,13 @@ extends: mdocs_fm.yml
 | `Mod-Shift-o` | Open a file in current tab |
 | `Mod-Shift-e` | Open a new (empty) tab |
 | `Mod-Shift-s` | Save current tab |
+| `Mod-Shift-d` | Dual pane (source and preview) |
+| `Mod-Shift-p` | Preview only |
+| `Mod-Shift-i` | Inline preview |
 :::
-These keys are configurable in `config.json`; see [Customisation](customisation.md). 
+These keys are configurable in `config.json`; see [Customisation](customisation.md).
+
+The three view keys do the same thing as the toolbar buttons, the mode chosen being remembered across sessions as a click on one is. They work from anywhere in the window, which matters for leaving Preview, where the editor is hidden and holds no focus. They are free in the desktop application, and on macOS in a browser as well -- there the developer tools are on Cmd-Alt-I and Safari's private window on Cmd-Shift-N, so nothing competes. On Windows and Linux the browser keeps two of them for itself and will not let them be taken over: `Ctrl-Shift-I` opens the developer tools, and `Ctrl-Shift-P` a private window in Firefox. `config.json` is where to choose others.
 
 
 ## Editing (`defaultKeymap`)

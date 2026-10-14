@@ -61,6 +61,9 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.save` | `"Mod-Shift-s"` | Save, or Save as… for a document with no file yet |
 | `shortcuts.open` | `"Mod-Shift-o"` | Open a file |
 | `shortcuts.newTab` | `"Mod-Shift-e"` | New tab |
+| `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
+| `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
+| `shortcuts.modeInline` | `"Mod-Shift-i"` | Switch to the inline preview |
 
 `Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Modifiers are combined with `-`, for instance `"Mod-Alt-p"`.
 

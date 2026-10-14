@@ -42,6 +42,21 @@ function matchesShortcut(ev, spec) {
   return ev.key.toLowerCase() === key.toLowerCase() || ev.code === `Key${key.toUpperCase()}`;
 }
 
+/**
+ * The view modes reachable from the keyboard, and the shortcut that each
+ * answers to. Set on the active tab's editor and persisted exactly as the
+ * toolbar buttons do it (Topbar.jsx), so the two routes cannot drift apart.
+ */
+const MODE_SHORTCUTS = { modeDual: "Both", modePreview: "Preview", modeInline: "Inline" };
+
+function setEditorMode(editorId, mode) {
+  const options = window.myst_editor?.[editorId]?.state?.options;
+  if (!options?.mode) return false;
+  options.mode.value = mode;
+  localStorage.setItem("editorMode", mode);
+  return true;
+}
+
 export class TabManager {
   constructor(editorOptions = {}) {
     this.openTabs = new Map();
@@ -82,6 +97,16 @@ export class TabManager {
       } else if (matchesShortcut(ev, newTab)) {
         ev.preventDefault();
         setTimeout(() => this.openTab(), 0);
+      } else {
+        // The view modes. Handled here rather than in the editor's keymap
+        // because the one case that matters most is switching away from
+        // Preview, where CodeMirror is hidden and can hold no focus.
+        for (const [key, mode] of Object.entries(MODE_SHORTCUTS)) {
+          if (!matchesShortcut(ev, config.shortcuts[key])) continue;
+          ev.preventDefault();
+          setEditorMode(this.activeTabId, mode);
+          break;
+        }
       }
     });
 
