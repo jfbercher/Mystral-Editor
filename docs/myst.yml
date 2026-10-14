@@ -5,6 +5,11 @@ extends:
 
 project:
   id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
+  plugins:
+  #- plugins/example-admonition.mjs
+  - plugins/exercise-admonition-pdf.mjs
+  #- plugins/foldable-solutions.mjs
+  - plugins/page-last-updated.mjs
   toc:
     - file: index.md
     - title: Mystral Editor - General documentation
