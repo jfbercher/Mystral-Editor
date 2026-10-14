@@ -25,6 +25,7 @@ import {
 } from './fs.js';
 import { loadSidecar, applySidecarOutputs, scheduleNamespaceRestore, saveSidecarWithNamespace, saveSidecarToFile } from "./sidecar.js";
 import { convertNotebookToMyst, convertMystToNotebook } from "../ipynb2mystLib.js";
+import { foldFrontmatter, shouldFoldFrontmatter } from "../../extensions/frontmatterFold.js";
 
 
 let timing_debug = false;
@@ -186,10 +187,17 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   const view = window.myst_editor[editorId]?.main_editor;
   if (!view) return;
   if (view.state.doc.length === newText.length && view.state.doc.toString() === newText) {
+    // Same text, but still a document being loaded: a restored tab is created
+    // with its content already in place.
+    if (shouldFoldFrontmatter()) foldFrontmatter(view);
     view.focus();
     return;
   }
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newText }, selection: { anchor: 0 } });
+  // A document is opened on its text, not on its metadata. Done here rather
+  // than in an extension because this is the one place that knows a *document*
+  // has been loaded, as opposed to the text having been edited.
+  if (shouldFoldFrontmatter()) foldFrontmatter(view);
   view.focus();
 };
 

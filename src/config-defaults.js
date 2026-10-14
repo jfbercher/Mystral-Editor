@@ -98,6 +98,11 @@ export const DEFAULT_CONFIG = {
 
   editorMode: "Both",
 
+  // How a document opens for a reader who has never said otherwise. As soon as
+  // one folds or unfolds a frontmatter, that choice is remembered and outranks
+  // this setting, exactly as the view mode remembers the last button pressed.
+  foldFrontmatterOnOpen: true,
+
   recentFilesMax:  10,
   defaultFileName: "Untitled.md",
 

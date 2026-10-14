@@ -10,6 +10,7 @@ import { userExtensionsCompartment } from "./Settings";
 import { useSignalEffect } from "@preact/signals";
 import { FoldChevron, MdStyles } from "./Preview";
 import { Logger } from "../logger";
+import { foldFrontmatter, shouldFoldFrontmatter } from "../extensions/frontmatterFold.js";
 
 let timing_debug = false;
 
@@ -160,14 +161,29 @@ const CodeEditor = styled.div`
   .cm-foldGutter {
     margin-right: 5px;
 
+    /* Larger than the chevrons drawn in the preview: this one is a target to
+       click, in a narrow gutter, and the 4px box it used to be was hard to see
+       and harder to hit. */
     .cm-foldMarker {
       ${FoldChevron}
-      width: 12px;
+      width: 16px;
       height: 100%;
+      opacity: 0.85;
+
+      &:hover {
+        opacity: 1;
+      }
+
+      &::before {
+        width: 7px;
+        height: 7px;
+        border-right-width: 2px;
+        border-bottom-width: 2px;
+      }
     }
 
     .cm-foldMarker[data-fold="closed"]::before {
-      transform: rotate(-45deg) translate(-0.75px, -0.75px);
+      transform: rotate(-45deg) translate(-1.25px, -1.25px);
     }
   }
 
@@ -468,6 +484,11 @@ const tA = performance.now();
     }*/
     if (timing_debug) {const t3 = performance.now();}
     if (options.collapsibleHeadingMarker.value) foldMarkedHeadings(view);
+
+    // The view is created with the document already in it when a tab is
+    // restored, so `setEditorText` finds nothing to change and never runs: the
+    // fold has to be applied here as well as there.
+    if (shouldFoldFrontmatter()) foldFrontmatter(view);
     if (timing_debug) console.log("foldMarkedHeadings:", (performance.now() - t3).toFixed(0));
 
     collab.value?.ycomments?.registerCodeMirror(view);

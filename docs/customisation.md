@@ -50,6 +50,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `checkIntervalMs` | `300000` | How often inactive tabs are checked against the interval above. |
 | `recentFilesMax` | `10` | Number of entries kept in the "open a file" dropdown. |
 | `defaultFileName` | `"Untitled.md"` | Name given to a document that has never been saved. |
+| `foldFrontmatterOnOpen` | `true` | Whether a document opens with its frontmatter folded. This is the starting point only: folding or unfolding one is remembered from session to session and outranks the setting from then on, as the view mode does. |
 | `fallbackImage` | a remote placeholder URL | Image shown when a referenced file cannot be resolved. A relative path such as `./assets/image-not-found.png` keeps the app working offline. |
 
 ---

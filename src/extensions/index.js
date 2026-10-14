@@ -20,7 +20,7 @@ import {
   forceParsing,
   foldCode, unfoldCode, foldAll, unfoldAll, toggleFold,
 } from "@codemirror/language";
-import { frontmatterFoldService } from "./frontmatterFold";
+import { frontmatterFoldService, frontmatterFoldMemory } from "./frontmatterFold";
 import { syncPreviewWithCursor } from "./syncDualPane";
 import { cursorIndicator } from "./cursorIndicator";
 import { yaml, yamlFrontmatter } from "@codemirror/lang-yaml";
@@ -113,7 +113,7 @@ export class ExtensionBuilder {
     this.important = [EditorState.lineSeparator.of("\n")];
     this.base = [...base];
     this.extensions = ExtensionBuilder.defaultPlugins();
-    this.extensions.push(frontmatterFoldService);
+    this.extensions.push(frontmatterFoldService, frontmatterFoldMemory);
   }
 
   static basicSetup() {
