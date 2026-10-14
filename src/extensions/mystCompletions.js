@@ -367,6 +367,67 @@ const isMarkdownDirectiveFence = (state, node) => {
 };
 
 /**
+ * Les `$` d'un texte, les échappements retirés, `$$` comptant pour un.
+ *
+ * Écrit à la main plutôt qu'avec une expression régulière à rétro-assertion :
+ * Safari ne les a supportées que tardivement, et le reste du code les évite
+ * déjà pour cette raison.
+ */
+function countDollars(text) {
+  let single = 0;
+  let double = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") {
+      i++; // caractère échappé : \$ n'ouvre rien
+      continue;
+    }
+    if (c !== "$") continue;
+    if (text[i + 1] === "$") {
+      double++;
+      i++;
+    } else {
+      single++;
+    }
+  }
+  return { single, double };
+}
+
+/**
+ * Le curseur est-il dans une formule ?
+ *
+ * Dans `a_{` ou `\frac{`, l'accolade ouvre un groupe TeX, pas un rôle : la
+ * popup des rôles n'y a rien à faire et masque ce qu'on est en train d'écrire.
+ *
+ * Le balayage est local, borné au bloc contigu qui précède le curseur — une
+ * ligne vide ferme tout, puisqu'une formule de bloc n'en contient pas sans
+ * cesser d'être un bloc pour markdown-it. C'est à la fois assez fiable et
+ * assez court pour tourner à chaque frappe, et cela évite qu'un `$$` écrit
+ * plus haut dans un exemple de code ne fausse une parité calculée sur tout le
+ * document. Un `{math}`, lui, est déjà écarté par `inCode()`, qui range les
+ * directives à corps verbatim du côté du code.
+ */
+function inMath(state, pos) {
+  const { doc } = state;
+  const line = doc.lineAt(pos);
+  let block = line.text.slice(0, pos - line.from);
+
+  for (let n = line.number - 1; n >= 1; n--) {
+    const text = doc.line(n).text;
+    if (!text.trim()) break;
+    block = `${text}\n${block}`;
+  }
+
+  // Un environnement LaTeX ouvert et pas encore refermé.
+  const begins = (block.match(/\\begin\{/g) ?? []).length;
+  const ends = (block.match(/\\end\{/g) ?? []).length;
+  if (begins > ends) return true;
+
+  const { single, double } = countDollars(block);
+  return double % 2 === 1 || single % 2 === 1;
+}
+
+/**
  * Pour le parseur, une directive est un bloc de code : le `colonFencedCodeParser`
  * de notre lezer fait des `:::` des nœuds `FencedCode`, dont le corps est un
  * `CodeText`. Sans la distinction ci-dessous, `inCode` répondait « oui » dans
@@ -485,6 +546,10 @@ export const mystCompletionSource =
     const role = context.matchBefore(/\{[\w:-]*$/);
     if (!role) return null;
     if (inCode(context.state, context.pos)) return null;
+    // `a_{`, `\frac{`, `\begin{` : l'accolade appartient au TeX. Pas sur une
+    // invocation explicite : un `$` isolé — un prix, par exemple — suffit à
+    // faire croire à une formule, et Ctrl-Espace reste alors la porte de sortie.
+    if (!context.explicit && inMath(context.state, context.pos)) return null;
     return { from: role.from, options: roleOptions, validFor: /^\{[\w:-]*$/ };
   };
 
