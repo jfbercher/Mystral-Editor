@@ -27,7 +27,11 @@ const frontmatterStyle = localUtils.makeStyleSheet(frontmatterCss);
 const codeMirrorStyle = localUtils.makeStyleSheet(codeMirrorCss);
 const katexCssPlus = katexCss + `
 .eq-numbered { position: relative; padding-right: 3em; }
-.eq-number { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+/* Not flush right: inside an admonition the equation div is a direct child of
+   the box and gets none of its padding, so a number at \`right: 0\` sat on the
+   border. The inset is taken out of the 3em already reserved on the right, so
+   nothing moves but the number itself. */
+.eq-number { position: absolute; right: 0.5em; top: 50%; transform: translateY(-50%); }
 .katex .eqn-num::before { content: none !important; }
 `;
 const katexStyle = localUtils.makeStyleSheet(katexCssPlus);
