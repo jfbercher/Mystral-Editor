@@ -7,6 +7,7 @@ exports:
   - format: pdf
     template: arxiv_nips
     article_type: article
+date: 2026-10-14
 ---
 
 
@@ -228,7 +229,7 @@ The `figure`, `table` and `list-table` directives support alignment (left, cente
 (fig:result)=
 :::{figure} images/result.png
 :align: center
-:width: 50%
+:width: 20%
 
 Results for the experiment.
 :::
@@ -340,7 +341,7 @@ Supported options:
 
 Shortcuts are configurable in `config.json` under `pyodide.keys`.
 
-A **`{eval}` role** evaluates a single expression in the middle of a sentence: `` {eval}`2 + 2` `` renders as its value and follows the state of the session. An approximate value of $\pi$ is {eval}`round(np.pi,4)` and of $\pi^2$ is {eval}`round(np.pi,3)**2`. Of course, calculated values in code-cells cans also be used in text: for instance, the sum of elements in $x+y$ is {eval}`np.sum(x+y)`, while its mean is {eval}`np.mean(x+y)`. 
+A **`{eval}` role** evaluates a single expression in the middle of a sentence: `` {eval}`2 + 2` `` renders as its value and follows the state of the session. An approximate value of $\pi$ is {eval}`round(np.pi,2)` and of $\pi^2$ is {eval}`round(np.pi,3)**2`. Of course, calculated values in code-cells cans also be used in text: for instance, the sum of elements in $x+y$ is {eval}`np.sum(x+y)`, while its mean is {eval}`np.mean(x+y)`. 
 
 :::{figure} figures/eval.gif
 :name: eval1

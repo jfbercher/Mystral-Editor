@@ -18,6 +18,8 @@ Sponsor:
 
 --- 
 
+![](./docs/figures/demo.gif)
+
 ## What distinguishes Mystral
 
 * ****A complete, offline MyST editor, with no server or build chain.**** What the preview displays is what `myst build` will produce: numbering, cross-references, bibliography, and mathematical macros.
