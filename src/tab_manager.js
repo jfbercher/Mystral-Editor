@@ -1,7 +1,7 @@
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor } from "./editor_factory.js";
 import { config, getNewFileTemplate } from "./config.js";
-import { isTauri, currentFileDir, workingDirectory } from "./utils/local_utils/fs.js";
+import { isTauri, currentFileDir, workingDirectory, parentDir, fileName as baseNameOf } from "./utils/local_utils/fs.js";
 
 
 
@@ -339,9 +339,7 @@ export class TabManager {
     this.showOnlyTab(editorId);
     // Mettre à jour currentFileDir pour le tab actif
     const activeHandle = tabInfo.tabState.currentFileHandle;
-    currentFileDir.value = typeof activeHandle === "string"
-      ? activeHandle.split("/").slice(0, -1).join("/")
-      : null;
+    currentFileDir.value = typeof activeHandle === "string" ? parentDir(activeHandle) : null;
     localUtils.saveActiveTabId(this.activeTabId);
     
   }
@@ -472,7 +470,7 @@ export class TabManager {
     if (storedHandle) {
       if (typeof storedHandle === "string") {
         // Direct string path (Tauri macOS/Windows)
-        fileName = storedHandle.split(/[/\\]/).filter(Boolean).pop() || "Untitled";
+        fileName = baseNameOf(storedHandle) || "Untitled";
       } else if (typeof storedHandle === "object" && storedHandle.name) {
         // FileSystemFileHandle (Web API)
         fileName = storedHandle.name;

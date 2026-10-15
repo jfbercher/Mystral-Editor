@@ -109,7 +109,8 @@ This section drives the 📦 menu, which shells out to `myst` and therefore exis
 
 | Key | Default | Meaning |
 |---|-------|---|
-| `export.mystPath` | `"myst"` | Command used to invoke mystmd. It runs through a **login shell**, so the bare name works as long as it is on the PATH of your shell profile — a GUI application launched from the Finder does not inherit an interactive shell's PATH. Set an absolute path here when mystmd lives somewhere unusual. |
+| `export.mystPath` | `"myst"` | Command used to invoke mystmd — a path, or a whole command line such as `npx myst`. Commands run through a **login shell**, which reads `/etc/profile` and `~/.profile` but not `~/.zprofile` or `~/.zshrc`, and an application launched from the desktop inherits no terminal environment: the bare name then fails. Leaving this empty is fine — the editor looks for mystmd the first time a command is not found and writes what it finds here. |
+| `export.mystSearchPaths` | `[]` | Extra absolute paths, globs allowed, added to the places searched for mystmd. |
 | `export.sitePort` | `3000` | Port used by `myst start` for the local site preview, and the port the browser is opened on. |
 | `export.templates.pdf` | `""` | myst template written into the document's `exports:` frontmatter when the editor creates the entry. |
 | `export.templates.docx` | `""` | Same, for Word exports. |

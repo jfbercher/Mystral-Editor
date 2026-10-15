@@ -367,10 +367,10 @@ export function mountEditor(mnt_options) {
               let dirName = "Undefined";
               if (isTauri) {
                 const dir = localUtils.currentFileDir.value;
-                if (dir) dirName = dir.split('/').pop();
+                if (dir) dirName = localUtils.fileName(dir);
               } else {
                 const dir = workingDirectory.value;
-                if (dir) dirName = typeof dir === 'string' ? dir.split('/').pop() : dir.name;
+                if (dir) dirName = typeof dir === 'string' ? localUtils.fileName(dir) : dir.name;
               }
 
               subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;

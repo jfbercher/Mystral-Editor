@@ -17,6 +17,8 @@ import {
   hasFileSystemAccess,
   isFallbackHandle,
   pickFileWithInput,
+  fileName as baseNameOf,
+  parentDir as dirNameOf,
   getRecentFileHandles, 
   addRecentFileHandle, 
   saveFileToPathParam, 
@@ -49,7 +51,7 @@ if (isTauri) {
 function getFileName(fileHandleOrPath) {
   if (!fileHandleOrPath) return config.defaultFileName;
   if (typeof fileHandleOrPath === 'string') {
-    return fileHandleOrPath.split('/').pop().split('\\').pop();
+    return baseNameOf(fileHandleOrPath);
   }
   return fileHandleOrPath.name || config.defaultFileName;
 }
@@ -208,7 +210,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     if (subtitle) {
       let dirName = "Undefined";
       if (currentDir) {
-        dirName = typeof currentDir === 'string' ? currentDir.split('/').pop() : currentDir.name;
+        dirName = typeof currentDir === 'string' ? baseNameOf(currentDir) : currentDir.name;
       }
       subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;
     }
@@ -229,7 +231,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       if (subtitle) {
         let dirName = "Undefined";
         if (currentDir) {
-          dirName = typeof currentDir === 'string' ? currentDir.split('/').pop() : currentDir.name;
+          dirName = typeof currentDir === 'string' ? baseNameOf(currentDir) : currentDir.name;
         }
         subtitle.innerHTML = "Editing " + text + "  &emsp; - &emsp;   Working dir: " + dirName;
       }
@@ -265,9 +267,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     await tab.setSubtitle(tab.currentFileName);
     
     if (isTauri) {
-      currentFileDir.value = typeof handleOrPath === 'string' 
-      ? handleOrPath.split('/').slice(0, -1).join('/')
-      : null;
+      currentFileDir.value = typeof handleOrPath === 'string' ? dirNameOf(handleOrPath) : null;
       localStorage.setItem(`storedFileHandle:${editorId}`, tab.currentFileHandle);
     } else {
       await set(`storedFileHandle:${editorId}`, tab.currentFileHandle);
@@ -354,9 +354,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.currentFileKey =  getFileKey(mountedPath);
         setEditorFileKey(editorId, tab.currentFileKey);
         clearEditorPythonSpace(editorId);
-        currentFileDir.value = typeof mountedPath === 'string'  
-          ? mountedPath.split('/').slice(0, -1).join('/')
-          : null;
+        currentFileDir.value = typeof mountedPath === 'string' ? dirNameOf(mountedPath) : null;
         // Remember the file that actually exists on disk, so a restart reopens
         // (and reconverts) the notebook rather than a .md that is not there yet.
         localStorage.setItem(`storedFileHandle:${editorId}`, fileHandleOrPath);

@@ -43,7 +43,11 @@ The entry has to be in the **document's** frontmatter, not only in the project's
 
 The project file is still the place to write it once. When the document has no entry for the format and the project does, the button offered with the message reads *Copy the project's entry and export*, and it copies that entry whole -- `template`, `article_type`, `chapters`, whatever it carries -- into the document's frontmatter before building. `myst.yml` is thus the model the documents are filled from, and what lands in a document is an ordinary edit, visible and undoable, that the author remains free to adjust afterwards.
 
-`export.mystPath` is the command used to invoke myst. It runs through a login shell, so the plain name works as long as it is on the `PATH` of your shell profile; set an absolute path if it is installed somewhere unusual. `export.sitePort` is the port `myst start` uses. See [customisation](customisation.md).
+`export.mystPath` is the command used to invoke myst. It may be a path or a whole command line, `npx myst` for instance.
+
+Left empty, the plain name is used, and that is enough while the application is started from a terminal -- in development, typically. A bundled application launched from the desktop inherits no terminal environment, and the login shell it runs its commands through reads `/etc/profile` and `~/.profile`, never `~/.zprofile` or `~/.zshrc`, where a macOS user's `PATH` additions usually live. `myst` then appears to have vanished.
+
+Rather than leave that to be discovered, the editor looks for it the first time a command is not found: a handful of usual locations first, which costs nothing, then an interactive login shell, which is slower but reads `~/.zshrc` and so finds an nvm or volta installation. What it finds is written into `config.json` as `export.mystPath`, and said in a message, so the search happens once and never again. `export.mystSearchPaths` adds locations of your own to the list. `export.sitePort` is the port `myst start` uses. See [customisation](customisation.md).
 
 ### Directives mystmd does not know
 What leaves the editor is the source, not the rendered preview: `mystmd` parses the document again, with its own set of directives. One it does not know is not left as it is and is not reported in the exported file -- it is emptied of its content at parse time, so the block and everything inside it are simply absent from the PDF, the LaTeX or the Word file, while `myst build` says `unknown directive: <name>` in its output.

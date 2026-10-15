@@ -12,25 +12,128 @@
  * does. `config.export.mystPath` overrides the command when needed.
  */
 
-import { config } from "../../config.js";
+import { config, saveConfigValue } from "../../config.js";
 import { showToast } from "../utils_ui.js";
-import { workingDirectory, currentFileDir } from "./fs.js";
+import { workingDirectory, currentFileDir, fileName, parentDir, isWindows } from "./fs.js";
 import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmatterUtils.js";
 import { dump as yamlDump } from "js-yaml";
 import { cellCache, cellKey } from "../../markdown/pyodideRunner.js";
 
-/** Scope name declared in src-tauri/capabilities/default.json. */
+/** Scope names declared in src-tauri/capabilities/default.json. */
 const LOGIN_SHELL = "login-shell";
+const WINDOWS_SHELL = "windows-shell";
+
+/**
+ * `sh` does not exist on Windows outside a Git installation, so the two
+ * platforms need different shells, different quoting and different ways of
+ * finding the command -- but not a different search: Windows gives a desktop
+ * application the user's PATH, read from the registry, so `myst` is simply
+ * there. The whole PATH problem below is a Unix one. `isWindows` comes from
+ * fs.js, where the path helpers need the same answer.
+ */
 
 const EXPORT_DIR = "_build/exports";
 
 /** Quote a value for a POSIX shell. */
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
-const mystCmd = () => config.export?.mystPath || "myst";
+/**
+ * Quote a value for the shell in use.
+ *
+ * `cmd.exe` knows only the double quote and has no escape for it -- which costs
+ * nothing here, since Windows forbids it in a file name.
+ */
+const q = (s) => (isWindows ? `"${String(s).replace(/"/g, "")}"` : shq(s));
+
+/** Found by probing, for this session, when config.json names no path. */
+let probedMystPath = null;
+
+/**
+ * What the user has actually told us, or nothing.
+ *
+ * `export.mystPath` defaults to the bare name `"myst"`, so its mere presence
+ * says nothing: taking it for a setting is what kept the search below from
+ * ever running. Only a value that differs from the default counts as a choice.
+ */
+const configuredMyst = () => {
+  const value = String(config.export?.mystPath ?? "").trim();
+  return value && value !== "myst" ? value : null;
+};
+
+const mystCmd = () => configuredMyst() || probedMystPath || "myst";
+
+/**
+ * The command as the shell should receive it.
+ *
+ * An absolute path is quoted -- a home directory can hold a space -- while
+ * anything else is passed through: `export.mystPath` is allowed to be a command
+ * line rather than a path, `npx myst` for instance, and quoting would turn that
+ * into the name of a file that does not exist.
+ */
+const mystInvocation = () => {
+  const cmd = mystCmd();
+  return /^[/~]/.test(cmd) || (isWindows && /^[A-Za-z]:[\\/]/.test(cmd)) ? q(cmd) : cmd;
+};
+
+/**
+ * Where `myst` usually sits when the PATH does not say.
+ *
+ * A desktop application launched from the Finder does not inherit a terminal's
+ * environment, and `sh -lc` reads `/etc/profile` and `~/.profile` -- never
+ * `~/.zprofile` or `~/.zshrc`, where a macOS user's PATH additions live. So
+ * `myst` is on the PATH in development, launched from a terminal, and gone in
+ * a bundled build. These are tested with `[ -x ]`, which costs nothing;
+ * `export.mystSearchPaths` in config.json adds to the list.
+ */
+const MYST_CANDIDATES = [
+  "/opt/homebrew/bin/myst",
+  "/usr/local/bin/myst",
+  "/usr/bin/myst",
+  "/snap/bin/myst",
+  "$HOME/.local/bin/myst",
+  "$HOME/.npm-global/bin/myst",
+  "$HOME/.volta/bin/myst",
+  "$HOME/.bun/bin/myst",
+  "$HOME/.nvm/versions/node/*/bin/myst",
+];
+
+/**
+ * A command the shell could not find at all, as opposed to one that failed.
+ *
+ * The exit codes are what to go by: 127 for a POSIX shell, 9009 for `cmd.exe`.
+ * Its message is translated, so matching on the text would work in English and
+ * nowhere else.
+ */
+const notFound = (res) =>
+  res?.code === 127 || res?.code === 9009 || (!isWindows && /not found|No such file or directory/i.test(res?.stderr ?? ""));
+
+/**
+ * Look for myst, cheapest first.
+ *
+ * The absolute paths are a single shell loop and answer instantly. Only if
+ * none matches do we pay for an interactive login shell, which is slow but
+ * reads `~/.zshrc` and therefore finds an nvm or a volta installation that
+ * nothing else would.
+ */
+async function probeMyst() {
+  // Nothing to look for: Windows hands the application the user's PATH.
+  if (isWindows) return null;
+
+  const list = [...MYST_CANDIDATES, ...(config.export?.mystSearchPaths ?? [])].join(" ");
+  const quick = await runShell(`for p in ${list}; do [ -x "$p" ] && printf '%s\n' "$p" && exit 0; done; exit 1`);
+  const found = quick.code === 0 && quick.stdout.trim().split("\n")[0];
+  if (found) return found;
+
+  const deep = await runShell(
+    `for s in zsh bash; do command -v $s >/dev/null 2>&1 || continue; ` +
+      `p=$("$s" -ilc 'command -v myst' 2>/dev/null | tail -n 1); ` +
+      `[ -x "$p" ] && printf '%s\n' "$p" && exit 0; done; exit 1`,
+  );
+  return (deep.code === 0 && deep.stdout.trim().split("\n")[0]) || null;
+}
 const sitePort = () => config.export?.sitePort ?? 3000;
 
-const baseName = (p) => String(p).split("/").pop();
+const baseName = (p) => fileName(p);
 
 /**
  * Reproduce the name myst gives an export: lowercase, accents stripped, every
@@ -43,7 +146,7 @@ const slugify = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-const dirName = (p) => String(p).slice(0, String(p).lastIndexOf("/"));
+const dirName = (p) => parentDir(p);
 const stemOf = (p) => baseName(p).replace(/\.[^.]+$/, "");
 
 /**
@@ -78,20 +181,58 @@ export async function hasMystYml(tab) {
  * and walks all of it -- failing on TCC-protected paths such as
  * ~/Library/Accounts. The explicit `cd` runs after the profile and wins.
  */
-async function runMyst(argline, cwd) {
+async function runShell(line, cwd) {
   const { Command } = await import("@tauri-apps/plugin-shell");
-  const line = `cd ${shq(cwd)} && ${mystCmd()} ${argline}`;
-  console.log("[export] sh -lc", line, "(cwd:", cwd + ")");
-  const cmd = Command.create(LOGIN_SHELL, ["-lc", line], { cwd });
+  // `/d` keeps an AutoRun entry from changing the directory under us, and `/s`
+  // makes cmd strip the outer quotes and take the rest of the line verbatim --
+  // without it, a line holding quoted paths is re-parsed and falls apart.
+  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
+  console.log("[export]", isWindows ? "cmd /d /s /c" : "sh -lc", line, cwd ? `(cwd: ${cwd})` : "");
+  const cmd = Command.create(scope, args, cwd ? { cwd } : {});
   const res = await cmd.execute();
   if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
   return res;
+}
+
+async function runMyst(argline, cwd) {
+  const run = (cmd) => runShell(`${isWindows ? `cd /d ${q(cwd)}` : `cd ${shq(cwd)}`} && ${cmd} ${argline}`, cwd);
+
+  const res = await run(mystInvocation());
+  // Only a command that was never found is worth looking for; a myst that ran
+  // and failed has nothing to do with where it lives.
+  if (!notFound(res) || probedMystPath || configuredMyst()) return res;
+
+  const found = await probeMyst();
+  if (!found) return res;
+
+  probedMystPath = found;
+  const written = await saveConfigValue("export.mystPath", found);
+  showToast(
+    written
+      ? `myst was not on the PATH; found at ${found} and recorded in config.json.`
+      : `myst was not on the PATH; using ${found} for this session.`,
+    "success",
+    8000,
+  );
+  return run(q(found));
 }
 
 /** Report a failed command, keeping the toast up so the message can be read. */
 function reportFailure(what, res) {
   const detail = (res?.stderr || res?.stdout || "").trim().split("\n").slice(-3).join(" ");
   console.error(`[export] ${what} failed (code ${res?.code}):`, res?.stderr || res?.stdout);
+
+  // The one failure that is not about the document: the command itself is
+  // nowhere to be found, and the probe did not turn it up either.
+  if (notFound(res)) {
+    showToast(
+      "myst could not be found. An application launched from the desktop does not inherit a terminal's PATH. " +
+        "Run `which myst` in a terminal and put that path in export.mystPath in config.json.",
+      "error",
+      0,
+    );
+    return;
+  }
   showToast(`${what} failed${detail ? ": " + detail : ""} — see the console for the full output.`, "error", 0);
 }
 
@@ -273,7 +414,7 @@ async function runExport(tab, kind) {
   const file = baseName(path);
   showToast(`Exporting ${file} to ${kind.toUpperCase()}\u2026`, "success", 4000);
 
-  const res = await runMyst(`build ${shq(file)} --${kind}`, dir);
+  const res = await runMyst(`build ${q(file)} --${kind}`, dir);
   if (res.code !== 0) return reportFailure(`myst build --${kind}`, res);
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
@@ -564,12 +705,27 @@ export async function startSite(tab) {
   if (!dir) return;
   const port = sitePort();
 
+  // `myst start` is spawned, not executed, so it cannot probe after the fact:
+  // look for the command first when nothing has told us where it is.
+  if (!configuredMyst() && !probedMystPath) {
+    const found = await probeMyst();
+    if (found) {
+      probedMystPath = found;
+      await saveConfigValue("export.mystPath", found);
+    }
+  }
+
   const { Command } = await import("@tauri-apps/plugin-shell");
   // `exec` replaces the shell with myst itself, so kill() reaches the server
-  // rather than a wrapper that would leave it orphaned.
-  const line = `cd ${shq(dir)} && exec ${mystCmd()} start --port ${port}`;
+  // rather than a wrapper that would leave it orphaned. cmd.exe has no such
+  // verb: there the server is a grandchild, and stopping it kills the shell
+  // first -- to be checked on Windows.
+  const line = isWindows
+    ? `cd /d ${q(dir)} && ${mystInvocation()} start --port ${port}`
+    : `cd ${shq(dir)} && exec ${mystInvocation()} start --port ${port}`;
   console.log("[export] sh -lc", line);
-  const cmd = Command.create(LOGIN_SHELL, ["-lc", line], { cwd: dir });
+  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
+  const cmd = Command.create(scope, args, { cwd: dir });
   cmd.stdout.on("data", (l) => console.log("[myst start]", l));
   cmd.stderr.on("data", (l) => console.log("[myst start]", l));
   cmd.on("close", () => { siteChild = null; sitePortInUse = null; });

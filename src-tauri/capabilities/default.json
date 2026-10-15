@@ -34,6 +34,18 @@
               "validator": "^[\\s\\S]+$"
             }
           ]
+        },
+        {
+          "name": "windows-shell",
+          "cmd": "cmd",
+          "args": [
+            "/d",
+            "/s",
+            "/c",
+            {
+              "validator": "^[\\s\\S]+$"
+            }
+          ]
         }
       ]
     },
@@ -45,6 +57,18 @@
           "cmd": "sh",
           "args": [
             "-lc",
+            {
+              "validator": "^[\\s\\S]+$"
+            }
+          ]
+        },
+        {
+          "name": "windows-shell",
+          "cmd": "cmd",
+          "args": [
+            "/d",
+            "/s",
+            "/c",
             {
               "validator": "^[\\s\\S]+$"
             }

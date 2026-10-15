@@ -211,6 +211,57 @@ export async function openConfigFile() {
   return { path, created, editable: true };
 }
 
+/**
+ * Write one value into the user's config.json, and into the live config.
+ *
+ * Used when the application discovers something the user would otherwise have
+ * to find and type -- where `myst` really is, for instance. The file is read
+ * and rewritten whole, so comments-free JSON aside, everything the user had
+ * put there is preserved; a missing file is created from the starter.
+ *
+ * @param {string} dottedKey e.g. "export.mystPath"
+ * @returns {Promise<string|null>} the path written, or null if it could not be
+ */
+export async function saveConfigValue(dottedKey, value) {
+  const keys = dottedKey.split(".");
+  // The live config first: it must hold even when there is no file to write to.
+  const patch = {};
+  keys.reduce((node, key, i) => (node[key] = i === keys.length - 1 ? value : {}), patch);
+  mergeInto(config, patch);
+
+  if (!isTauri) return null;
+
+  try {
+    const dir = await appConfigDir();
+    const path = await join(dir, "config.json");
+    let data = {};
+    if (await exists(path)) {
+      try {
+        data = JSON.parse(await readTextFile(path));
+      } catch (err) {
+        console.warn("config.json could not be parsed; not overwriting it.", err);
+        return null;
+      }
+    } else {
+      try { await mkdir(dir, { recursive: true }); } catch { /* already there */ }
+      data = starterConfig();
+    }
+
+    let node = data;
+    for (const key of keys.slice(0, -1)) {
+      if (node[key] === null || typeof node[key] !== "object" || Array.isArray(node[key])) node[key] = {};
+      node = node[key];
+    }
+    node[keys[keys.length - 1]] = value;
+
+    await writeTextFile(path, JSON.stringify(data, null, 2) + "\n");
+    return path;
+  } catch (err) {
+    console.warn("config.json could not be written.", err);
+    return null;
+  }
+}
+
 export async function openNewFileTemplate(openNewFileTemplateInTab=null) {
   if (!isTauri) {
     const url = new URL("newFileTemplate.md", import.meta.url).href;

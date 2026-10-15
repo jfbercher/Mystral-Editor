@@ -7,6 +7,42 @@ import { showToast } from '../utils_ui.js';
 // Helper de détection de l'environnement Tauri
 export const isTauri = () => typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
+/**
+ * Taking a path apart, on either platform.
+ *
+ * Building one needs nothing special: Windows accepts the forward slash, so
+ * `${dir}/myst.yml` is a valid path there even when `dir` holds backslashes.
+ * Taking one apart does: a path handed back by the Windows file dialog is
+ * separated by backslashes, and cutting it on `/` alone returns the whole
+ * thing as if it were a file name -- which is how a parent directory, and with
+ * it the resolution of relative images, bibliographies and data files, goes
+ * wrong.
+ *
+ * The backslash is only treated as a separator on Windows. Elsewhere it is a
+ * legal character in a file name, and splitting on it would break the handful
+ * of documents that use one.
+ */
+export const isWindows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent ?? "");
+
+const SEPARATORS = isWindows ? /[/\\]/ : /\//;
+
+/** The last segment of a path: its file or folder name. */
+export function fileName(path) {
+  if (!path) return "";
+  const parts = String(path).split(SEPARATORS);
+  // A trailing separator must not yield an empty name.
+  while (parts.length && !parts[parts.length - 1]) parts.pop();
+  return parts[parts.length - 1] ?? "";
+}
+
+/** Everything above the last segment, without its trailing separator. */
+export function parentDir(path) {
+  if (!path) return "";
+  const text = String(path).replace(/[/\\]+$/, "");
+  const cut = isWindows ? Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\")) : text.lastIndexOf("/");
+  return cut < 0 ? "" : text.slice(0, cut);
+}
+
 // Variables globales d'état (String sous Tauri, DirectoryHandle sous Web)
 export let imagesDirectory = null;
 export const workingDirectory = signal(null); // Signal WAS let workingDirectory = null
