@@ -187,15 +187,29 @@ async function runShell(line, cwd) {
   // makes cmd strip the outer quotes and take the rest of the line verbatim --
   // without it, a line holding quoted paths is re-parsed and falls apart.
   const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
-  console.log("[export]", isWindows ? "cmd /d /s /c" : "sh -lc", line, cwd ? `(cwd: ${cwd})` : "");
-  const cmd = Command.create(scope, args, cwd ? { cwd } : {});
-  const res = await cmd.execute();
-  if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
-  return res;
+  console.log("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
+
+  try {
+    const cmd = Command.create(scope, args, cwd ? { cwd } : {});
+    const res = await cmd.execute();
+    if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
+    return { ...res, scope };
+  } catch (err) {
+    // A shell that cannot even be started -- a scope the capabilities do not
+    // declare, a program that is not there -- used to reject and vanish: an
+    // export is reached from an asynchronous toast callback, where nothing
+    // catches. Turning it into an ordinary failure is what makes it visible.
+    console.error("[export] could not start the shell:", scope, err);
+    return { code: -1, stdout: "", stderr: String(err?.message ?? err), scope };
+  }
 }
 
 async function runMyst(argline, cwd) {
-  const run = (cmd) => runShell(`${isWindows ? `cd /d ${q(cwd)}` : `cd ${shq(cwd)}`} && ${cmd} ${argline}`, cwd);
+  // The directory is changed inside the line on POSIX only, where a login
+  // shell's profile can move it after the fact. `cmd /d` cannot be moved, so
+  // there the `cwd` option is enough -- and it spares the line two quoted
+  // paths, which is worth having where quoting is as brittle as it is.
+  const run = (cmd) => runShell(isWindows ? `${cmd} ${argline}` : `cd ${shq(cwd)} && ${cmd} ${argline}`, cwd);
 
   const res = await run(mystInvocation());
   // Only a command that was never found is worth looking for; a myst that ran
@@ -233,7 +247,10 @@ function reportFailure(what, res) {
     );
     return;
   }
-  showToast(`${what} failed${detail ? ": " + detail : ""} — see the console for the full output.`, "error", 0);
+  // The shell and the exit code are named: in a packaged build there is no
+  // console, and they are the first two things one needs to know.
+  const where = res?.scope ? ` [${res.scope}, exit ${res.code}]` : "";
+  showToast(`${what} failed${where}${detail ? ": " + detail : ""}`, "error", 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +377,25 @@ async function mystInit(dir) {
  *
  * @param {"tex"|"pdf"|"docx"} kind
  */
-export async function exportCurrentFile(tab, kind) {
+/**
+ * Report anything that escapes, rather than let it vanish.
+ *
+ * These entry points are called from menu handlers and toast callbacks, none of
+ * which await their result: an exception there is an unhandled rejection and
+ * the user sees nothing happen at all.
+ */
+const reported = (what, fn) => async (...args) => {
+  try {
+    return await fn(...args);
+  } catch (err) {
+    console.error(`[export] ${what} threw:`, err);
+    showToast(`${what} failed: ${err?.message ?? err}`, "error", 0);
+  }
+};
+
+export const exportCurrentFile = reported("Export", exportCurrentFileImpl);
+
+async function exportCurrentFileImpl(tab, kind) {
   const path = tab?.currentFileHandle;
   if (typeof path !== "string" || !path) {
     showToast("Save the document first: myst exports a file on disk.", "error", 5000);
@@ -392,9 +427,15 @@ export async function exportCurrentFile(tab, kind) {
             ? "Copy the project's entry and export"
             : "Set it up and export",
         onClick: async () => {
-          if (needProject && !(await mystInit(dirName(path)))) return;
-          if (needEntry) addExportToFrontmatter(tab, kind);
-          await runExport(tab, kind);
+          // Nothing awaits this callback, so an exception here would be lost.
+          try {
+            if (needProject && !(await mystInit(dirName(path)))) return;
+            if (needEntry) addExportToFrontmatter(tab, kind);
+            await runExport(tab, kind);
+          } catch (err) {
+            console.error("[export] failed:", err);
+            showToast(`Export failed: ${err?.message ?? err}`, "error", 0);
+          }
         },
       },
     );
@@ -721,7 +762,7 @@ export async function startSite(tab) {
   // verb: there the server is a grandchild, and stopping it kills the shell
   // first -- to be checked on Windows.
   const line = isWindows
-    ? `cd /d ${q(dir)} && ${mystInvocation()} start --port ${port}`
+    ? `${mystInvocation()} start --port ${port}`
     : `cd ${shq(dir)} && exec ${mystInvocation()} start --port ${port}`;
   console.log("[export] sh -lc", line);
   const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
