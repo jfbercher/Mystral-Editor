@@ -57,7 +57,9 @@ export function showToast(message, type = "success", duration = 2000, action = n
     right: "20px",
     padding: "10px 18px",
     borderRadius: "6px",
-    backgroundColor: type === "error" ? "#e74c3c" : "#ebe344",
+    // Three tones: something went wrong, something is worth knowing, and the
+    // ordinary yellow for everything else.
+    backgroundColor: type === "error" ? "#e74c3c" : type === "warning" ? "#f39c12" : "#ebe344",
     color: "#000000",
     fontWeight: "500",
     fontSize: "14px",
