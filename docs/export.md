@@ -5,6 +5,16 @@ title: Exporting a document
 
 The editor produces three kinds of output, and which ones are offered depends on where it runs.
 
+## What has to be installed first
+
+Exports are produced by mystmd, which the editor runs as an external command; it is not bundled. Two things have to be in place, in this order.
+
+First **Node.js, version 22 or later**. mystmd is written in JavaScript and runs under Node, so this is its prerequisite rather than ours — install it from [nodejs.org](https://nodejs.org/en/download) or with your usual package manager, taking the current LTS. An older Node is worse than none: a version 20 builds documents well enough to look healthy, then fails in the site server with a message naming neither Node nor a version. If mystmd offers to install a Node for itself, the editor declines on your behalf, because what it installs has been a release below its own requirement.
+
+Then **mystmd**, following [its own installation instructions](https://mystmd.org/guide/installing) — npm, pip or conda, as suits your machine.
+
+Nothing else is needed: the first time an export runs, the editor finds both commands and records where they are in `config.json`, as `export.mystPath` and `export.nodePath`. If it cannot find them it says so, and those two settings let you point at them yourself; see [Customisation](customisation.md).
+
 ## From the desktop application: the 📦 menu
 The export menu shells out to [mystmd (https://mystmd.org), so it exists in the desktop application only — the web build cannot run a command. Clicking the button directly exports to PDF, the most common case; its menu offers the rest.
 
@@ -52,10 +62,10 @@ Rather than leave that to be discovered, the editor looks for it the first time 
 ### Directives mystmd does not know
 What leaves the editor is the source, not the rendered preview: `mystmd` parses the document again, with its own set of directives. One it does not know is not left as it is and is not reported in the exported file -- it is emptied of its content at parse time, so the block and everything inside it are simply absent from the PDF, the LaTeX or the Word file, while `myst build` says `unknown directive: <name>` in its output.
 
-This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair has no equivalent at all in `mystmd` and does not survive an export for now.
+This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair, [described here](https://mystmd.org/guide/exercises),  has no equivalent at all in `mystmd` and does not survive an export for now, except if you use this [plugin](https://github.com/jupyter-book/myst-plugins/tree/main/plugins/exercise-admonition-pdf).
 
 ### Labels of the proof family: lowercase only
-A theorem, a proposition or any other member of the proof family must be given a **lowercase** label in a document meant to be exported. `mystmd` writes its anchor in the `.tex` with the normalised form of the label, which is lowercased, while it writes every cross-reference with the label as it was typed: a `:label: My-Theorem` therefore produces `\label{my-theorem}` and `\ref{My-Theorem}` in the same file, LaTeX resolves neither, and the number comes out as `??` in the PDF. Headings, equations, figures and tables are not affected -- their handlers write the label unchanged.
+A theorem, a proposition or any other member of the proof family must be given a **lowercase** label in a document meant to be exported. `mystmd` writes its anchor in the `.tex` with the normalised form of the label, which is lowercased, while it writes every cross-reference with the label as it was typed: a `:label: My-Theorem` therefore produces `\label{my-theorem}` and `\ref{My-Theorem}` in the same file, LaTeX resolves neither, and the number comes out as `??` in the PDF. An issue has been open on that. Headings, equations, figures and tables are not affected -- their handlers write the label unchanged.
 
 Nothing in the editor itself needs this, which is why the case is underlined in the source as a warning: everything resolves correctly in the preview, and the problem only appears in the exported document. This is a bug in `myst-to-tex` rather than a rule of MyST, so both the warning and this paragraph are meant to disappear once it is fixed upstream.
 

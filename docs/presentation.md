@@ -441,7 +441,8 @@ Key Tauri-specific features:
 - **Webview zoom**: Cmd/Ctrl +/-/0 scales the entire UI
 - **Logging** via the Tauri logging plugin
 
-The desktop application also carries an **export menu**, which the web build cannot have since it shells out to [mystmd](https://mystmd.org): PDF, LaTeX and Word through `myst build`, an HTML export that writes out the rendered preview with the editor's stylesheets inlined, and the project-level `myst build` and `myst start` commands. When the folder has no `myst.yml`, or the document declares no export entry for the format, the editor says which is missing and offers to set both up and export in one go. See [export](export.md).
+The desktop application also carries an **export menu**, which the web build cannot have since it shells out to [mystmd](https://mystmd.org): PDF, LaTeX and Word through `myst build`, an HTML export that writes out the rendered preview with the editor's stylesheets inlined, and the project-level `myst build` and `myst start` commands. When the folder has no `myst.yml`, or the document declares no export entry for the format, the editor says which is missing and offers to set both up and export in one go. 
+👉🏼 See [export](export.md).
 
 :::{figure} figures/exports.gif
 :name: exports
