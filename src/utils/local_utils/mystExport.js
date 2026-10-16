@@ -70,9 +70,31 @@ const mystCmd = () => configuredMyst() || probedMystPath || "myst";
  * line rather than a path, `npx myst` for instance, and quoting would turn that
  * into the name of a file that does not exist.
  */
-const mystInvocation = () => {
-  const cmd = mystCmd();
-  return /^[/~]/.test(cmd) || (isWindows && /^[A-Za-z]:[\\/]/.test(cmd)) ? q(cmd) : cmd;
+const mystInvocation = (cmd = mystCmd()) =>
+  /^[/~]/.test(cmd) || (isWindows && /^[A-Za-z]:[\\/]/.test(cmd)) ? q(cmd) : cmd;
+
+/**
+ * Put the directory myst lives in at the head of the PATH.
+ *
+ * Knowing where myst is is not enough to run it: `myst` is a node script whose
+ * shebang is `#!/usr/bin/env node`, so the PATH chooses the interpreter, and
+ * the login shell's PATH is not the user's. A Homebrew myst found at
+ * /opt/homebrew/bin/myst was running under the /usr/local/bin/node that
+ * `sh -lc` sees -- node 20 against the node 26 installed beside it -- and died
+ * inside mystmd with `The "path" argument must be of type string. Received
+ * undefined`, far enough from the cause to look like anything but a version
+ * mismatch. A command manager's node sits next to the command it installed, so
+ * putting that directory first picks the interpreter the user's own shell
+ * would have picked.
+ *
+ * Only for an absolute path, since nothing else names a directory, and only on
+ * POSIX: Windows hands a desktop application the user's real PATH, so there is
+ * nothing to repair there and the quoting is better left alone.
+ */
+const pathPrefix = (cmd) => {
+  if (isWindows || !/^[/~]/.test(cmd)) return "";
+  const dir = parentDir(cmd);
+  return dir ? `export PATH=${shq(dir)}:"$PATH" && ` : "";
 };
 
 /**
@@ -104,8 +126,21 @@ const MYST_CANDIDATES = [
  * Its message is translated, so matching on the text would work in English and
  * nowhere else.
  */
-const notFound = (res) =>
-  res?.code === 127 || res?.code === 9009 || (!isWindows && /not found|No such file or directory/i.test(res?.stderr ?? ""));
+const SHELL_NOT_FOUND = /\b(?:command not found|not found|no such file or directory|is not recognized as an internal or external command)\b/i;
+
+const notFound = (res) => {
+  if (res?.code === 127 || res?.code === 9009) return true;
+  // The text is only a fallback, and it has to be a narrow one: a shell that
+  // cannot find a command says so in a single short line, whereas myst's own
+  // output runs to hundreds and contains messages such as "Cross reference
+  // target was not found" -- which is how a build that worked came to be
+  // reported as a missing myst.
+  const err = String(res?.stderr ?? "").trim();
+  if (!err || err.length >= 200 || err.includes("\n")) return false;
+  // A line myst marked as its own is myst's, whatever it says.
+  if (/[⚠⛔📖📚🍡🌎]/u.test(err)) return false;
+  return SHELL_NOT_FOUND.test(err);
+};
 
 /**
  * Look for myst, cheapest first.
@@ -209,9 +244,12 @@ async function runMyst(argline, cwd) {
   // shell's profile can move it after the fact. `cmd /d` cannot be moved, so
   // there the `cwd` option is enough -- and it spares the line two quoted
   // paths, which is worth having where quoting is as brittle as it is.
-  const run = (cmd) => runShell(isWindows ? `${cmd} ${argline}` : `cd ${shq(cwd)} && ${cmd} ${argline}`, cwd);
+  const run = (cmd) => {
+    const call = `${pathPrefix(cmd)}${mystInvocation(cmd)} ${argline}`;
+    return runShell(isWindows ? call : `cd ${shq(cwd)} && ${call}`, cwd);
+  };
 
-  const res = await run(mystInvocation());
+  const res = await run(mystCmd());
   // Only a command that was never found is worth looking for; a myst that ran
   // and failed has nothing to do with where it lives.
   if (!notFound(res) || probedMystPath || configuredMyst()) return res;
@@ -228,13 +266,38 @@ async function runMyst(argline, cwd) {
     "success",
     8000,
   );
-  return run(q(found));
+  return run(found);
 }
 
-/** Report a failed command, keeping the toast up so the message can be read. */
+/** A line myst marks as a warning rather than an error. */
+const isWarningLine = (line) => /^\s*(?:⚠|WARN|warning)/iu.test(line);
+
+/**
+ * What myst actually has to say, warnings last.
+ *
+ * Taking the last three lines put the warnings in front of the error that
+ * ended the run, which is the wrong way round: `myst build` prints its
+ * warnings as it goes and its reason for stopping at the end. The lines that
+ * are not warnings are therefore the ones worth showing, and the warnings are
+ * only counted.
+ */
+function summarise(res) {
+  const lines = String(res?.stderr || res?.stdout || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const warnings = lines.filter(isWarningLine);
+  const errors = lines.filter((l) => !isWarningLine(l));
+  return {
+    warnings: warnings.length,
+    onlyWarnings: lines.length > 0 && errors.length === 0,
+    detail: (errors.length ? errors : warnings).slice(-2).join(" "),
+  };
+}
+
+/** Report a command that did not end well, keeping the toast up to be read. */
 function reportFailure(what, res) {
-  const detail = (res?.stderr || res?.stdout || "").trim().split("\n").slice(-3).join(" ");
-  console.error(`[export] ${what} failed (code ${res?.code}):`, res?.stderr || res?.stdout);
+  console.error(`[export] ${what} exited ${res?.code}:`, res?.stderr || res?.stdout);
 
   // The one failure that is not about the document: the command itself is
   // nowhere to be found, and the probe did not turn it up either.
@@ -247,10 +310,15 @@ function reportFailure(what, res) {
     );
     return;
   }
-  // The shell and the exit code are named: in a packaged build there is no
-  // console, and they are the first two things one needs to know.
+
+  const { warnings, onlyWarnings, detail } = summarise(res);
+  // "Failed" overstates it when myst wrote its output and merely complained on
+  // the way: the output exists, and a warning is not a failure. The shell and
+  // the exit code are named because in a packaged build there is no console.
+  const headline = onlyWarnings ? `${what} reported warnings` : `${what} reported errors`;
+  const counted = warnings && !onlyWarnings ? ` (and ${warnings} warning${warnings > 1 ? "s" : ""})` : "";
   const where = res?.scope ? ` [${res.scope}, exit ${res.code}]` : "";
-  showToast(`${what} failed${where}${detail ? ": " + detail : ""}`, "error", 0);
+  showToast(`${headline}${counted}${where}${detail ? ": " + detail : ""}`, onlyWarnings ? "warning" : "error", 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +803,10 @@ export async function mystBuild(tab) {
 
 let siteChild = null;
 let sitePortInUse = null;
+/** Set while stopping on purpose, so the close handler stays quiet. */
+let siteStopping = false;
+/** Disarms the opener armed for the current run; a no-op when none is armed. */
+let cancelSiteOpener = () => {};
 
 /** True while a `myst start` server spawned from here is running. */
 export const siteRunning = () => siteChild !== null;
@@ -763,37 +835,110 @@ export async function startSite(tab) {
   // first -- to be checked on Windows.
   const line = isWindows
     ? `${mystInvocation()} start --port ${port}`
-    : `cd ${shq(dir)} && exec ${mystInvocation()} start --port ${port}`;
+    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start --port ${port}`;
   console.log("[export] sh -lc", line);
   const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
   const cmd = Command.create(scope, args, { cwd: dir });
-  cmd.stdout.on("data", (l) => console.log("[myst start]", l));
-  cmd.stderr.on("data", (l) => console.log("[myst start]", l));
-  cmd.on("close", () => { siteChild = null; sitePortInUse = null; });
+  // myst announces the address it actually listens on, and it is not always
+  // the one asked for -- it moves on when the port is taken. Reading it from
+  // the output is more reliable than trusting the request.
+  const watch = (line) => {
+    console.log("[myst start]", line);
+    // The port first, so that the address is right when the ready line lands.
+    const match = SITE_URL_RE.exec(String(line)) ?? SITE_READY_RE.exec(String(line));
+    if (match) sitePortInUse = Number(match[1]);
+    openSiteWhenReady(line);
+  };
+  cmd.stdout.on("data", watch);
+  cmd.stderr.on("data", watch);
+  cmd.on("close", (data) => {
+    // Ending on its own is not the same as being stopped from the menu: the
+    // button would simply go back to "start", with nothing said about why.
+    const unexpected = siteChild && !siteStopping;
+    cancelSiteOpener();
+    siteChild = null;
+    sitePortInUse = null;
+    siteStopping = false;
+    if (unexpected) {
+      showToast(`myst start stopped on its own (exit ${data?.code ?? "?"}). See the console for its output.`, "error", 0);
+    }
+  });
+
+  // Armed before the spawn: the ready line can arrive before the await below
+  // has returned, and an opener armed afterwards would miss it.
+  cancelSiteOpener = armSiteOpener();
 
   try {
     siteChild = await cmd.spawn();
     sitePortInUse = port;
   } catch (err) {
+    cancelSiteOpener();
     console.error("[export] myst start failed:", err);
     showToast(`myst start failed: ${err}`, "error", 0);
     return;
   }
 
   showToast(`Starting the MyST site on port ${port}…`, "success", 5000);
-  // The server needs a moment before it answers; opening too early shows an error page.
-  setTimeout(async () => {
+}
+
+/** The address myst prints once it is listening. */
+const SITE_URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i;
+
+/**
+ * Open the site when myst says it is listening.
+ *
+ * A fixed wait was a guess about how long a cold `myst start` takes, and the
+ * guess was wrong often enough to land on a "connection refused" page. Polling
+ * the address was the obvious cure and the wrong one: the webview's content
+ * security policy has no `connect-src` for localhost, so every probe is
+ * refused before it leaves. What myst prints is better than either -- it says
+ * `Server started on port 3000!` the moment it is ready, and that line arrives
+ * through the stream we already read.
+ */
+let openSiteWhenReady = () => {};
+
+/** The line myst prints once the theme server is up. */
+const SITE_READY_RE = /server started on port\s*(\d+)/i;
+
+function armSiteOpener(timeoutMs = 120000) {
+  let done = false;
+
+  const open = async () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(siteUrl());
     } catch (err) {
       console.warn("[export] could not open the browser:", err);
     }
-  }, 4000);
+  };
+
+  const timer = setTimeout(() => {
+    if (done || !siteChild) return;
+    done = true;
+    showToast(
+      `The MyST site has not announced itself yet. If it is up, open ${siteUrl()} yourself.`,
+      "warning",
+      0,
+    );
+  }, timeoutMs);
+
+  openSiteWhenReady = (line) => {
+    if (SITE_READY_RE.test(String(line))) open();
+  };
+
+  return () => {
+    done = true;
+    clearTimeout(timer);
+  };
 }
 
 export async function stopSite() {
   if (!siteChild) return;
+  siteStopping = true;
+  cancelSiteOpener();
   try {
     await siteChild.kill();
   } catch (err) {
