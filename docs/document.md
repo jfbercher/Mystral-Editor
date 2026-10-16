@@ -16,8 +16,10 @@ settings:
     output_matplotlib_strings: remove
 exports:
   - format: docx
+  - format: tex
+    template: elsarticle_myst
   - format: pdf
-    template: arxiv_nips
+    template: elsarticle_myst
     article_type: article
     chapters: []
 numbering:
@@ -35,9 +37,9 @@ math:
 :::{toc} Contents
 ::: 
 
-## First section
+## First *section* of
 
-We have the Fourier transform, see eg {cite}`mallat2009wavelet`, or [@oppenheim1999dtsp; @oppenheim2010signals] as:
+We have the {u}`Fou**rie**r` transform, see eg {cite}`mallat2009wavelet`, or [@oppenheim1999dtsp; @oppenheim2010signals] as:
 $$
 \label{Fourier}
 X(f) = \sum_{n=1}^N x(n) e^{-j2\pi f n}
@@ -46,7 +48,7 @@ $$,
 
 ## Second section
 
-Together with the [Fourier transfom](#Fourier), equation {eq}`Fourier`, we have it inverse given as
+Together with the [Fourier transfom](#Fourier), equation {eq}`Fourier`, we have it inverse given as this
 :::{math}
 :label: InverseFourier
 
@@ -58,8 +60,9 @@ that can also be referred [](#InverseFourier). Nice no?
 
 
 
-
-
+- [x] top
+- [ ] dddf
+ 
 
 
 
