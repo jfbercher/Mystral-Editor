@@ -160,6 +160,12 @@ export const DEFAULT_CONFIG = {
     // plain name works as long as it is on the PATH of your shell profile;
     // set an absolute path here if it is installed somewhere unusual.
     mystPath: "myst",
+    // Interpreter myst must run under. mystmd is a node script whose shebang
+    // resolves `node` through the PATH, and the PATH of a login shell is not
+    // the one your terminal shows: leave this empty and the editor looks for
+    // the newest node it can find the first time myst reports none, then
+    // records it here.
+    nodePath: "",
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
     // Template written into the exports frontmatter when the editor creates the

@@ -19,6 +19,19 @@ import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmat
 import { dump as yamlDump } from "js-yaml";
 import { cellCache, cellKey } from "../../markdown/pyodideRunner.js";
 
+/**
+ * Environment handed to every myst command.
+ *
+ * `MYSTMD_ALLOW_NODEENV` is read by the pip build of mystmd (mystmd_py's
+ * nodeenv.py) and is in none of its documentation. Left alone, a mystmd that
+ * finds no node asks `Install Node.js in ...? (y/N)` on stdin -- a prompt with
+ * no one in front of it here. Anything that is not yes turns that question
+ * into an immediate, explicit refusal with a message of its own, which is what
+ * we want: the node it would install is a 20.0.0, below what its own site
+ * server works under. Harmless everywhere else, since no other build reads it.
+ */
+const MYST_ENV = { MYSTMD_ALLOW_NODEENV: "no" };
+
 /** Scope names declared in src-tauri/capabilities/default.json. */
 const LOGIN_SHELL = "login-shell";
 const WINDOWS_SHELL = "windows-shell";
@@ -62,6 +75,17 @@ const configuredMyst = () => {
 
 const mystCmd = () => configuredMyst() || probedMystPath || "myst";
 
+/** Found by probing, for this session, when config.json names no interpreter. */
+let probedNodePath = null;
+
+/** The interpreter the user has chosen, or nothing. Empty by default. */
+const configuredNode = () => {
+  const value = String(config.export?.nodePath ?? "").trim();
+  return value || null;
+};
+
+const nodeCmd = () => configuredNode() || probedNodePath || null;
+
 /**
  * The command as the shell should receive it.
  *
@@ -87,14 +111,26 @@ const mystInvocation = (cmd = mystCmd()) =>
  * putting that directory first picks the interpreter the user's own shell
  * would have picked.
  *
- * Only for an absolute path, since nothing else names a directory, and only on
- * POSIX: Windows hands a desktop application the user's real PATH, so there is
- * nothing to repair there and the quoting is better left alone.
+ * That guess holds when a package manager installs node beside the command --
+ * Homebrew does -- and not at all otherwise: a pip or pipx mystmd lands in
+ * ~/.local/bin, where there is no node, and a node installed from nodejs.org
+ * or by nvm lives somewhere else entirely. So an interpreter found by probing
+ * or named in config.json goes first, and the directory of myst itself stays
+ * as the fallback it always was.
+ *
+ * POSIX only: Windows hands a desktop application the user's real PATH, so
+ * there is nothing to repair there and the quoting is better left alone.
  */
 const pathPrefix = (cmd) => {
-  if (isWindows || !/^[/~]/.test(cmd)) return "";
-  const dir = parentDir(cmd);
-  return dir ? `export PATH=${shq(dir)}:"$PATH" && ` : "";
+  if (isWindows) return "";
+  const node = nodeCmd();
+  const dirs = [];
+  // The interpreter first when one is known: it was chosen, where the
+  // directory below is only a good guess.
+  if (node && /^[/~]/.test(node)) dirs.push(parentDir(node));
+  if (/^[/~]/.test(cmd)) dirs.push(parentDir(cmd));
+  const list = [...new Set(dirs.filter(Boolean))];
+  return list.length ? `export PATH=${list.map(shq).join(":")}:"$PATH" && ` : "";
 };
 
 /**
@@ -166,6 +202,205 @@ async function probeMyst() {
   );
   return (deep.code === 0 && deep.stdout.trim().split("\n")[0]) || null;
 }
+
+/**
+ * Where a node that myst can run under may sit.
+ *
+ * mystmd's own message -- `Node.js (node) is required to run MyST, but could
+ * not be found` -- is about the PATH of the shell it was started in, not about
+ * the machine: the user's terminal usually has one. The node mystmd installs
+ * for itself is in the list even though it needs no help finding it, because
+ * being able to name it is what tells a machine that has nothing else apart
+ * from one that has a real node somewhere. `export.nodeSearchPaths` in
+ * config.json adds to the list.
+ */
+const NODE_CANDIDATES = [
+  "/opt/homebrew/bin/node",
+  "/usr/local/bin/node",
+  "/usr/bin/node",
+  "/snap/bin/node",
+  "$HOME/.local/bin/node",
+  "$HOME/.npm-global/bin/node",
+  "$HOME/.volta/bin/node",
+  "$HOME/.bun/bin/node",
+  "$HOME/.nvm/versions/node/*/bin/node",
+  "$HOME/.asdf/shims/node",
+  // mystmd's own, last and least: it is the one that comes out too old.
+  "$HOME/.local/share/myst/*/bin/node",
+  "$HOME/.local/share/myst/*/node",
+];
+
+/**
+ * The oldest node mystmd actually works under.
+ *
+ * Its own check asks for 18 and its documentation for 22, and the truth is
+ * nearer the documentation: a 20.11 runs `myst build` well enough to look
+ * healthy and dies in the theme server with `The "path" argument must be of
+ * type string. Received undefined`, which names neither node nor a version.
+ * When nothing on the machine reaches this, saying so is worth more than
+ * silently picking the least bad.
+ */
+const MIN_NODE_MAJOR = 22;
+
+/**
+ * mystmd refusing to install a node for itself -- because we refused for it.
+ *
+ * Its own wording, `the user denied the request`, is accurate about the
+ * mechanism and misleading about the facts: nobody was asked anything. Said
+ * plainly, this is the one message a new installation most needs to read.
+ */
+const nodeDenied = (res) =>
+  /attempt to install Node\.js (?:was unsuccessful|failed because the user denied)/i.test(
+    `${res?.stdout ?? ""}\n${res?.stderr ?? ""}`,
+  );
+
+/** myst saying it has no interpreter, as opposed to failing at its work. */
+const nodeMissing = (res) =>
+  /Node\.js \(node\) is required to run MyST/i.test(`${res?.stdout ?? ""}\n${res?.stderr ?? ""}`);
+
+/**
+ * Look for the newest node, not the first one.
+ *
+ * Taking the first match is what the myst probe does, and it is right there:
+ * any myst will do. Any node will not. A machine commonly carries several --
+ * a distribution one, an installer one, one per version manager -- and the
+ * oldest is often the one a login shell reaches first; the editor has already
+ * run a myst under a node 20 that was six years newer on the same disk, and
+ * the failure that followed named neither node nor a version. Asking each
+ * candidate for its own version costs a handful of processes and removes the
+ * guesswork.
+ */
+async function probeNode() {
+  if (isWindows) return null;
+
+  const list = [...NODE_CANDIDATES, ...(config.export?.nodeSearchPaths ?? [])].join(" ");
+  const pick = await runShell(
+    `best=; bestv=0; ` +
+      `for p in ${list}; do ` +
+      `[ -x "$p" ] || continue; ` +
+      `v=$("$p" -v 2>/dev/null) || continue; ` +
+      `v=\${v#v}; v=\${v%%.*}; ` +
+      `case "$v" in ""|*[!0-9]*) continue;; esac; ` +
+      `if [ "$v" -gt "$bestv" ]; then bestv=$v; best=$p; fi; ` +
+      `done; ` +
+      `[ -n "$best" ] && printf '%s %s\n' "$bestv" "$best" || exit 1`,
+  );
+  const best = pick.code === 0 && pick.stdout.trim().split("\n")[0];
+  if (best) {
+    const [major, ...rest] = best.split(" ");
+    return { path: rest.join(" "), major: Number(major) };
+  }
+
+  // Nothing where nodes usually are: let the user's own interactive shell
+  // answer, which is what nvm and asdf need -- their node exists only as a
+  // function or a shim set up by ~/.bashrc or ~/.zshrc.
+  const deep = await runShell(
+    `for s in zsh bash; do command -v $s >/dev/null 2>&1 || continue; ` +
+      `p=$("$s" -ilc 'command -v node' 2>/dev/null | tail -n 1); ` +
+      `[ -x "$p" ] || continue; ` +
+      `v=$("$p" -v 2>/dev/null); v=\${v#v}; v=\${v%%.*}; ` +
+      `case "$v" in ""|*[!0-9]*) continue;; esac; ` +
+      `printf '%s %s\n' "$v" "$p" && exit 0; done; exit 1`,
+  );
+  const line = deep.code === 0 && deep.stdout.trim().split("\n")[0];
+  if (!line) return null;
+  const [major, ...rest] = line.split(" ");
+  return { path: rest.join(" "), major: Number(major) };
+}
+
+/** Set once the search has been made, so that a fruitless one is not repeated. */
+let nodeProbed = false;
+
+/**
+ * Settle on an interpreter, once per session, before myst is ever run.
+ *
+ * Reacting to `Node.js (node) is required to run MyST` is not enough, because
+ * the worst case never produces that message: on a machine with no node at
+ * all, mystmd offers to install one for itself and installs a 20.0.0 -- below
+ * what it needs. From then on it has an interpreter, says nothing, and fails
+ * deep inside the theme server. Looking first is what makes that case visible,
+ * and it costs one shell loop.
+ *
+ * An interpreter is adopted only if it is new enough to be an improvement.
+ * Where the newest node on the machine is too old, saying so plainly is the
+ * only useful thing left to do: putting it at the head of the PATH could
+ * displace something better that myst was finding on its own.
+ *
+ * Returns true when a usable interpreter was newly adopted, so that a caller
+ * that has just failed knows a retry is worth the wait.
+ */
+async function ensureNode() {
+  if (isWindows || configuredNode() || probedNodePath || nodeProbed) return false;
+  nodeProbed = true;
+
+  const found = await probeNode();
+  if (!found) return false;
+
+  if (found.major < MIN_NODE_MAJOR) {
+    showToast(
+      `The newest Node.js found is ${found.major} (${found.path}); mystmd needs ${MIN_NODE_MAJOR} or later. ` +
+        `Exports may fail with an error that says nothing about Node. Install a current Node.js, or set ` +
+        `export.nodePath in config.json.`,
+      "warning",
+      0,
+    );
+    return false;
+  }
+
+  probedNodePath = found.path;
+  const written = await saveConfigValue("export.nodePath", found.path);
+  showToast(
+    written
+      ? `Running myst under Node ${found.major} (${found.path}), recorded in config.json.`
+      : `Running myst under Node ${found.major} (${found.path}) for this session.`,
+    "success",
+    8000,
+  );
+  return true;
+}
+
+/**
+ * Is the interpreter we settled on still there?
+ *
+ * Only an absolute path can be tested: a `~` would have to be expanded, and a
+ * value the user wrote by hand deserves the benefit of the doubt rather than a
+ * test that quoting makes fail.
+ */
+async function nodeUsable() {
+  const node = nodeCmd();
+  if (isWindows || !node || !node.startsWith("/")) return true;
+  return (await runShell(`[ -x ${shq(node)} ]`)).code === 0;
+}
+
+/**
+ * Forget the recorded interpreter and look again.
+ *
+ * What is written in config.json is a path, not a version, so an upgrade in
+ * place -- Homebrew, apt -- changes nothing and needs nothing: the path still
+ * points at the newer node. A version manager is the other case: nvm and asdf
+ * keep each version in a directory of its own, so an upgrade leaves the
+ * recorded path pointing at an older node, or at nothing once the old version
+ * is removed. Without this, the recorded value would then be both wrong and
+ * unreachable -- `configuredNode()` answers, so no search is made, and the
+ * editor would tell the user to set a setting that is already set.
+ */
+async function refreshNode() {
+  const stale = nodeCmd();
+  if (stale) await saveConfigValue("export.nodePath", "");
+  probedNodePath = null;
+  nodeProbed = false;
+
+  const found = await ensureNode();
+  if (!found && stale) {
+    showToast(
+      `The Node.js recorded in config.json (${stale}) is no longer there, and no replacement was found. ` +
+        `Install Node ${MIN_NODE_MAJOR} or later, or set export.nodePath yourself.`,
+      "error",
+      0,
+    );
+  }
+  return found;
+}
 const sitePort = () => config.export?.sitePort ?? 3000;
 
 const baseName = (p) => fileName(p);
@@ -225,7 +460,7 @@ async function runShell(line, cwd) {
   console.log("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
 
   try {
-    const cmd = Command.create(scope, args, cwd ? { cwd } : {});
+    const cmd = Command.create(scope, args, cwd ? { cwd, env: MYST_ENV } : { env: MYST_ENV });
     const res = await cmd.execute();
     if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
     return { ...res, scope };
@@ -244,12 +479,27 @@ async function runMyst(argline, cwd) {
   // shell's profile can move it after the fact. `cmd /d` cannot be moved, so
   // there the `cwd` option is enough -- and it spares the line two quoted
   // paths, which is worth having where quoting is as brittle as it is.
+  // `< /dev/null` backs up MYST_ENV above, for a mystmd too old to read it:
+  // that install prompt waits on a pipe nothing ever closes, so without one of
+  // the two an export hangs for ever instead of failing. The environment
+  // variable is much the better of the two -- it ends in a sentence saying
+  // what happened, where EOF ends in a Python traceback -- but it costs
+  // nothing to keep both.
   const run = (cmd) => {
     const call = `${pathPrefix(cmd)}${mystInvocation(cmd)} ${argline}`;
-    return runShell(isWindows ? call : `cd ${shq(cwd)} && ${call}`, cwd);
+    return runShell(isWindows ? call : `cd ${shq(cwd)} && ${call} < /dev/null`, cwd);
   };
 
+  // Before the first command: myst asked for an interpreter it may well find
+  // on its own, and finding it too late is the whole trouble.
+  await ensureNode();
+
   const res = await run(mystCmd());
+
+  // Still without one -- the search came up empty where an interactive shell
+  // would have answered, or config.json names a node that has since moved.
+  if (nodeMissing(res) || nodeDenied(res)) return (await refreshNode()) ? run(mystCmd()) : res;
+
   // Only a command that was never found is worth looking for; a myst that ran
   // and failed has nothing to do with where it lives.
   if (!notFound(res) || probedMystPath || configuredMyst()) return res;
@@ -266,7 +516,8 @@ async function runMyst(argline, cwd) {
     "success",
     8000,
   );
-  return run(found);
+  const retried = await run(found);
+  return nodeMissing(retried) && (await ensureNode()) ? run(found) : retried;
 }
 
 /** A line myst marks as a warning rather than an error. */
@@ -305,6 +556,19 @@ function reportFailure(what, res) {
     showToast(
       "myst could not be found. An application launched from the desktop does not inherit a terminal's PATH. " +
         "Run `which myst` in a terminal and put that path in export.mystPath in config.json.",
+      "error",
+      0,
+    );
+    return;
+  }
+
+  // No interpreter anywhere, and the editor declined mystmd's offer to fetch
+  // one on its own -- deliberately, since what it fetches is a 20.0.0.
+  if (nodeDenied(res) || nodeMissing(res)) {
+    showToast(
+      `No usable Node.js was found on this machine, and mystmd needs ${MIN_NODE_MAJOR} or later to export. ` +
+        "Install the current LTS from nodejs.org or with your package manager, then try again. " +
+        "If node is installed somewhere unusual, put its path in export.nodePath in config.json.",
       "error",
       0,
     );
@@ -827,6 +1091,11 @@ export async function startSite(tab) {
       await saveConfigValue("export.mystPath", found);
     }
   }
+  // `start` is spawned, not executed, so nothing can retry it after the fact:
+  // the interpreter has to be settled before the server is launched -- which
+  // is also the one place worth paying for a check that it is still there.
+  if (!(await nodeUsable())) await refreshNode();
+  await ensureNode();
 
   const { Command } = await import("@tauri-apps/plugin-shell");
   // `exec` replaces the shell with myst itself, so kill() reaches the server
@@ -835,10 +1104,10 @@ export async function startSite(tab) {
   // first -- to be checked on Windows.
   const line = isWindows
     ? `${mystInvocation()} start --port ${port}`
-    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start --port ${port}`;
+    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start --port ${port} < /dev/null`;
   console.log("[export] sh -lc", line);
   const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
-  const cmd = Command.create(scope, args, { cwd: dir });
+  const cmd = Command.create(scope, args, { cwd: dir, env: MYST_ENV });
   // myst announces the address it actually listens on, and it is not always
   // the one asked for -- it moves on when the port is taken. Reading it from
   // the output is more reliable than trusting the request.
