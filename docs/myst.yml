@@ -6,30 +6,31 @@ extends:
 project:
   id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
   plugins:
-  #- plugins/example-admonition.mjs
+  - plugins/example-admonition.mjs
   - plugins/exercise-admonition-pdf.mjs
   #- plugins/foldable-solutions.mjs
   - plugins/page-last-updated.mjs
   toc:
     - file: index.md
+    - file: presentation.md
     - title: Mystral Editor - General documentation
       children:
-        - file: presentation.md
-        - file: overview-and-heritage.md
+        #- file: presentation.md
+        - file: overview.md
         - file: local-file-management.md
         - file: scientific-authoring.md
-        - file: executable-code.md
-        - file: document-organisation.md
-        - file: theming.md
-        - file: desktop-apps.md
-        - file: customisation-presentation.md
+        - file: python-executable-code-cells-(pyodide).md
+        - file: document-organization-and-navigation.md
+        - file: theming-and-interface.md
+        - file: desktop-application-(tauri).md
+        - file: customisation.md
         - file: getting-started.md
         - file: contributing.md
-        - file: table-of-differences.md
-        - file: additions.md
-        - file: modifications.md
+        - file: differences-vs-myst-editor-(summary).md
     - title: Mystral Editor - Precisions and further notes
       children:
+        - file: additions.md
+        - file: modifications.md
         - file: completion.md  
         - file: export.md
         - file: toc.md
@@ -37,7 +38,7 @@ project:
         - file: directives-and-roles.md  
         - file: executable-content.md
         - file: project-frontmatter-extends.md
-        - file: customisation.md  
+        - file: customisation-reference.md  
         - file: myst-editor-css-variables.md
         - file: windows_app_installation_guide.md
         - file: macos_app_installation_guide.md  

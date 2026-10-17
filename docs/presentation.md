@@ -13,10 +13,13 @@ date: 2026-10-14
 
 
 :::{toc} Contents
-:dropdown: 
+:context: page
+:depth: 1
 ::: 
 
 ## Overview
+
+### Overview 
 
 **[Mystral Editor](https://github.com/jfbercher/Mystral-Editor)** is a lightweight, offline-capable editor with large [MyST Markdown](https://myst-parser.readthedocs.io/)[^MyST] support and live-preview, oriented toward academic documents, with equations, bibliography management, automatic numbering of floating elements and structured navigation.
 
@@ -35,7 +38,7 @@ The original Myst-Editor is distributed under an Apache 2.0 license. The two fol
 
 [^MyST]: MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
 
-## Features Inherited from Myst-Editor
+### Features Inherited from Myst-Editor
 
 Mystral Editor retains and extends all upstream editor features:
 
@@ -52,6 +55,7 @@ Mystral Editor retains and extends all upstream editor features:
 - **MyST roles and directives**: some roles (`{ref}`, `{eq}`, etc.) and directives were already present in MyST editor and are extended/completed in Mystral.
 
 ## Local File Management
+### Main menu
 
 A dedicated menu bar handles documents on the local file system:
 
@@ -63,6 +67,8 @@ A dedicated menu bar handles documents on the local file system:
 - **Document statistics** (word, paragraph, line and character counts)
 - **Zoom** (Cmd/Ctrl +/-/0) in Tauri mode
 - **Jupyter notebook import and export**: a `.ipynb` file can be opened directly, converted to MyST Markdown on the fly, and *Save As* can write the document back to `.ipynb` -- code and text are carried over, cell outputs are not
+
+### File access
 
 In web mode (outside Tauri), file access goes through the browser File System Access API (Chrome/Edge) with IndexedDB for tab-state persistence.
 
@@ -83,6 +89,17 @@ In web mode (outside Tauri), file access goes through the browser File System Ac
 :::
 
 Each tab's state (file name, dirty flag, Yjs comments) is saved and restored across sessions. A tab marked *dirty* (unsaved changes) is shown visually in the tab bar.
+
+### Changes made outside the editor
+
+The editor notes when a file was last written, as it reads it and after each of its own saves. If the file has been written by something else in the meantime — another editor, a `git checkout` or `git pull`, a script, the same document open in a second window — saving stops to ask, with three ways out: save anyway, which replaces what is on disk; reload from disk, which replaces what is in the editor, unsaved changes included; or leave both alone, which is what you want when neither version is expendable — *Save As* then keeps yours under another name and the two can be compared.
+
+The question is asked in two steps, because the native dialogs of both platforms carry two buttons and no more: first whether to save over the file, then, if not, whether to load its version instead. Declining both changes nothing.
+
+Autosave does not ask: a dialog appearing on a timer while you type would be worse than what it reports. It holds off instead, says so once, and waits for you to save yourself and make the choice. Nothing is lost either way — your text is still in the editor.
+
+A comparison that cannot be made is never treated as a conflict: a document with no file yet, a file opened through `<input type="file">`, a notebook whose Markdown sibling does not exist yet, or a modification time the system declines to give all save without a question. Differences below a second are ignored, since filesystems do not all keep the same resolution.
+
 
 (scientific_authoring)=
 ## Scientific Authoring
