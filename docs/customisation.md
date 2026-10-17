@@ -64,9 +64,13 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.newTab` | `"Mod-Shift-e"` | New tab |
 | `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
 | `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
-| `shortcuts.modeInline` | `"Mod-Shift-i"` | Switch to the inline preview |
+| `shortcuts.modeInline` | `"Mod-Shift-l"` | Switch to the inline preview |
 
 `Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Modifiers are combined with `-`, for instance `"Mod-Alt-p"`.
+
+These defaults are the same on the three platforms, which is why the inline preview is on `l` rather than the `i` of its name: `Ctrl-Shift-i` opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works everywhere keeps `config.json` portable from one machine to the next.
+
+Some keys are still taken by the system, the browser or another application before the editor sees them, and that varies from one setup to the next. If one of these collides with something on yours, change it in `config.json`, which the `Settings` menu at the top left of the editor opens. Two directions worth trying: a letter that nothing claims, or `Alt` in place of `Mod`, which is free more often on Windows. In Firefox, note that `Ctrl-Shift-p` opens a private window.
 
 ---
 

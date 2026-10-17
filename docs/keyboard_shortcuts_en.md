@@ -22,7 +22,7 @@ extends: mdocs_fm.yml
 | `Mod-Shift-s` | Save current tab |
 | `Mod-Shift-d` | Dual pane (source and preview) |
 | `Mod-Shift-p` | Preview only |
-| `Mod-Shift-i` | Inline preview |
+| `Mod-Shift-l` | Inline preview |
 :::
 These keys are configurable in `config.json`; see [Customisation](customisation.md).
 

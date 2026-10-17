@@ -113,13 +113,16 @@ export const DEFAULT_CONFIG = {
     save:   "Mod-Shift-s",
     open:   "Mod-Shift-o",
     newTab: "Mod-Shift-e",
-    // Switch the view. Free under Tauri, and in a browser on macOS too. On
-    // Windows and Linux the browser keeps Ctrl-Shift-I (developer tools) and,
-    // in Firefox, Ctrl-Shift-P (private window) for itself, which is one of
-    // the reasons these are configurable.
+    // Switch the view. `l` rather than the `i` of "inline": Ctrl-Shift-I
+    // opens the developer tools on Windows and Linux, in the webview as in a
+    // browser, so the editor never sees it there. One binding that works on
+    // the three platforms is worth more than a mnemonic that works on one --
+    // and it keeps config.json portable between them. Firefox also keeps
+    // Ctrl-Shift-P (private window) for itself, which is one of the reasons
+    // these are configurable.
     modeDual:    "Mod-Shift-d",
     modePreview: "Mod-Shift-p",
-    modeInline:  "Mod-Shift-i",
+    modeInline:  "Mod-Shift-l",
   },
 
   pyodide: {
@@ -179,3 +182,4 @@ export const DEFAULT_CONFIG = {
     },
   },
 };
+
