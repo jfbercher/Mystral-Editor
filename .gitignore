@@ -5,6 +5,7 @@ node_modules
 .env
 *.css~
 *.json~
+*.yml~
 test-results
 playwright-report
 docs/build/
