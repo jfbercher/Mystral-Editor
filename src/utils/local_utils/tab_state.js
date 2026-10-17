@@ -109,6 +109,11 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     editorId,
     currentFileHandle: null,
     selectedFileHandle: null,
+    // Modification time of the file as the editor last saw it: set when the
+    // file is read, and again after every write. `null` means "not known", and
+    // nothing is checked -- a new document, a notebook mounted on a .md that
+    // does not exist yet, a handle a restart restored but never read.
+    knownMtime: null,
     currentFileName: config.defaultFileName,
     currentFilePathParam: null,
     autoSaveEnabled: config.autoSaveEnabled, //true,
@@ -355,6 +360,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         setEditorFileKey(editorId, tab.currentFileKey);
         clearEditorPythonSpace(editorId);
         currentFileDir.value = typeof mountedPath === 'string' ? dirNameOf(mountedPath) : null;
+        // The reference the next save compares against. A notebook mounts on a
+        // .md that may not exist yet, in which case this is null and the first
+        // save creates the file without asking anything.
+        await tab.rememberMtime(mountedPath);
         // Remember the file that actually exists on disk, so a restart reopens
         // (and reconverts) the notebook rather than a .md that is not there yet.
         localStorage.setItem(`storedFileHandle:${editorId}`, fileHandleOrPath);
@@ -411,6 +420,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         tab.lastLoadError = null;
         tab.currentFileHandle = fileHandleOrPath;
         tab.selectedFileHandle = fileHandleOrPath;
+        await tab.rememberMtime(fileHandleOrPath);
         tab.currentFileName = fileHandleOrPath.name;
         tab.currentFileKey =  getFileKey(fileHandleOrPath);
         setEditorFileKey(editorId, tab.currentFileKey);
@@ -540,7 +550,168 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     });
   };
 
-  tab.saveCurrentDoc = async ({ skipSidecar = false } = {}) => {
+  /**
+   * When the file behind this tab was last written, in milliseconds.
+   *
+   * Returns null when the question cannot be answered -- no file yet, a
+   * `<input type="file">` snapshot, a permission refused, a path that has
+   * since been removed. A null is never treated as a conflict: a check that
+   * cannot be made must not stop a save.
+   */
+  const fileMtimeMs = async (handleOrPath) => {
+    try {
+      if (!handleOrPath) return null;
+      if (isTauri) {
+        if (typeof handleOrPath !== "string") return null;
+        if (!(await tauriFs.exists(handleOrPath))) return null;
+        const info = await tauriFs.stat(handleOrPath);
+        return info?.mtime ? new Date(info.mtime).getTime() : null;
+      }
+      if (typeof handleOrPath.getFile !== "function") return null;
+      const file = await handleOrPath.getFile();
+      return Number.isFinite(file?.lastModified) ? file.lastModified : null;
+    } catch (err) {
+      console.warn("[tab] could not read the modification time:", err);
+      return null;
+    }
+  };
+
+  /** Record the file's current modification time as the one we know about. */
+  tab.rememberMtime = async (handleOrPath = tab.currentFileHandle) => {
+    tab.knownMtime = await fileMtimeMs(handleOrPath);
+    return tab.knownMtime;
+  };
+
+  /**
+   * Has the file been written by something other than this tab?
+   *
+   * A second of tolerance, because a modification time does not come back
+   * with the same resolution everywhere -- a filesystem that keeps whole
+   * seconds, a network share that rounds -- and a save must not be questioned
+   * over a rounding difference. What this catches is a real edit elsewhere:
+   * another editor, a `git checkout`, a script, the same document open in a
+   * second window.
+   */
+  const changedOnDisk = async () => {
+    if (tab.knownMtime == null) return false;
+    const now = await fileMtimeMs(tab.currentFileHandle);
+    return now != null && Math.abs(now - tab.knownMtime) > 1000;
+  };
+
+  /** Set while a conflict is pending, so autosave warns once rather than at every tick. */
+  let conflictReported = false;
+
+  /**
+   * Read the file again and put its content in the editor.
+   *
+   * Goes through the ordinary loading path rather than a bare read, so that a
+   * reload does everything an open does -- the sidecar, the notebook
+   * conversion, the file key -- instead of a careful subset of it that would
+   * drift from the real one.
+   */
+  tab.reloadFromDisk = async () => {
+    try {
+      const file = await tab.loadFileFromHandle(tab.currentFileHandle);
+      if (!file) return false;
+      const text = await file.text();
+      tab.setEditorText(text);
+      tab.markSaved(text);
+      await tab.rememberMtime();
+      showToast(`${tab.currentFileName} reloaded from disk.`, "success", 5000);
+      return true;
+    } catch (err) {
+      console.error("[tab] reload failed:", err);
+      showToast(`${tab.currentFileName} could not be reloaded: ${err}`, "error", 0);
+      return false;
+    }
+  };
+
+  /**
+   * What to do about a file somebody else has changed.
+   *
+   * Three outcomes, asked as two questions. The native dialogs of both
+   * platforms -- Tauri's `ask`, the browser's `confirm` -- carry two buttons
+   * and no more, and a three-way choice would mean a modal of our own, with a
+   * promise to resolve from outside the component tree. Two questions in a row
+   * cost nothing and are asked in the order of the stakes: keeping your work
+   * first, since it is the only copy that exists nowhere else, then the
+   * version on disk, with what losing it means spelt out.
+   *
+   * Interactive saves ask; autosave does not, because a modal that appears on
+   * a timer while the user is typing is worse than the problem it reports. It
+   * declines the write instead and says so once -- the text is still in the
+   * editor, and an explicit save will offer the choice.
+   *
+   * @returns {Promise<"overwrite"|"reload"|"cancel">}
+   */
+  const resolveConflict = async (interactive) => {
+    if (!(await changedOnDisk())) {
+      conflictReported = false;
+      return "overwrite";
+    }
+
+    if (!interactive) {
+      if (!conflictReported) {
+        conflictReported = true;
+        showToast(
+          `${tab.currentFileName} has changed on disk since it was opened. Autosave is holding off; ` +
+            `save yourself to choose between your version and the one on disk.`,
+          "warning",
+          0,
+        );
+      }
+      return "cancel";
+    }
+
+    const confirm = async (message, title, okLabel, cancelLabel) => {
+      if (!isTauri) return window.confirm(`${message}\n\nOK: ${okLabel} — Cancel: ${cancelLabel}`);
+      return await tauriDialog.ask(message, { title, kind: "warning", okLabel, cancelLabel });
+    };
+
+    try {
+      const overwrite = await confirm(
+        `${tab.currentFileName} has changed on disk since the editor last read it.\n\n` +
+          `Saving replaces that version with the one in the editor, and what is on disk is lost.`,
+        "The file has changed on disk",
+        "Save anyway",
+        "Not yet",
+      );
+      if (overwrite) {
+        conflictReported = false;
+        return "overwrite";
+      }
+
+      const reload = await confirm(
+        `Load the version on disk instead?\n\n` +
+          `Everything in the editor is replaced by it, including changes that were never saved. ` +
+          `Cancel to leave both as they are -- you can then save under another name and compare.`,
+        "Reload from disk?",
+        "Reload from disk",
+        "Leave both alone",
+      );
+      conflictReported = false;
+      return reload ? "reload" : "cancel";
+    } catch (err) {
+      // No dialog to be had: say it and do nothing, which is the safe side.
+      console.warn("[tab] could not ask about the conflict:", err);
+      showToast(`${tab.currentFileName} has changed on disk; the save was not made.`, "error", 0);
+      return "cancel";
+    }
+  };
+
+  /** True when the write may go ahead; handles the reload branch on the way. */
+  const clearedToWrite = async (interactive) => {
+    const verdict = await resolveConflict(interactive);
+    if (verdict === "reload") await tab.reloadFromDisk();
+    // Only for a save the user asked for: on a timer, resolveConflict has
+    // already said its piece once and repeating it at every tick is noise.
+    if (verdict === "cancel" && interactive) {
+      showToast("Save cancelled; the file on disk is untouched.", "warning", 6000);
+    }
+    return verdict === "overwrite";
+  };
+
+  tab.saveCurrentDoc = async ({ skipSidecar = false, interactive = true } = {}) => {
     const editorText = window.myst_editor[editorId].text;
     // Belt and braces: a tab is never mounted on a notebook, but if one ever is
     // (path param, restored handle), write notebook JSON rather than Markdown.
@@ -560,7 +731,9 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       await tab.saveCommentsForCurrentFile(); 
       console.log(`Saved (via path param): ${tab.currentFilePathParam}`);
     } else if (isTauri) {
+      if (!(await clearedToWrite(interactive))) return false;
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
+      await tab.rememberMtime();
       tab.markSaved(editorText);
       await tab.saveCommentsForCurrentFile();
       if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileHandle, editorId).catch(e => console.warn('[sidecar] save failed:', e));
@@ -571,9 +744,11 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       // keep the changes is to download a copy.
       return await tab.saveAs();
     } else {
+      if (!(await clearedToWrite(interactive))) return false;
       const writable = await tab.currentFileHandle.createWritable();
       await writable.write(contentToSave);
       await writable.close();
+      await tab.rememberMtime();
       tab.markSaved(editorText);
       await tab.saveCommentsForCurrentFile(); 
       if (!skipSidecar) saveSidecarWithNamespace(tab.currentFileKey, editorId).catch(e => console.warn('[sidecar] save failed:', e));
@@ -612,7 +787,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         }
       }
       if (tab.dirty) {
-        await tab.saveCurrentDoc({ skipSidecar: true });
+        await tab.saveCurrentDoc({ skipSidecar: true, interactive: false });
         // Web: IDB sidecar save is cheap — piggyback on autosave
         if (!isTauri) {
           saveSidecarWithNamespace(tab.currentFileKey, editorId)
@@ -653,6 +828,7 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
         if (filePath) {
           await tauriFs.writeTextFile(filePath, content);
           await tab.setCurrentFile(filePath);
+          await tab.rememberMtime(filePath);
           await addRecentFileHandle(filePath);
           tab.markSaved(content);
           await tab.saveCommentsForCurrentFile();
