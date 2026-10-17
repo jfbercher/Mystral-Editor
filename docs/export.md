@@ -9,16 +9,19 @@ The editor produces three kinds of output, and which ones are offered depends on
 
 Exports are produced by mystmd, which the editor runs as an external command; it is not bundled. Two things have to be in place, in this order.
 
-First **Node.js, version 22 or later**. mystmd is written in JavaScript and runs under Node, so this is its prerequisite rather than ours — install it from [nodejs.org](https://nodejs.org/en/download) or with your usual package manager, taking the current LTS. An older Node is worse than none: a version 20 builds documents well enough to look healthy, then fails in the site server with a message naming neither Node nor a version. If mystmd offers to install a Node for itself, the editor declines on your behalf, because what it installs has been a release below its own requirement.
+1. First **Node.js, version 22 or later**. mystmd is written in JavaScript and runs under Node, so this is its prerequisite rather than ours — install it from [nodejs.org](https://nodejs.org/en/download) or with your usual package manager, taking the current LTS[^node].
 
-Then **mystmd**, following [its own installation instructions](https://mystmd.org/guide/installing) — npm, pip or conda, as suits your machine.
+
+[^node]: An older Node is worse than none: a version 20 builds documents well enough to look healthy, then fails in the site server with a message naming neither Node nor a version. If mystmd offers to install a Node for itself, the editor declines on your behalf, because what it installs has been a release below its own requirement
+
+2. Then **mystmd**, following [its own installation instructions](https://mystmd.org/guide/installing) — npm, pip or conda, as suits your machine.
 
 Nothing else is needed: the first time an export runs, the editor finds both commands and records where they are in `config.json`, as `export.mystPath` and `export.nodePath`. If it cannot find them it says so, and those two settings let you point at them yourself; see [Customisation](customisation.md).
 
 ## From the desktop application: the 📦 menu
-The export menu shells out to [mystmd (https://mystmd.org), so it exists in the desktop application only — the web build cannot run a command. Clicking the button directly exports to PDF, the most common case; its menu offers the rest.
+The export menu shells out to [mystmd](https://mystmd.org), so it exists in the desktop application only — the web build cannot run a command. Clicking the button directly exports to PDF, the most common case; its menu offers the rest.
 
-**Export PDF**, **Export LaTeX** and **Export Word (docx)** run `myst build <file> --<format>` in the document's folder. The document is saved first, so what is exported is what is on screen and not the last saved revision. The result lands in `_build/exports/` and is opened with whatever the system uses for that file type — except LaTeX, which is usually an intermediate to process further rather than something to read.
+**Export PDF**, **Export LaTeX** and **Export Word (docx)** run `myst build <file> --<format>` in the document's folder. The document is saved first, so what is exported is what is on screen and not the last saved revision. The result lands in `_build/exports/` and is opened with whatever the system uses for that file type — except LaTeX, which is usually an intermediate to process further rather than something to read immediately.
 
 :::{figure} figures/exports.gif
 :name: exports
