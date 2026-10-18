@@ -48,6 +48,7 @@ math:
 
 
 :::{toc} Contents
+:context: page
 :::
 
 ## {sc}`Fourier` Series

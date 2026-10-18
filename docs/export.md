@@ -9,7 +9,7 @@ The editor produces three kinds of output, and which ones are offered depends on
 
 Exports are produced by mystmd, which the editor runs as an external command; it is not bundled. Two things have to be in place, in this order.
 
-1. First **Node.js, version 22 or later**. mystmd is written in JavaScript and runs under Node, so this is its prerequisite rather than ours — install it from [nodejs.org](https://nodejs.org/en/download) or with your usual package manager, taking the current LTS[^node].
+1. First **Node.js, version 22 or later**. mystmd is written in JavaScript and runs under Node, so this is its prerequisite rather than ours — install it following [these instructions](https://mystmd.org/guide/install-node) or with your usual package manager, taking the current LTS[^node].
 
 
 [^node]: An older Node is worse than none: a version 20 builds documents well enough to look healthy, then fails in the site server with a message naming neither Node nor a version. If mystmd offers to install a Node for itself, the editor declines on your behalf, because what it installs has been a release below its own requirement

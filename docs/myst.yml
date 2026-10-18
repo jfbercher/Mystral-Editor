@@ -13,6 +13,7 @@ project:
   toc:
     - file: index.md
     - file: presentation.md
+    #- file: small_demo.md
     - title: Mystral Editor - General documentation
       children:
         #- file: presentation.md
