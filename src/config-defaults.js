@@ -169,6 +169,13 @@ export const DEFAULT_CONFIG = {
     // the newest node it can find the first time myst reports none, then
     // records it here.
     nodePath: "",
+    // Rewrite the .tex produced by a LaTeX export: admonitions become coloured
+    // boxes carrying their kind and their label, proof labels mangled by
+    // mystmd are put back as typed, and closing environments get a blank line
+    // after them. The rewrite only happens when the source and the .tex can be
+    // matched beyond doubt; otherwise the file is left exactly as mystmd wrote
+    // it and the reason is reported.
+    postProcessTex: true,
     // Colour of each admonition kind in a LaTeX or PDF export, as an RRGGBB
     // hex string without the leading "#". mystmd draws every admonition as the
     // same grey box, losing the kind the author chose; the export rewrites

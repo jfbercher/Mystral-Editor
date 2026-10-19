@@ -14,10 +14,17 @@
 
 import { config, saveConfigValue } from "../../config.js";
 import { showToast } from "../utils_ui.js";
-import { workingDirectory, currentFileDir, fileName, parentDir, isWindows } from "./fs.js";
+import { workingDirectory, currentFileDir, fileName, parentDir, isWindows, readTextRelative } from "./fs.js";
 import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmatterUtils.js";
 import { dump as yamlDump } from "js-yaml";
 import { cellCache, cellKey } from "../../markdown/pyodideRunner.js";
+import { includeCache } from "../../markdown/markdownInclude.js";
+import { expandIncludes, findIncludeBlocks } from "../../markdown/includeExpansion.js";
+import { findProofLabels } from "../../markdown/scanProofLabels.js";
+import { scanAdmonitions } from "./scanAdmonitions.js";
+import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmonitions.js";
+import { repairProofLabels } from "./texProofLabels.js";
+import { separateEnvironments } from "./texTidy.js";
 
 /**
  * Environment handed to every myst command.
@@ -803,9 +810,108 @@ async function runExport(tab, kind) {
   const shown = out.startsWith(`${dir}/`) ? out.slice(dir.length + 1) : baseName(out);
   showToast(`Exported to ${shown}`, "success", 6000);
 
+  // Only the .tex: a PDF is produced by mystmd from a .tex we never see, so
+  // there is nothing to rewrite between the two. Doing it there means running
+  // the LaTeX chain ourselves -- see the note in BACKLOG.md.
+  if (kind === "tex") await postProcessTexFile(out, path);
+
   // Open the result in whatever the system uses for it. Not for .tex, which is
   // usually an intermediate the user processes further rather than reads.
   if (kind !== "tex") await openExported(out);
+}
+
+/**
+ * Rewrite the `.tex` mystmd just produced, in place.
+ *
+ * What mystmd writes is correct and plain: every admonition is the same grey
+ * box with its kind dropped and no `\label`, the proof family's anchors are
+ * lowercased while the references that point at them are not, and
+ * environments run into one another on a single line. This repairs the three,
+ * each in its own module, and refuses as a whole if the source and the `.tex`
+ * cannot be matched -- rewriting in the wrong places is worse than not
+ * rewriting.
+ *
+ * The source is read from disk rather than from the editor: that is the file
+ * mystmd saw, and the document was saved before the build. Includes are
+ * expanded the same way, since an `{include}` is one line in the source and a
+ * whole file in the `.tex`.
+ */
+async function postProcessTexFile(texPath, sourcePath) {
+  if (config.export?.postProcessTex === false) return;
+
+  const { readTextFile, writeTextFile } = await import("@tauri-apps/plugin-fs");
+  const dir = dirName(sourcePath);
+
+  let source;
+  try {
+    source = await readTextFile(sourcePath);
+  } catch (err) {
+    console.warn("[export] could not read the source for post-processing:", err);
+    return;
+  }
+
+  // `expandIncludes` reads synchronously, so every included file is fetched
+  // first: from the cache the editor fills while rendering, and from disk for
+  // anything not there -- the export may run on a document opened a moment ago
+  // and never scrolled through.
+  const texts = new Map();
+  const found = findIncludeBlocks(source);
+  for (const block of found) {
+    if (!block.path || block.literal || texts.has(block.path)) continue;
+    const cached = includeCache.get(block.path);
+    if (cached && !cached.error && typeof cached.text === "string") {
+      texts.set(block.path, cached.text);
+      continue;
+    }
+    try {
+      // The same reader the include directive uses, rather than joining paths
+      // here: it strips a leading "./" and resolves against the document's
+      // folder, which is what the written path means.
+      texts.set(block.path, await readTextRelative(block.path));
+    } catch (err) {
+      // Not fatal here: the pairing below will refuse rather than miscount.
+      console.warn("[export] {include} could not be read for post-processing:", block.path, err);
+    }
+  }
+  const expansion = expandIncludes(source, (p) => texts.get(p) ?? null);
+  console.debug(
+    "[export] post-processing:",
+    `${found.length} include block(s) found`,
+    `[${found.map((b) => b.path).join(", ")}]`,
+    `${texts.size} read`,
+    `expanded: ${expansion.expanded}`,
+  );
+
+  const tex = await readTextFile(texPath);
+  const blocks = framedBlocks(tex);
+  // Whether {exercise} and {solution} occupy a rank depends on whether the
+  // exercise plugin was in use for this build. Rather than require a setting,
+  // try both readings and keep the one that verifies.
+  const attempts = [true, false].map((withExercises) => {
+    const { items } = scanAdmonitions(expansion.text, { withExercises });
+    console.debug(`[export] scan with${withExercises ? "" : "out"} exercises: ${items.length} admonition(s)`);
+    return pairAdmonitions(items, blocks);
+  });
+  const paired = attempts.find((a) => a.ok) ?? attempts[0];
+
+  if (!paired.ok) {
+    console.warn("[export] .tex left as mystmd wrote it:", paired.reason);
+    showToast(`The .tex was left as mystmd wrote it: ${paired.reason}`, "warning", 8000);
+    return;
+  }
+
+  const styled = rewriteAdmonitions(tex, paired.pairs, { colors: config.export?.admonitionColors });
+  for (const r of styled.rejected) {
+    showToast(`export.admonitionColors -- not a six-digit hex colour, default kept: ${r}`, "warning", 8000);
+  }
+
+  const proof = repairProofLabels(styled.text, findProofLabels(expansion.text.split("\n")));
+  await writeTextFile(texPath, separateEnvironments(proof.text));
+
+  const parts = [`${styled.rewritten} admonition${styled.rewritten === 1 ? "" : "s"} styled`];
+  if (styled.labelled) parts.push(`${styled.labelled} labelled`);
+  if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
+  showToast(parts.join(", ") + ".", "success", 6000);
 }
 
 /** Hand a produced file to the system's default application. */
