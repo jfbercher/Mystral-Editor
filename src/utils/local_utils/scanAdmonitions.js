@@ -74,6 +74,11 @@ const OPTION_LINE = /^\s*:([\w-]+):\s*(.*)$/;
 /** A paragraph that is nothing but bold text, which mystmd promotes to a title. */
 const BOLD_ONLY = /^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/;
 const HEADING_LINE = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/;
+/** A `{raw}` directive aimed at LaTeX, whose content reaches the .tex verbatim. */
+const RAW_LATEX = /^(?:latex|tex)$/i;
+/** An environment opened by hand inside such a block. */
+const RAW_FRAMED = /\\begin\{framed\}/g;
+
 /** `> **Note**` and `> [!NOTE]`, the two GitHub callout spellings. */
 const QUOTE_BOLD = /^\s{0,3}>\s*(?:\*\*|__)([A-Za-z]+)(?:\*\*|__)/;
 const QUOTE_BRACKET = /^\s{0,3}>\s*\[!([A-Za-z]+)\]/;
@@ -85,7 +90,8 @@ const QUOTE_BRACKET = /^\s{0,3}>\s*\[!([A-Za-z]+)\]/;
  * @property {string|null} title  the title that will appear in the .tex
  * @property {string|null} label  `:label:` or `:name:`, as the author typed it
  * @property {number} line   1-based line of the opening fence
- * @property {string} source `directive` or `blockquote`
+ * @property {string} source `directive`, `blockquote` or `raw`
+ * @property {boolean} [passthrough] a framed the author wrote: counted, never touched
  * @property {"exact"|"contains"|"none"} titleMatch  how far the title can be checked
  */
 
@@ -135,6 +141,21 @@ export function scanAdmonitions(text, { withExercises = false } = {}) {
       // Closing the current block.
       if (frame && info === "" && marker[0] === frame.char && marker.length >= frame.len) {
         settle();
+        if (frame.rawLatex) {
+          const body = frame.rawLatex.lines.join("\n");
+          for (const _ of body.match(RAW_FRAMED) ?? []) {
+            items.push({
+              name: "raw",
+              kind: null,
+              title: null,
+              label: null,
+              line: frame.rawLatex.line,
+              source: "raw",
+              titleMatch: "none",
+              passthrough: true,
+            });
+          }
+        }
         stack.pop();
         continue;
       }
@@ -147,6 +168,16 @@ export function scanAdmonitions(text, { withExercises = false } = {}) {
       // A backtick or tilde fence with no `{name}` is code: its content is not
       // a document and nothing in it reaches the .tex as an admonition.
       const opaque = !directive && marker[0] !== ":";
+
+      // `:::{raw} latex` containing `\begin{framed}` by hand: that framed is
+      // real in the .tex and belongs to the author. It is counted so that the
+      // ordinal of everything after it stays right, and marked `passthrough`
+      // so that nothing is written into it.
+      if (name === "raw" && RAW_LATEX.test(directive[2].trim())) {
+        settle();
+        stack.push({ char: marker[0], len: marker.length, opaque: false, rawLatex: { lines: [], line: lineNo } });
+        continue;
+      }
 
       if (isAdmonition) {
         settle();
@@ -178,6 +209,11 @@ export function scanAdmonitions(text, { withExercises = false } = {}) {
     }
 
     if (frame?.opaque) continue;
+
+    if (frame?.rawLatex) {
+      frame.rawLatex.lines.push(line);
+      continue;
+    }
 
     if (pending) {
       const option = OPTION_LINE.exec(line);

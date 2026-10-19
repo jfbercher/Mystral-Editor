@@ -9,8 +9,15 @@
  * worth a pass of its own.
  */
 
-/** Regions whose content is typeset verbatim and must not be touched. */
-const VERBATIM = /\\begin\{(verbatim|lstlisting|minted|Verbatim|alltt)\*?\}[\s\S]*?\\end\{\1\*?\}/g;
+/**
+ * Regions whose content is typeset verbatim.
+ *
+ * Shared with `texAdmonitions.js`: what is inside one is text on a page, not
+ * LaTeX. A `\begin{framed}` shown in a code block is an example of an
+ * environment, not an environment, and counting it would shift every pairing
+ * that follows.
+ */
+export const VERBATIM = /\\begin\{(verbatim|lstlisting|minted|Verbatim|alltt)\*?\}[\s\S]*?\\end\{\1\*?\}/g;
 
 /** `\end{env}` followed immediately by something that is not whitespace. */
 const GLUED_END = /(\\end\{[^}]+\})(?=\S)/g;

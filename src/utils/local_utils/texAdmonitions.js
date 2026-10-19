@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG } from "../../config-defaults.js";
+import { VERBATIM } from "./texTidy.js";
 
 /**
  * The `.tex` side of the admonition correspondence: find the `framed`
@@ -62,7 +63,11 @@ const TITLE_AFTER = /^\s*\\textbf\{/;
  * @returns {FramedBlock[]}
  */
 export function framedBlocks(tex) {
-  const text = String(tex ?? "");
+  // Blank out verbatim regions before looking: a `\begin{framed}` displayed in
+  // a code block is text, not an environment. Blanked character by character
+  // rather than removed, so every offset below still points into the real
+  // file -- the rewriting works on those offsets.
+  const text = String(tex ?? "").replace(VERBATIM, (match) => match.replace(/[^\n]/g, " "));
   const blocks = [];
 
   for (let i = text.indexOf(BEGIN_FRAMED); i !== -1; i = text.indexOf(BEGIN_FRAMED, i + 1)) {
@@ -343,6 +348,10 @@ export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
 
   for (const { item, block } of pairs) {
     if (block.end == null) continue;
+    // A `framed` the author wrote themselves in a `{raw} latex` block: it
+    // holds a rank, so that what follows stays aligned, and nothing else. It
+    // is their LaTeX, not an admonition.
+    if (item.passthrough) continue;
     const env = envOf(item.kind);
     if (env === "mystadmplain") needsPlain = true;
 
@@ -392,5 +401,6 @@ export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
   let out = text;
   for (const e of edits) out = out.slice(0, e.from) + e.text + out.slice(e.to);
 
-  return { text: out, rewritten: pairs.length, labelled, numbered, rejected };
+  const rewritten = pairs.filter(({ item }) => !item.passthrough).length;
+  return { text: out, rewritten, labelled, numbered, rejected };
 }
