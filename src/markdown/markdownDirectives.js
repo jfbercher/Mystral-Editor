@@ -120,6 +120,13 @@ class BaseAdmonitionV2 extends Directive {
 
   title = "";
   kind = "";
+  /**
+   * Vrai pour une sous-classe qui compose elle-même son titre complet.
+   * `BaseNumberedV2` le fait — « Definition 1 (Trois) » — et passe le résultat
+   * ici en argument : sans ce drapeau, la numérotation ci-dessous le prendrait
+   * pour un titre d'auteur et le préfixerait une seconde fois.
+   */
+  selfNumbered = false;
 
   run(data) {
     const options = normalizeOptions(data.options);
@@ -176,7 +183,7 @@ class BaseAdmonitionV2 extends Directive {
     const env = this.state?.env ?? {};
     const absoluteLine = data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
     const scanned = absoluteLine != null ? env.refMap?.byLine?.get(absoluteLine) : null;
-    if (scanned?.number != null) {
+    if (!this.selfNumbered && scanned?.number != null) {
       const base = displayLabel(this.state, kind, kind);
       titleContent = authored ? `${base} ${scanned.number} (${titleContent})` : `${base} ${scanned.number}`;
     }
@@ -631,6 +638,8 @@ const displayLabel = (state, name, kind) => {
 class BaseNumberedV2 extends BaseAdmonitionV2 {
   /** Nom de la directive, pour retrouver son libellé configuré. */
   name = "";
+  /** Le titre complet est construit par `buildTitle` ci-dessous. */
+  selfNumbered = true;
 
   /**
    * Construit « Exercise 3 », « Exercise 3 (Mon titre) » ou « Exercise ».
