@@ -56,6 +56,15 @@ const KIND_TITLES = {
 
 export const admonitionKindToTitle = (kind) => KIND_TITLES[kind] ?? null;
 
+/**
+ * Directives the exercise plugin turns into admonitions.
+ *
+ * They are counted only when that plugin is in use: without it mystmd drops
+ * them and they occupy no rank in the `.tex`. The caller says which it is --
+ * or tries both, since the pairing itself can tell.
+ */
+export const EXERCISE_NAMES = ["exercise", "solution"];
+
 /** The kinds GitHub-style blockquote callouts can produce. */
 const GITHUB_KINDS = ["note", "tip", "important", "warning", "caution"];
 
@@ -77,13 +86,14 @@ const QUOTE_BRACKET = /^\s{0,3}>\s*\[!([A-Za-z]+)\]/;
  * @property {string|null} label  `:label:` or `:name:`, as the author typed it
  * @property {number} line   1-based line of the opening fence
  * @property {string} source `directive` or `blockquote`
+ * @property {"exact"|"contains"|"none"} titleMatch  how far the title can be checked
  */
 
 /**
  * @param {string} text the document, includes already expanded if that is wanted
  * @returns {{ items: ScannedAdmonition[], warnings: string[] }}
  */
-export function scanAdmonitions(text) {
+export function scanAdmonitions(text, { withExercises = false } = {}) {
   const lines = String(text ?? "").split("\n");
   const items = [];
   const warnings = [];
@@ -99,7 +109,7 @@ export function scanAdmonitions(text) {
     if (!pending) return;
     // A generic `{admonition}` with no argument reaches myst-to-tex with
     // neither kind nor title: admonitionHeadersTransform returns early.
-    if (pending.title == null && pending.kind) pending.title = admonitionKindToTitle(pending.kind);
+    if (pending.title == null && pending.kind) pending.title = admonitionKindToTitle(pending.kind) ?? null;
     items.push({
       name: pending.name,
       kind: pending.kind,
@@ -107,6 +117,7 @@ export function scanAdmonitions(text) {
       label: pending.label,
       line: pending.line,
       source: "directive",
+      titleMatch: pending.titleMatch ?? "exact",
     });
     pending = null;
   };
@@ -131,7 +142,8 @@ export function scanAdmonitions(text) {
 
       const directive = DIRECTIVE_INFO.exec(info);
       const name = directive?.[1];
-      const isAdmonition = name === "admonition" || ADMONITION_KINDS.includes(name);
+      const isExercise = withExercises && EXERCISE_NAMES.includes(name);
+      const isAdmonition = name === "admonition" || ADMONITION_KINDS.includes(name) || isExercise;
       // A backtick or tilde fence with no `{name}` is code: its content is not
       // a document and nothing in it reaches the .tex as an admonition.
       const opaque = !directive && marker[0] !== ":";
@@ -139,16 +151,26 @@ export function scanAdmonitions(text) {
       if (isAdmonition) {
         settle();
         const arg = directive[2].trim();
+        // An exercise reaches the .tex as `Exercise 3 (My title)` and a
+        // solution as `Solution to <a live \ref>`: the number comes from
+        // mystmd's enumeration and the reference from its resolution, neither
+        // of which this scan computes. The title of an exercise can still be
+        // required to appear in the box, which keeps most of the safety; a
+        // solution can only be counted.
+        const titleMatch = !isExercise ? "exact" : name === "exercise" && arg ? "contains" : "none";
         pending = {
           name,
+          // `exercise` and `solution` get colours of their own rather than
+          // borrowing an admonition kind.
           kind: name === "admonition" ? null : name,
           // The argument is the title when there is one; otherwise it is
           // decided later, from the kind or from the first body block.
           title: arg || null,
           label: null,
           line: lineNo,
-          titleFixed: Boolean(arg),
+          titleFixed: Boolean(arg) || isExercise,
           bodyStarted: false,
+          titleMatch,
         };
       }
       stack.push({ char: marker[0], len: marker.length, opaque, admonition: isAdmonition });
@@ -201,6 +223,7 @@ export function scanAdmonitions(text) {
           label: null,
           line: lineNo,
           source: "blockquote",
+          titleMatch: "exact",
         });
       }
     }

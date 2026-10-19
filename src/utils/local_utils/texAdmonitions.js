@@ -161,9 +161,18 @@ export function pairAdmonitions(items, blocks) {
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const block = blocks[i];
+    // How far the title can be checked depends on what the source can predict.
+    // An exercise reaches the .tex numbered by mystmd and a solution carries a
+    // resolved reference, so demanding equality there would refuse every
+    // document that has one. Requiring the author's title to appear keeps most
+    // of the safety; "none" counts the box and checks nothing.
+    const match = item.titleMatch ?? "exact";
     const expected = normaliseTitle(item.title);
     const found = normaliseTitle(block.title);
-    if (expected !== found) {
+    const agree =
+      match === "none" ||
+      (match === "contains" ? Boolean(expected) && Boolean(found) && found.includes(expected) : expected === found);
+    if (!agree) {
       return {
         ok: false,
         reason:
@@ -264,12 +273,19 @@ const END_FRAMED_LEN = END_FRAMED.length;
  * number. A wrong number is worse than a `??`, which at least is seen.
  */
 export function admonitionPreamble(kinds, { plain = false, colors = DEFAULT_ADMONITION_COLORS } = {}) {
-  const used = [...new Set(kinds.filter((k) => k && k !== "plain" && colors[k]))].sort();
+  const used = [...new Set(kinds.filter((k) => k && k !== "plain" && k !== "titleLink" && colors[k]))].sort();
   if (!used.length && !plain) return "";
 
   const lines = [
     "% >>> Mystral Editor: admonitions styled by kind",
     "\\usepackage[most]{tcolorbox}",
+    // A title can hold a live reference -- a solution names its exercise --
+    // and hyperref's default red is unreadable on a coloured bar. Set locally,
+    // inside the title group, so nothing else in the document changes. The
+    // \ifcsname guard is what makes the preamble independent of hyperref
+    // being loaded at all.
+    `\\definecolor{mystcoltitlelink}{HTML}{${colors.titleLink ?? DEFAULT_ADMONITION_COLORS.titleLink}}`,
+    "\\newcommand{\\mystadmtitlelinks}{\\ifcsname hypersetup\\endcsname\\hypersetup{linkcolor=mystcoltitlelink}\\fi}",
   ];
   for (const kind of used) {
     const colour = colors[kind];
@@ -284,7 +300,7 @@ export function admonitionPreamble(kinds, { plain = false, colors = DEFAULT_ADMO
       // the note on `label=` in rewriteAdmonitions.
       `\\newtcolorbox[auto counter]{${envOf(kind)}}[2][]{breakable, enhanced, ` +
         `colback=${col}!6!white, colframe=${col}, coltitle=white, ` +
-        `fonttitle=\\bfseries, title={#2}, #1}`,
+        `fonttitle=\\bfseries, title={\\mystadmtitlelinks #2}, #1}`,
     );
   }
   if (plain) {
@@ -347,7 +363,9 @@ export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
     // announces: `Warning~\ref{…}` sends the reader looking for "Warning 2",
     // and a box titled merely "Warning" leaves them hunting. `\thetcbcounter`
     // is the box's own counter, so the two cannot drift apart.
-    const word = KIND_WORD[item.kind];
+    // An exercise already carries its number, written by the plugin from
+    // mystmd's own enumeration: adding ours would show two.
+    const word = item.titleMatch === "exact" ? KIND_WORD[item.kind] : null;
     let shown = title;
     if (word && item.label && referenced.has(item.label)) {
       // Même forme que l'aperçu -- « Warning 2 (Mon titre) » -- pour que le

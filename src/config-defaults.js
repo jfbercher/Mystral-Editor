@@ -188,7 +188,15 @@ export const DEFAULT_CONFIG = {
       seealso: "4A6FA5",
       tip: "2E7D52",
       warning: "C8800F",
+      // Not admonition kinds: `{exercise}` and `{solution}`, which a plugin
+      // turns into admonitions so that they survive a static export.
+      exercise: "1F6F8B",
+      solution: "4F7942",
       plain: "666666",
+      // Not a box: the colour of a hyperlink inside a box's title bar. A
+      // solution's title carries a live reference to its exercise, and
+      // hyperref's default red is unreadable on a coloured bar.
+      titleLink: "CFE8FF",
     },
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
