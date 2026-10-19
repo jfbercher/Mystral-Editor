@@ -877,20 +877,32 @@ function tocScope(tree, context, line) {
   return enclosing.children ?? [];
 }
 
-/** Recursively builds the nested <ul> HTML with links. */
-function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1, md = null) {
+/**
+ * Recursively builds the nested <ul> HTML with links.
+ *
+ * `showNumbers` has to be passed in: the heading tree carries its numbers
+ * whether or not they are displayed -- they are computed once and used for
+ * anchors and cross-references too -- so testing `node.number` answers
+ * "is it numbered", never "should it be shown". The sidebar outline asks the
+ * same question of `userSettings` and strips the numbers itself; here the
+ * answer travels through `env.headingMap.active`, so the markdown layer does
+ * not have to know the interface exists.
+ */
+function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1, md = null, showNumbers = true) {
   if (!nodes?.length || depth > maxDepth) return "";
   const items = nodes
     .filter((n) => !n.isTitle)
     .map((node) => {
       const anchor = anchorFor(node, sectionLabelMap);
-      // Displays the section number as calculated by headingNumbering (if globally enabled).
-      const num = node.number
-        ? `<span class="toc-number">${escapeHtml(node.number)}</span> `
-        : "";
+      // The number as computed by headingNumbering, shown only when heading
+      // numbering is on -- see showNumbers above.
+      const num =
+        showNumbers && node.number
+          ? `<span class="toc-number">${escapeHtml(node.number)}</span> `
+          : "";
       const children =
         node.children?.length && depth + 1 <= maxDepth
-          ? buildTocList(node.children, maxDepth, sectionLabelMap, depth + 1, md)
+          ? buildTocList(node.children, maxDepth, sectionLabelMap, depth + 1, md, showNumbers)
           : "";
       // The heading tree stores the source text, so an entry showed its markup
       // as written -- asterisks, backticks, dollars. Rendered inline here.
@@ -930,8 +942,9 @@ class TocDirective extends Directive {
     const classes = [].concat(options.class ?? [])
       .flatMap((c) => String(c).split(/\s+/)).filter(Boolean);
     const labelId = options.label;
-    // :enumerated: refers to the numbering of the table of contents itself, not the section numbers.
-    // Section numbers come from numberedHeadings (enabled globally).
+    // :enumerated: refers to the numbering of the table of contents itself, not
+    // the section numbers. Section numbers come from numberedHeadings, and are
+    // shown or not according to the global heading-numbering switch.
 
     // Dropdown: enabled if :dropdown: is present or if the “dropdown” class is in :class:
     const isDropdown = options.dropdown !== undefined || classes.includes("dropdown");
@@ -952,7 +965,11 @@ class TocDirective extends Directive {
 
     // Depth counts levels below the context, so a sectioned toc with :depth: 1
     // lists that section's direct subsections.
-    const listHtml = buildTocList(scoped, maxDepth, sectionLabelMap, 1, this.state?.md);
+    // `active` is what text.js read from the heading-numbering setting. An env
+    // that does not carry it at all is left as it was, numbers shown: absent is
+    // "unknown", not "off".
+    const showNumbers = env.headingMap?.active ?? true;
+    const listHtml = buildTocList(scoped, maxDepth, sectionLabelMap, 1, this.state?.md, showNumbers);
 
     const classAttr = ["toc", ...classes].join(" ");
     const idAttr = labelId ? ` id="${escapeHtml(labelId)}"` : "";
