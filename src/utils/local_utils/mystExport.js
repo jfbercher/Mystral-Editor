@@ -1199,6 +1199,37 @@ function cssTextOf(sheets) {
 }
 
 /**
+ * The custom properties the collected CSS uses, with the values in force.
+ *
+ * The palette -- `--green-500`, `--border-2` and the rest -- is declared on
+ * `MystCSSVars`, a styled.div, so it lives on a class styled-components
+ * generates (`.iOuiuE` one day, something else the next build). The exported
+ * page wraps its content in `#myst-css-namespace` and carries no such class,
+ * so every `var(--green-500)` resolved to nothing: `border: var(--border-2)
+ * solid var(--green-500)` is simply invalid, and the admonitions came out
+ * without border or colour.
+ *
+ * Chasing that generated name would mean depending on a build artefact. The
+ * values in force are read from the live preview instead and written out
+ * explicitly: whatever declares them, and whichever theme is on, what the
+ * page gets is what was on screen. That is what an export of a rendering is.
+ *
+ * The names are taken from the collected CSS rather than enumerated from the
+ * computed style, which browsers do not all expose the same way.
+ */
+function resolvedCustomProperties(css, element) {
+  const names = new Set(String(css).match(/--[A-Za-z0-9_-]+(?=\s*:)/g) ?? []);
+  if (!names.size || typeof getComputedStyle !== "function") return "";
+  const computed = getComputedStyle(element);
+  const parts = [];
+  for (const name of names) {
+    const value = computed.getPropertyValue(name).trim();
+    if (value) parts.push(`  ${name}: ${value};`);
+  }
+  return parts.length ? `#myst-css-namespace {\n${parts.join("\n")}\n}\n` : "";
+}
+
+/**
  * Save the rendered preview as a standalone HTML document.
  *
  * The styles are read from the sheets actually adopted at export time -- the
@@ -1263,13 +1294,14 @@ export async function exportHtml(tab) {
   // layout and colours live. Only the adopted ones were collected, so in the
   // light theme the result merely looked plainer than the preview -- and in the
   // dark one it came out unreadable.
-  const css = [
+  const collected = [
     cssTextOf(document.adoptedStyleSheets),
     cssTextOf(root.adoptedStyleSheets),
     cssTextOf(styleElementSheets(root)),
     cssTextOf(styleElementSheets(document.head)),
-    EXPORT_BASE_CSS,
   ].join("\n");
+  // The variables last, so they win over the declarations they were read from.
+  const css = [collected, EXPORT_BASE_CSS, resolvedCustomProperties(collected, preview)].join("\n");
   const theme = root.host?.dataset?.theme || document.getElementById("myst-css-namespace")?.dataset?.theme || "lightTheme";
   const title = stemOf(path);
 
