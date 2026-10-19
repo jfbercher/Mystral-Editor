@@ -1,3 +1,5 @@
+import { DEFAULT_CONFIG } from "../../config-defaults.js";
+
 /**
  * The `.tex` side of the admonition correspondence: find the `framed`
  * environments mystmd wrote, and pair them with what `scanAdmonitions.js` read
@@ -182,30 +184,37 @@ export function pairAdmonitions(items, blocks) {
 // --- Rewriting ---------------------------------------------------------------
 
 /**
- * Colours per kind, and the environment each one is given.
+ * Colours per kind.
  *
- * `myst-to-tex` draws every admonition the same way, so the kind the author
- * chose -- the whole point of writing `{warning}` rather than `{note}` -- is
- * lost on the way to the PDF. These are deliberately sober: a document is not
- * a web page, and a box that shouts on paper is a box the reader stops seeing.
- * The table is the natural place for the user to take over, through
- * `config.json` or a `.sty` of their own.
+ * The defaults live in `config-defaults.js`, next to everything else the user
+ * can change, so that they reach `config.json` when it is created and document
+ * themselves there. Callers pass whatever the user has set; nothing here reads
+ * the live configuration, which keeps this module usable from a plain node
+ * script as well as from the editor.
  */
-export const ADMONITION_STYLE = {
-  note: { colour: "4A6FA5" },
-  seealso: { colour: "4A6FA5" },
-  hint: { colour: "2E7D52" },
-  tip: { colour: "2E7D52" },
-  important: { colour: "7B4FA8" },
-  attention: { colour: "B5762A" },
-  caution: { colour: "B5762A" },
-  warning: { colour: "C8800F" },
-  danger: { colour: "B3261E" },
-  error: { colour: "B3261E" },
-};
+export const DEFAULT_ADMONITION_COLORS = DEFAULT_CONFIG.export.admonitionColors;
+
+/** A hex colour, so that a typo in config.json cannot produce invalid LaTeX. */
+const HEX = /^[0-9a-fA-F]{6}$/;
+
+/**
+ * The colour table to use: the user's values where they are valid, the
+ * defaults elsewhere. An unusable value is reported rather than silently
+ * replaced -- a colour that does not show up is a thing one looks for.
+ */
+export function resolveColors(overrides) {
+  const colors = { ...DEFAULT_ADMONITION_COLORS };
+  const rejected = [];
+  for (const [kind, value] of Object.entries(overrides ?? {})) {
+    const hex = String(value ?? "").replace(/^#/, "");
+    if (HEX.test(hex)) colors[kind] = hex.toUpperCase();
+    else rejected.push(`${kind}: ${JSON.stringify(value)}`);
+  }
+  return { colors, rejected };
+}
 
 /** Environment name for a kind; one per kind, so each carries its own counter. */
-const envOf = (kind) => (kind && ADMONITION_STYLE[kind] ? `mystadm${kind}` : "mystadmplain");
+const envOf = (kind) => (kind && kind !== "plain" && DEFAULT_ADMONITION_COLORS[kind] ? `mystadm${kind}` : "mystadmplain");
 
 /**
  * The word mystmd puts before a reference, and therefore the word the box has
@@ -254,8 +263,8 @@ const END_FRAMED_LEN = END_FRAMED.length;
  * moved -- the section -- and the reference comes out with a plausible, wrong
  * number. A wrong number is worse than a `??`, which at least is seen.
  */
-export function admonitionPreamble(kinds, { plain = false } = {}) {
-  const used = [...new Set(kinds.filter((k) => k && ADMONITION_STYLE[k]))].sort();
+export function admonitionPreamble(kinds, { plain = false, colors = DEFAULT_ADMONITION_COLORS } = {}) {
+  const used = [...new Set(kinds.filter((k) => k && k !== "plain" && colors[k]))].sort();
   if (!used.length && !plain) return "";
 
   const lines = [
@@ -263,7 +272,7 @@ export function admonitionPreamble(kinds, { plain = false } = {}) {
     "\\usepackage[most]{tcolorbox}",
   ];
   for (const kind of used) {
-    const { colour } = ADMONITION_STYLE[kind];
+    const colour = colors[kind];
     // The colour is named apart from the environment. LaTeX keeps the two in
     // different namespaces, so sharing a name works -- and reads as a mistake
     // to the next person, which is its own cost.
@@ -280,8 +289,9 @@ export function admonitionPreamble(kinds, { plain = false } = {}) {
   }
   if (plain) {
     lines.push(
+      `\\definecolor{mystcolplain}{HTML}{${colors.plain ?? DEFAULT_ADMONITION_COLORS.plain}}`,
       "\\newtcolorbox[auto counter]{mystadmplain}[1][]{breakable, enhanced, " +
-        "colback=black!3!white, colframe=black!40!white, #1}",
+        "colback=mystcolplain!6!white, colframe=mystcolplain, #1}",
     );
   }
   lines.push("% <<< Mystral Editor");
@@ -303,9 +313,11 @@ export function admonitionPreamble(kinds, { plain = false } = {}) {
  *
  * @param {string} tex
  * @param {Array<{item: object, block: FramedBlock}>} pairs  from pairAdmonitions
- * @returns {{ text: string, rewritten: number, labelled: number, numbered: number }}
+ * @param {{colors?: Record<string,string>}} [opts]  user colours, from config.export.admonitionColors
+ * @returns {{ text: string, rewritten: number, labelled: number, numbered: number, rejected: string[] }}
  */
-export function rewriteAdmonitions(tex, pairs) {
+export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
+  const { colors, rejected } = resolveColors(overrides);
   const text = String(tex ?? "");
   const referenced = referencedLabels(text);
   const edits = [];
@@ -353,7 +365,7 @@ export function rewriteAdmonitions(tex, pairs) {
 
   const preamble = admonitionPreamble(
     pairs.map(({ item }) => item.kind),
-    { plain: needsPlain },
+    { plain: needsPlain, colors },
   );
   const docAt = text.indexOf("\\begin{document}");
   if (preamble && docAt !== -1) edits.push({ from: docAt, to: docAt, text: preamble });
@@ -362,5 +374,5 @@ export function rewriteAdmonitions(tex, pairs) {
   let out = text;
   for (const e of edits) out = out.slice(0, e.from) + e.text + out.slice(e.to);
 
-  return { text: out, rewritten: pairs.length, labelled, numbered };
+  return { text: out, rewritten: pairs.length, labelled, numbered, rejected };
 }

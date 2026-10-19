@@ -169,6 +169,27 @@ export const DEFAULT_CONFIG = {
     // the newest node it can find the first time myst reports none, then
     // records it here.
     nodePath: "",
+    // Colour of each admonition kind in a LaTeX or PDF export, as an RRGGBB
+    // hex string without the leading "#". mystmd draws every admonition as the
+    // same grey box, losing the kind the author chose; the export rewrites
+    // them as coloured boxes using this table. The frame takes the colour and
+    // the background a 6% tint of it. A kind absent from the table is drawn
+    // like "plain", which is also what a generic {admonition} with no title
+    // gets. Deliberately sober: a box that shouts on paper is a box the reader
+    // stops seeing.
+    admonitionColors: {
+      attention: "B5762A",
+      caution: "B5762A",
+      danger: "B3261E",
+      error: "B3261E",
+      hint: "2E7D52",
+      important: "7B4FA8",
+      note: "4A6FA5",
+      seealso: "4A6FA5",
+      tip: "2E7D52",
+      warning: "C8800F",
+      plain: "666666",
+    },
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
     // Template written into the exports frontmatter when the editor creates the
