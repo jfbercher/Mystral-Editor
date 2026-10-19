@@ -169,6 +169,21 @@ export const DEFAULT_CONFIG = {
     // the newest node it can find the first time myst reports none, then
     // records it here.
     nodePath: "",
+    // Produce a PDF by exporting LaTeX, post-processing it, then running the
+    // LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a
+    // .tex the editor never sees, so the styled boxes, the restored proof
+    // labels and the injected \label{} could not reach the PDF any other way.
+    // The cost is that the document must declare a "tex" export rather than a
+    // "pdf" one -- the editor offers to add it -- and that the LaTeX chain
+    // below has to be installed. Set to false to let mystmd build the PDF
+    // itself, unstyled.
+    pdfViaTex: true,
+    // The command run on the .tex to produce the PDF, with {file} replaced by
+    // the file name. The default is the one jtex uses, so a document that
+    // built under mystmd builds here the same way.
+    // {engine} is the engine the template asks for in its template.yml, as jtex
+    // reads it, and -xelatex when it asks for none -- jtex's own default.
+    pdfCommand: 'latexmk -f {engine} -synctex=1 -interaction=batchmode -file-line-error -latexoption="-shell-escape" {file}',
     // Rewrite the .tex produced by a LaTeX export: admonitions become coloured
     // boxes carrying their kind and their label, proof labels mangled by
     // mystmd are put back as typed, and closing environments get a blank line

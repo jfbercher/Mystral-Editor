@@ -645,7 +645,7 @@ function projectExportEntry(kind) {
  * from. Otherwise a bare entry, with the template config.json names for this
  * format, if it names one.
  */
-function exportItem(kind) {
+function exportItem(kind, templateKind = kind) {
   const fromProject = projectExportEntry(kind);
   if (fromProject && typeof fromProject === "object") {
     return yamlDump([fromProject], { indent: 2, lineWidth: -1 })
@@ -656,7 +656,9 @@ function exportItem(kind) {
   }
   // myst ships no default template, and inventing one here would silently
   // change how every export looks.
-  const template = (config.export?.templates?.[kind] || "").trim();
+  // A tex entry added to produce a PDF takes the PDF's template: the point is
+  // to compile the document the user configured, not a plain one.
+  const template = (config.export?.templates?.[templateKind] || config.export?.templates?.[kind] || "").trim();
   return `  - format: ${kind}` + (template ? `\n    template: ${template}` : "");
 }
 
@@ -667,9 +669,9 @@ function exportItem(kind) {
  * the user can read and undo. myst ships no default export, so without this
  * entry `myst build --<kind>` finds nothing to produce and quietly does nothing.
  */
-function addExportToFrontmatter(tab, kind) {
+function addExportToFrontmatter(tab, kind, templateKind = kind) {
   const src = editorText(tab);
-  const item = exportItem(kind);
+  const item = exportItem(kind, templateKind);
   const front = frontmatterOf(src);
 
   let next;
@@ -734,6 +736,17 @@ const reported = (what, fn) => async (...args) => {
 
 export const exportCurrentFile = reported("Export", exportCurrentFileImpl);
 
+/**
+ * True when a PDF is produced here rather than by mystmd.
+ *
+ * `myst build --pdf` goes from Markdown to PDF through a `.tex` we never see,
+ * so nothing can be rewritten between the two: the styled boxes and the
+ * repaired labels would reach the LaTeX export and not the PDF. Building the
+ * LaTeX, post-processing it and running the chain ourselves is the only place
+ * that hand can be taken.
+ */
+const pdfViaTex = () => config.export?.pdfViaTex !== false && config.export?.postProcessTex !== false;
+
 async function exportCurrentFileImpl(tab, kind) {
   const path = tab?.currentFileHandle;
   if (typeof path !== "string" || !path) {
@@ -741,15 +754,21 @@ async function exportCurrentFileImpl(tab, kind) {
     return;
   }
 
+  // What myst is actually asked to build. A styled PDF is a LaTeX export that
+  // we then compile, so it is a "tex" entry the document must declare -- the
+  // "pdf" one is never used on that route.
+  const buildKind = kind === "pdf" && pdfViaTex() ? "tex" : kind;
+
   const needProject = !(await hasMystYml(tab));
-  const needEntry = !frontmatterDeclares(tab, kind);
-  const fromProject = needEntry && projectExportEntry(kind);
+  const needEntry = !frontmatterDeclares(tab, buildKind);
+  const fromProject = needEntry && projectExportEntry(buildKind);
 
   if (needProject || needEntry) {
     const missing = [
       needProject ? "this folder has no myst.yml" : null,
       needEntry
-        ? `the document declares no "${kind}" export in its frontmatter` +
+        ? `the document declares no "${buildKind}" export in its frontmatter` +
+          (buildKind !== kind ? " (a styled PDF is built from the LaTeX export)" : "") +
           (fromProject ? ", (and actually myst build reads the document's own, not the project's)" : "")
         : null,
     ]
@@ -769,7 +788,7 @@ async function exportCurrentFileImpl(tab, kind) {
           // Nothing awaits this callback, so an exception here would be lost.
           try {
             if (needProject && !(await mystInit(dirName(path)))) return;
-            if (needEntry) addExportToFrontmatter(tab, kind);
+            if (needEntry) addExportToFrontmatter(tab, buildKind, kind);
             await runExport(tab, kind);
           } catch (err) {
             console.error("[export] failed:", err);
@@ -792,28 +811,40 @@ async function runExport(tab, kind) {
 
   const dir = dirName(path);
   const file = baseName(path);
+  // A styled PDF is a LaTeX export compiled here; see pdfViaTex().
+  const buildKind = kind === "pdf" && pdfViaTex() ? "tex" : kind;
   showToast(`Exporting ${file} to ${kind.toUpperCase()}\u2026`, "success", 4000);
 
-  const res = await runMyst(`build ${q(file)} --${kind}`, dir);
-  if (res.code !== 0) return reportFailure(`myst build --${kind}`, res);
+  const res = await runMyst(`build ${q(file)} --${buildKind}`, dir);
+  if (res.code !== 0) return reportFailure(`myst build --${buildKind}`, res);
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
   // Try the expected slug, then fall back to the newest file of that type.
-  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, OUTPUT_EXTENSIONS[kind] ?? [kind], slugify(stemOf(path)));
+  const out = await resolveExport(
+    `${dir}/${EXPORT_DIR}`,
+    OUTPUT_EXTENSIONS[buildKind] ?? [buildKind],
+    slugify(stemOf(path)),
+  );
   if (!out) {
-    showToast(`myst reported success but no ${(OUTPUT_EXTENSIONS[kind] ?? [kind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`, "error", 0);
+    showToast(`myst reported success but no ${(OUTPUT_EXTENSIONS[buildKind] ?? [buildKind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`, "error", 0);
     return;
   }
   // Relative to the document's folder rather than just the file name: a LaTeX
   // export sits in a subfolder of its own, and saying "_build/exports/x.tex"
   // would send the user looking in the wrong place.
   const shown = out.startsWith(`${dir}/`) ? out.slice(dir.length + 1) : baseName(out);
-  showToast(`Exported to ${shown}`, "success", 6000);
+  if (buildKind === "tex") await postProcessTexFile(out, path);
 
-  // Only the .tex: a PDF is produced by mystmd from a .tex we never see, so
-  // there is nothing to rewrite between the two. Doing it there means running
-  // the LaTeX chain ourselves -- see the note in BACKLOG.md.
-  if (kind === "tex") await postProcessTexFile(out, path);
+  if (kind === "pdf" && buildKind === "tex") {
+    const pdf = await compileTex(out, { projectDir: dir, template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf") });
+    if (!pdf) return;
+    const pdfShown = pdf.startsWith(`${dir}/`) ? pdf.slice(dir.length + 1) : baseName(pdf);
+    showToast(`Exported to ${pdfShown}`, "success", 6000);
+    await openExported(pdf);
+    return;
+  }
+
+  showToast(`Exported to ${shown}`, "success", 6000);
 
   // Open the result in whatever the system uses for it. Not for .tex, which is
   // usually an intermediate the user processes further rather than reads.
@@ -912,6 +943,115 @@ async function postProcessTexFile(texPath, sourcePath) {
   if (styled.labelled) parts.push(`${styled.labelled} labelled`);
   if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
   showToast(parts.join(", ") + ".", "success", 6000);
+}
+
+/**
+ * The template the document asks for, from its own frontmatter or config.json.
+ */
+function declaredTemplate(tab, kind) {
+  const entry = exportsOf(documentFrontmatter(editorText(tab))).find(
+    (e) => String(formatOf(e) ?? "").trim() === kind,
+  );
+  const fromEntry = entry && typeof entry === "object" ? entry.template : null;
+  return String(fromEntry || config.export?.templates?.[kind] || "").trim() || null;
+}
+
+/**
+ * The LaTeX engine a template asks for, as jtex reads it.
+ *
+ * jtex takes it from the template's own `template.yml`:
+ *
+ *   const engine = templateYml?.build?.engine ?? '-xelatex';
+ *
+ * so hard-coding xelatex would quietly compile with the wrong engine for any
+ * template that declares another. The file is not copied next to the export --
+ * only the class and style files are -- so it is looked for where mystmd
+ * downloads templates, under `_build/templates`. Not finding it is the common
+ * case and not an error: the default is jtex's own.
+ */
+async function templateEngine(projectDir, template) {
+  if (!template) return null;
+  // `myst/elsarticle_myst` and `elsarticle_myst` name the same folder.
+  const name = template.split("/").pop();
+  const { exists, readTextFile, readDir } = await import("@tauri-apps/plugin-fs");
+  const root = `${projectDir}/_build/templates`;
+  if (!(await exists(root))) return null;
+
+  const find = async (dir, depth) => {
+    if (depth > 4) return null;
+    let entries;
+    try {
+      entries = await readDir(dir);
+    } catch {
+      return null;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory) continue;
+      if (e.name === name && (await exists(`${dir}/${e.name}/template.yml`))) return `${dir}/${e.name}/template.yml`;
+      const deeper = await find(`${dir}/${e.name}`, depth + 1);
+      if (deeper) return deeper;
+    }
+    return null;
+  };
+
+  const file = await find(root, 0);
+  if (!file) return null;
+  try {
+    const { load } = await import("js-yaml");
+    const engine = load(await readTextFile(file))?.build?.engine;
+    return typeof engine === "string" && engine.trim() ? engine.trim() : null;
+  } catch (err) {
+    console.warn("[export] could not read the template's engine:", file, err);
+    return null;
+  }
+}
+
+/**
+ * Run the LaTeX chain on a `.tex`, and return the PDF it produced.
+ *
+ * The command is jtex's own, so a document that built under mystmd builds
+ * here the same way, and it is configurable because a document can need
+ * another engine. It runs in the folder holding the `.tex`, which is where its
+ * images, its bibliography and its class file are.
+ *
+ * @returns {Promise<string|null>} absolute path of the PDF, or null on failure
+ */
+async function compileTex(texPath, { projectDir, template } = {}) {
+  const dir = dirName(texPath);
+  const file = baseName(texPath);
+  const command = config.export?.pdfCommand ?? "";
+  if (!command.includes("{file}")) {
+    showToast("export.pdfCommand must contain {file}; the PDF was not built.", "error", 0);
+    return null;
+  }
+
+  const engine = (await templateEngine(projectDir, template)) ?? "-xelatex";
+  showToast(`Compiling ${file}\u2026`, "success", 4000);
+  const line = command.replace("{engine}", engine).replace("{file}", q(file));
+  console.debug("[export] latex:", line);
+  const res = await runShell(isWindows ? line : `cd ${shq(dir)} && ${line}`, dir);
+
+  if (notFound(res)) {
+    showToast(
+      `The LaTeX chain could not be found. Install it, or set export.pdfViaTex to false in config.json ` +
+        `to let mystmd build the PDF itself -- unstyled.`,
+      "error",
+      0,
+    );
+    return null;
+  }
+
+  const pdf = `${dir}/${file.replace(/\.tex$/i, "")}.pdf`;
+  const { exists } = await import("@tauri-apps/plugin-fs");
+  if (await exists(pdf)) {
+    // latexmk returns non-zero on warnings it was told to ignore (`-f`), so
+    // the file on disk is what says whether it worked, not the exit code.
+    if (res.code !== 0) showToast("The LaTeX run reported problems; the PDF was produced anyway.", "warning", 8000);
+    return pdf;
+  }
+
+  reportFailure("LaTeX", res);
+  return null;
 }
 
 /** Hand a produced file to the system's default application. */
