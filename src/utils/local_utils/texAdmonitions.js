@@ -178,3 +178,189 @@ export function pairAdmonitions(items, blocks) {
 
   return { ok: true, reason: null, pairs };
 }
+
+// --- Rewriting ---------------------------------------------------------------
+
+/**
+ * Colours per kind, and the environment each one is given.
+ *
+ * `myst-to-tex` draws every admonition the same way, so the kind the author
+ * chose -- the whole point of writing `{warning}` rather than `{note}` -- is
+ * lost on the way to the PDF. These are deliberately sober: a document is not
+ * a web page, and a box that shouts on paper is a box the reader stops seeing.
+ * The table is the natural place for the user to take over, through
+ * `config.json` or a `.sty` of their own.
+ */
+export const ADMONITION_STYLE = {
+  note: { colour: "4A6FA5" },
+  seealso: { colour: "4A6FA5" },
+  hint: { colour: "2E7D52" },
+  tip: { colour: "2E7D52" },
+  important: { colour: "7B4FA8" },
+  attention: { colour: "B5762A" },
+  caution: { colour: "B5762A" },
+  warning: { colour: "C8800F" },
+  danger: { colour: "B3261E" },
+  error: { colour: "B3261E" },
+};
+
+/** Environment name for a kind; one per kind, so each carries its own counter. */
+const envOf = (kind) => (kind && ADMONITION_STYLE[kind] ? `mystadm${kind}` : "mystadmplain");
+
+/**
+ * The word mystmd puts before a reference, and therefore the word the box has
+ * to carry for the reader to find it. It writes `Warning~\ref{…}` at the
+ * reference site, in English, whatever the document's language.
+ */
+const KIND_WORD = {
+  attention: "Attention",
+  caution: "Caution",
+  danger: "Danger",
+  error: "Error",
+  hint: "Hint",
+  important: "Important",
+  note: "Note",
+  seealso: "See Also",
+  tip: "Tip",
+  warning: "Warning",
+};
+
+/**
+ * Labels the `.tex` actually references with `\ref`.
+ *
+ * This is the only reliable sign that mystmd treated an admonition as
+ * numbered: it writes `Warning~\ref{label}` for an enumerated one and the
+ * title as plain text for the others. Reading it from the `.tex` is exact,
+ * where guessing from `:enumerated:` in the source would mean reproducing a
+ * resolution -- directive option, frontmatter, defaults -- that belongs to
+ * mystmd.
+ */
+export function referencedLabels(tex) {
+  const found = new Set();
+  const re = /\\ref\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(String(tex ?? "")))) found.add(m[1]);
+  return found;
+}
+
+const BEGIN_FRAMED_LEN = BEGIN_FRAMED.length;
+const END_FRAMED_LEN = END_FRAMED.length;
+
+/**
+ * The preamble block defining the environments actually used.
+ *
+ * `auto counter` is not decoration: an injected `\label{}` inside a box that
+ * steps no counter does not fail, it silently refers to the last counter that
+ * moved -- the section -- and the reference comes out with a plausible, wrong
+ * number. A wrong number is worse than a `??`, which at least is seen.
+ */
+export function admonitionPreamble(kinds, { plain = false } = {}) {
+  const used = [...new Set(kinds.filter((k) => k && ADMONITION_STYLE[k]))].sort();
+  if (!used.length && !plain) return "";
+
+  const lines = [
+    "% >>> Mystral Editor: admonitions styled by kind",
+    "\\usepackage[most]{tcolorbox}",
+  ];
+  for (const kind of used) {
+    const { colour } = ADMONITION_STYLE[kind];
+    // The colour is named apart from the environment. LaTeX keeps the two in
+    // different namespaces, so sharing a name works -- and reads as a mistake
+    // to the next person, which is its own cost.
+    const col = `mystcol${kind}`;
+    lines.push(
+      `\\definecolor{${col}}{HTML}{${colour}}`,
+      // Two arguments: an optional list of tcolorbox keys first, the title
+      // second. The optional one is how a `label` reaches the box -- see
+      // the note on `label=` in rewriteAdmonitions.
+      `\\newtcolorbox[auto counter]{${envOf(kind)}}[2][]{breakable, enhanced, ` +
+        `colback=${col}!6!white, colframe=${col}, coltitle=white, ` +
+        `fonttitle=\\bfseries, title={#2}, #1}`,
+    );
+  }
+  if (plain) {
+    lines.push(
+      "\\newtcolorbox[auto counter]{mystadmplain}[1][]{breakable, enhanced, " +
+        "colback=black!3!white, colframe=black!40!white, #1}",
+    );
+  }
+  lines.push("% <<< Mystral Editor");
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Rewrite the `framed` environments of a `.tex` into styled, labelled boxes.
+ *
+ * The edits are collected first and applied from the end: a nested admonition
+ * lies inside the body of the one containing it, never inside its opening or
+ * closing lines, so the regions edited never overlap and the indices of the
+ * untouched ones stay valid.
+ *
+ * The title is taken from the `.tex`, not from the source: mystmd has already
+ * escaped it -- `100 \% \&`, ``...'' for quotes, `\texttt{}` for code -- and
+ * re-escaping the source title ourselves would be a second implementation of
+ * someone else's rules, which is how the two drift apart.
+ *
+ * @param {string} tex
+ * @param {Array<{item: object, block: FramedBlock}>} pairs  from pairAdmonitions
+ * @returns {{ text: string, rewritten: number, labelled: number, numbered: number }}
+ */
+export function rewriteAdmonitions(tex, pairs) {
+  const text = String(tex ?? "");
+  const referenced = referencedLabels(text);
+  const edits = [];
+  let labelled = 0;
+  let numbered = 0;
+  let needsPlain = false;
+
+  for (const { item, block } of pairs) {
+    if (block.end == null) continue;
+    const env = envOf(item.kind);
+    if (env === "mystadmplain") needsPlain = true;
+
+    // Opening: the `\begin{framed}` and, when there is one, the `\textbf{…}\\`
+    // line that follows it -- the title moves into the box's own title slot.
+    const openEnd = block.titleEnd ?? block.begin + BEGIN_FRAMED_LEN;
+    const title = block.title ?? "";
+    // tcolorbox's own `label=` key, not a bare `\label{}`. A `\label` written
+    // just inside the box captures nothing -- the .aux comes back with
+    // `\newlabel{x}{{}{1}…}`, an empty number -- because the box counter has
+    // not been stepped at that point. The key ties the label to the counter
+    // the box steps, which is what makes `\ref` print a number at all.
+    const label = item.label ? `[label={${item.label}}]` : "";
+    if (item.label) labelled++;
+    // The newline is for whoever opens the .tex: LaTeX does not need it, and a
+    // body glued to its opening line is a body nobody reads.
+    // A box the document refers to has to show the number the reference
+    // announces: `Warning~\ref{…}` sends the reader looking for "Warning 2",
+    // and a box titled merely "Warning" leaves them hunting. `\thetcbcounter`
+    // is the box's own counter, so the two cannot drift apart.
+    const word = KIND_WORD[item.kind];
+    let shown = title;
+    if (word && item.label && referenced.has(item.label)) {
+      // Même forme que l'aperçu -- « Warning 2 (Mon titre) » -- pour que le
+      // lecteur retrouve dans le PDF ce qu'il voyait dans l'éditeur.
+      shown = title && title !== word ? `${word}~\\thetcbcounter\\ (${title})` : `${word}~\\thetcbcounter`;
+      numbered++;
+    }
+
+    const opening =
+      env === "mystadmplain" ? `\\begin{${env}}${label}\n` : `\\begin{${env}}${label}{${shown}}\n`;
+    edits.push({ from: block.begin, to: openEnd, text: opening });
+
+    edits.push({ from: block.end - END_FRAMED_LEN, to: block.end, text: `\\end{${env}}` });
+  }
+
+  const preamble = admonitionPreamble(
+    pairs.map(({ item }) => item.kind),
+    { plain: needsPlain },
+  );
+  const docAt = text.indexOf("\\begin{document}");
+  if (preamble && docAt !== -1) edits.push({ from: docAt, to: docAt, text: preamble });
+
+  edits.sort((a, b) => b.from - a.from);
+  let out = text;
+  for (const e of edits) out = out.slice(0, e.from) + e.text + out.slice(e.to);
+
+  return { text: out, rewritten: pairs.length, labelled, numbered };
+}

@@ -141,6 +141,9 @@ class BaseAdmonitionV2 extends Directive {
     let titleContent = data.args[0]; // markdown brut, pas encore parsé
     let bodyText = data.body;
     const bodyMapStart = data.bodyMap[0];
+    // Un titre écrit par l'auteur, par opposition au mot par défaut du type :
+    // seul le premier est conservé entre parenthèses derrière le numéro.
+    let authored = Boolean(titleContent);
 
     if (!titleContent) {
       const probe = this.nestedParse(data.body, data.bodyMap[0]);
@@ -153,10 +156,29 @@ class BaseAdmonitionV2 extends Directive {
         const index = lines.findIndex((line) => line.includes(result.full));
 
         titleContent = result.title;
+        authored = true;
         bodyText = index >= 0 ? lines.slice(index + 1).join("\n") : data.body;
       } else {
         titleContent = this.title || DEFAULT_TITLES[kind] || "";
       }
+    }
+
+    // --- Numérotation ---
+    // mystmd ne numérote pas le titre d'une admonition, même énumérée : le
+    // numéro n'existe que dans le renvoi, qui envoie donc le lecteur chercher
+    // un « Warning 2 » qu'aucune boîte ne porte. On l'affiche ici, et au même
+    // endroit que pour les directives déjà numérotées (exercices, théorèmes),
+    // de sorte que « Warning 2 (Mon titre) » se lise partout de la même façon.
+    //
+    // Le numéro n'est pas recalculé : il vient du balayage, seul à connaître
+    // l'ordre de lecture, les inclusions et les réglages de numérotation.
+    // Le rendu ne fait que l'afficher.
+    const env = this.state?.env ?? {};
+    const absoluteLine = data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
+    const scanned = absoluteLine != null ? env.refMap?.byLine?.get(absoluteLine) : null;
+    if (scanned?.number != null) {
+      const base = displayLabel(this.state, kind, kind);
+      titleContent = authored ? `${base} ${scanned.number} (${titleContent})` : `${base} ${scanned.number}`;
     }
 
     // --- Conteneur : <details> pour dropdown, <aside> sinon ---
