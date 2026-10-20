@@ -394,6 +394,10 @@ export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
     pairs.map(({ item }) => item.kind),
     { plain: needsPlain, colors },
   );
+  // A multi-file export has no preamble in the body: mystmd writes one main
+  // file holding the preamble and `\\include`s one part per article. The
+  // preamble is therefore returned as well, for the caller to put into the
+  // file that does have a `\\begin{document}`.
   const docAt = text.indexOf("\\begin{document}");
   if (preamble && docAt !== -1) edits.push({ from: docAt, to: docAt, text: preamble });
 
@@ -402,5 +406,5 @@ export function rewriteAdmonitions(tex, pairs, { colors: overrides } = {}) {
   for (const e of edits) out = out.slice(0, e.from) + e.text + out.slice(e.to);
 
   const rewritten = pairs.filter(({ item }) => !item.passthrough).length;
-  return { text: out, rewritten, labelled, numbered, rejected };
+  return { text: out, rewritten, labelled, numbered, rejected, preamble, preambleWritten: Boolean(preamble) && docAt !== -1 };
 }

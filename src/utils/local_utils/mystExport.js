@@ -588,17 +588,106 @@ export async function hasMystYml(tab) {
  * and walks all of it -- failing on TCC-protected paths such as
  * ~/Library/Accounts. The explicit `cd` runs after the profile and wins.
  */
+/**
+ * Decode what a command printed, without ever being able to fail.
+ *
+ * The shell plugin decodes the output as UTF-8 and rejects the whole call when
+ * one byte does not fit: `invalid utf-8 sequence of 1 bytes from index 85`,
+ * raised as if the shell could not be started, taking the exit code, the
+ * output and any chance of a diagnosis with it. On Windows that is the normal
+ * case and not the exception -- `cmd.exe` and the tools it runs write in the
+ * machine's legacy code page, so a single accented character in a message from
+ * latexmk or myst was enough to lose the export.
+ *
+ * Asking for the bytes and decoding them here cannot fail, which is the point:
+ * a non-fatal decoder substitutes U+FFFD rather than throwing. It is the net
+ * under the `chcp 65001` in `runShell`, not the cure -- the cure is making the
+ * output UTF-8 in the first place, the active code page being quite possibly
+ * one nothing here can decode. The second pass as windows-1252 covers the
+ * common Western case and leaves the text approximate elsewhere; approximate
+ * text beats a lost exit code.
+ */
+const decodeOutput = (data) => {
+  if (typeof data === "string") return data;
+  if (!data || !data.length) return "";
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    return new TextDecoder("windows-1252").decode(bytes);
+  } catch {
+    return utf8;
+  }
+};
+
+/**
+ * Hand a command line to `cmd.exe` through a file, because it cannot be handed
+ * over as an argument.
+ *
+ * Rust quotes each argument of a process it starts in the MSVC convention,
+ * which escapes an inner double quote as a backslash-quote pair. `cmd.exe`
+ * knows nothing of that escape: it leaves the backslash alone, and the program
+ * cmd then starts reads the pair through its own CRT, which turns it back into
+ * a literal quote. A line holding `myst build "doc.md" --tex` therefore
+ * reaches myst as a file named `"doc.md"`, quotes included -- which exists
+ * nowhere, so myst falls back to exporting the project and the document
+ * exported is whichever article the project happens to list. myst's own log is
+ * where this was finally read, in its `$file` field:
+ * `...\\Documents\\"tst-exercisebis.md"`.
+ *
+ * No quoting of ours survives that path, so none is attempted on it. The line
+ * goes into a `.bat` written under the application's config folder, where we
+ * decide the quoting, and cmd is given the script's path -- a single argument
+ * holding no quote, which Rust passes through untouched.
+ *
+ * `%` is doubled, since a batch file expands `%NAME%` and a file name may hold
+ * one. `chcp 65001` sits in the script rather than being chained with `&`: see
+ * `decodeOutput` for why the output has to be UTF-8.
+ *
+ * Two names rather than one: cmd reads a batch file as it goes, so the
+ * long-running `myst start` keeps a script of its own instead of having it
+ * overwritten under its feet by the next export.
+ */
+async function windowsScript(line, name) {
+  const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  const { appConfigDir, join } = await import("@tauri-apps/api/path");
+  const dir = await appConfigDir();
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch {
+    /* already there, which is the usual case */
+  }
+  const path = await join(dir, name);
+  await writeTextFile(path, `@echo off\r\nchcp 65001>nul\r\n${line.replace(/%/g, "%%")}\r\n`);
+  return path;
+}
+
 async function runShell(line, cwd) {
   const { Command } = await import("@tauri-apps/plugin-shell");
   // `/d` keeps an AutoRun entry from changing the directory under us, and `/s`
   // makes cmd strip the outer quotes and take the rest of the line verbatim --
   // without it, a line holding quoted paths is re-parsed and falls apart.
-  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
+  // On Windows the line goes through a script rather than an argument; see
+  // `windowsScript`. If it cannot be written, the inline form is still better
+  // than nothing: it works for every command that needs no quoting, and it
+  // still asks for UTF-8 output.
+  let winArg = null;
+  if (isWindows) {
+    try {
+      winArg = await windowsScript(line, "mystral-run.bat");
+    } catch (err) {
+      console.warn("[export] the command script could not be written:", err);
+    }
+  }
+  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", winArg ?? `chcp 65001>nul & ${line}`]] : [LOGIN_SHELL, ["-lc", line]];
   console.log("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
 
   try {
-    const cmd = Command.create(scope, args, cwd ? { cwd, env: MYST_ENV } : { env: MYST_ENV });
-    const res = await cmd.execute();
+    // `encoding: "raw"` hands back the bytes; see `decodeOutput`.
+    const opts = { env: MYST_ENV, encoding: "raw" };
+    if (cwd) opts.cwd = cwd;
+    const out = await Command.create(scope, args, opts).execute();
+    const res = { ...out, stdout: decodeOutput(out.stdout), stderr: decodeOutput(out.stderr) };
     if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
     return { ...res, scope };
   } catch (err) {
@@ -960,12 +1049,15 @@ async function runExport(tab, kind) {
     showToast(`The cell outputs could not be written: ${err?.message ?? err}`, "warning", 8000);
   }
 
+  // Noted before the command, to tell what it wrote from what was already
+  // there; see `resolveExport`.
+  const builtAt = Date.now();
   const res = await runMyst(`build ${q(file)} --${buildKind}`, dir);
   if (res.code !== 0) return reportFailure(`myst build --${buildKind}`, res);
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
   // Try the expected slug, then fall back to the newest file of that type.
-  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, OUTPUT_EXTENSIONS[buildKind] ?? [buildKind], slugify(stemOf(path)));
+  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, OUTPUT_EXTENSIONS[buildKind] ?? [buildKind], slugify(stemOf(path)), builtAt);
   if (!out) {
     showToast(
       `myst reported success but no ${(OUTPUT_EXTENSIONS[buildKind] ?? [buildKind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`,
@@ -978,10 +1070,15 @@ async function runExport(tab, kind) {
   // export sits in a subfolder of its own, and saying "_build/exports/x.tex"
   // would send the user looking in the wrong place.
   const shown = out.startsWith(`${dir}/`) ? out.slice(dir.length + 1) : baseName(out);
-  if (buildKind === "tex") await postProcessTexFile(out, path);
+  const post = buildKind === "tex" ? await postProcessTexFile(out, path) : null;
 
   if (kind === "pdf" && buildKind === "tex") {
-    const built = await compileTex(out, { projectDir: dir, template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf") });
+    // Not always the file myst named: a split export is compiled from a main
+    // trimmed to this document alone. See `postProcessTexFile`.
+    const built = await compileTex(post?.compileFrom ?? out, {
+      projectDir: dir,
+      template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf"),
+    });
     if (!built) return;
     const pdf = await publishPdf(built, `${dir}/${EXPORT_DIR}`);
     const pdfShown = pdf.startsWith(`${dir}/`) ? pdf.slice(dir.length + 1) : baseName(pdf);
@@ -1039,18 +1136,63 @@ async function publishPdf(pdf, exportsDir) {
  * expanded the same way, since an `{include}` is one line in the source and a
  * whole file in the `.tex`.
  */
+/**
+ * The file holding this document's body, which is not always the file mystmd
+ * named.
+ *
+ * A `.tex` export of a project with several articles is not one file: jtex
+ * writes a main file carrying the preamble and `\begin{document}`, and one
+ * part per article, pulled in with `\include{<export slug>-<article slug>}`.
+ * The main file then holds no `framed` at all, which is exactly what the
+ * pairing reported -- "the source has 10 admonition(s) and the .tex has 0" --
+ * a correct refusal asked of the wrong file.
+ *
+ * The part is chosen by name rather than by content: its own slug is the
+ * document's, slugified by the same rules as the export itself. Guessing from
+ * the number of `framed` found would pick the wrong article the day two of
+ * them hold as many.
+ *
+ * @returns {{body: string, main: string, parts: string[]}|null} null when the
+ *   export is a single file, which is the ordinary case.
+ */
+function texParts(texPath, mainText, sourcePath) {
+  const names = [...mainText.matchAll(/\\(?:include|input)\{([^}]+)\}/g)].map((m) => m[1].trim()).filter(Boolean);
+  if (!names.length) return null;
+
+  const dir = dirName(texPath);
+  const slug = slugify(stemOf(sourcePath));
+  const mainStem = baseName(texPath).replace(/\.tex$/i, "");
+  // The document's own slug first, "index" only if that finds nothing: a
+  // project's index page is slugged "index" by myst whatever the file is
+  // called (see `resolveExport`), but a part genuinely named index must not
+  // win over the part that carries this document's name.
+  const tailOf = (n) => {
+    const base = n
+      .replace(/\.tex$/i, "")
+      .split("/")
+      .pop();
+    return base.startsWith(`${mainStem}-`) ? base.slice(mainStem.length + 1) : base;
+  };
+  const own = names.find((n) => tailOf(n) === slug) ?? names.find((n) => tailOf(n) === "index");
+  return {
+    body: own ? `${dir}/${own.replace(/\.tex$/i, "")}.tex` : null,
+    main: texPath,
+    parts: names,
+  };
+}
+
 async function postProcessTexFile(texPath, sourcePath) {
-  if (config.export?.postProcessTex === false) return;
+  const asIs = { compileFrom: texPath };
+  if (config.export?.postProcessTex === false) return asIs;
 
   const { readTextFile, writeTextFile } = await import("@tauri-apps/plugin-fs");
-  const dir = dirName(sourcePath);
 
   let source;
   try {
     source = await readTextFile(sourcePath);
   } catch (err) {
     console.warn("[export] could not read the source for post-processing:", err);
-    return;
+    return asIs;
   }
 
   // `expandIncludes` reads synchronously, so every included file is fetched
@@ -1085,7 +1227,23 @@ async function postProcessTexFile(texPath, sourcePath) {
     `expanded: ${expansion.expanded}`,
   );
 
-  const tex = await readTextFile(texPath);
+  // Which file actually holds the body: see `texParts`.
+  const main = await readTextFile(texPath);
+  const split = texParts(texPath, main, sourcePath);
+  if (split && !split.body) {
+    const reason =
+      `the export is split into ${split.parts.length} part(s) and none of them is named after this document ` +
+      `(looked for "${slugify(stemOf(sourcePath))}" among ${split.parts.join(", ")})`;
+    console.warn("[export] .tex left as mystmd wrote it:", reason);
+    showToast(`The .tex was left as mystmd wrote it: ${reason}.`, "warning", 8000);
+    return asIs;
+  }
+  const bodyPath = split ? split.body : texPath;
+  if (split) {
+    console.debug(`[export] multi-file export: body in ${baseName(bodyPath)}, preamble in ${baseName(texPath)}`);
+  }
+
+  const tex = split ? await readTextFile(bodyPath) : main;
   const blocks = framedBlocks(tex);
   // Whether {exercise} and {solution} occupy a rank depends on whether the
   // exercise plugin was in use for this build. Rather than require a setting,
@@ -1100,7 +1258,7 @@ async function postProcessTexFile(texPath, sourcePath) {
   if (!paired.ok) {
     console.warn("[export] .tex left as mystmd wrote it:", paired.reason);
     showToast(`The .tex was left as mystmd wrote it: ${paired.reason}`, "warning", 8000);
-    return;
+    return asIs;
   }
 
   const styled = rewriteAdmonitions(tex, paired.pairs, { colors: config.export?.admonitionColors });
@@ -1109,12 +1267,64 @@ async function postProcessTexFile(texPath, sourcePath) {
   }
 
   const proof = repairProofLabels(styled.text, findProofLabels(expansion.text.split("\n")));
-  await writeTextFile(texPath, separateEnvironments(proof.text));
+  await writeTextFile(bodyPath, separateEnvironments(proof.text));
+
+  // In a multi-file export the body carries no preamble; the packages and the
+  // box definitions have to go in the file that has `\begin{document}`.
+  if (split && styled.preamble && !styled.preambleWritten) {
+    const at = main.indexOf("\\begin{document}");
+    if (at === -1) {
+      showToast(
+        `${baseName(texPath)} has no \\begin{document}: the boxes were styled but their definitions could not be ` +
+          `added, so the LaTeX run will fail. Leave export.postProcessTex off for this project, or export one ` +
+          `article at a time.`,
+        "error",
+        0,
+      );
+    } else {
+      await writeTextFile(texPath, main.slice(0, at) + styled.preamble + main.slice(at));
+    }
+  }
 
   const parts = [`${styled.rewritten} admonition${styled.rewritten === 1 ? "" : "s"} styled`];
   if (styled.labelled) parts.push(`${styled.labelled} labelled`);
   if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
+  // Said rather than left to be discovered: the other parts belong to other
+  // documents of the project, whose sources this export never read.
+  if (split && split.parts.length > 1) {
+    parts.push(`in ${baseName(bodyPath)}; ${split.parts.length - 1} other part(s) left untouched`);
+  }
   showToast(parts.join(", ") + ".", "success", 6000);
+
+  // The PDF is the current document's, not the project's. A split main file
+  // pulls in every article, so the one handed to LaTeX is a copy of it keeping
+  // this document's part alone. The original is left untouched: it is what
+  // mystmd produced, and someone may want the whole thing.
+  if (!split) return asIs;
+  const only = `${dirName(texPath)}/${baseName(texPath).replace(/\.tex$/i, "")}-only.tex`;
+  const kept = split.body
+    .replace(/\.tex$/i, "")
+    .split("/")
+    .pop();
+  const trimmed = (await readTextFile(texPath)).replace(/\\(?:include|input)\{([^}]+)\}/g, (whole, name) =>
+    name
+      .trim()
+      .replace(/\.tex$/i, "")
+      .split("/")
+      .pop() === kept
+      ? whole
+      : "",
+  );
+  try {
+    await writeTextFile(only, trimmed);
+    return { compileFrom: only };
+  } catch (err) {
+    // Not fatal, but the PDF will then hold the whole project rather than this
+    // document, which is worth a word rather than a surprise.
+    console.warn("[export] the trimmed main could not be written:", err);
+    showToast(`${baseName(only)} could not be written; the PDF will hold every article of the project.`, "warning", 8000);
+    return asIs;
+  }
 }
 
 /**
@@ -1304,9 +1514,16 @@ const OUTPUT_EXTENSIONS = {
  * Absolute path of the export myst just wrote, or null.
  * @param {string[]} exts  candidate extensions, most likely first
  */
-async function resolveExport(dir, exts, slug) {
+async function resolveExport(dir, exts, slug, since = 0) {
   const { exists, readDir, stat } = await import("@tauri-apps/plugin-fs");
   const suffixes = exts.map((e) => `.${e}`);
+  // Only what this build wrote may be returned. Everything below used to end
+  // in "the newest file of the right type", which is how the export of another
+  // document, left in the folder by an earlier run, came to be post-processed,
+  // copied and opened in place of the one asked for -- a document the user had
+  // never even opened. A file older than the command that was supposed to
+  // produce it is not that command's output, whatever its name.
+  const fresh = (t) => t != null && t + 1000 >= since;
 
   const when = async (full) => {
     try {
@@ -1321,7 +1538,8 @@ async function resolveExport(dir, exts, slug) {
   let newest = null;
   const consider = async (full) => {
     const t = await when(full);
-    if (t != null && (!newest || t > newest.when)) newest = { full, when: t };
+    if (!fresh(t)) return;
+    if (!newest || t > newest.when) newest = { full, when: t };
   };
 
   // The expected names first. LaTeX is the odd one out: myst does not drop a
@@ -1329,16 +1547,25 @@ async function resolveExport(dir, exts, slug) {
   // file and the images it refers to -- "small-demo_tex/small-demo.tex". Looking
   // only beside the exports, we declared the export missing although it had just
   // been produced.
-  for (const ext of exts) {
-    if (await exists(`${dir}/${slug}.${ext}`)) await consider(`${dir}/${slug}.${ext}`);
-    const sub = `${dir}/${slug}_${ext}/${slug}.${ext}`;
-    if (await exists(sub)) await consider(sub);
+  // "index" is the second expected name, not a guess: myst names an export
+  // after the page's slug, and the slug of a project's index page -- its first
+  // toc entry -- is "index" whatever the file is called. Building the first
+  // file of a two-file project therefore produces index_tex/index.tex, and
+  // looking only for <document>.tex found nothing and fell through to the
+  // search below, which returned another document's export.
+  for (const name of [slug, "index"]) {
+    for (const ext of exts) {
+      if (await exists(`${dir}/${name}.${ext}`)) await consider(`${dir}/${name}.${ext}`);
+      const sub = `${dir}/${name}_${ext}/${name}.${ext}`;
+      if (await exists(sub)) await consider(sub);
+    }
+    if (newest) return newest.full;
   }
-  if (newest) return newest.full;
 
   // Failing that, look through the exports folder and one level under it, which
   // is as deep as myst goes. The name myst chose is its own -- it slugifies --
-  // so the most recent file of the right type wins.
+  // so the most recent file of the right type wins, among those this build
+  // actually wrote.
   try {
     for (const entry of await readDir(dir)) {
       const full = `${dir}/${entry.name}`;
@@ -1612,7 +1839,12 @@ export async function startSite(tab) {
     ? `${mystInvocation()} start --port ${port}`
     : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start --port ${port} < /dev/null`;
   console.log("[export] sh -lc", line);
-  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", line]] : [LOGIN_SHELL, ["-lc", line]];
+  // Through a script of its own on Windows, for the same two reasons as every
+  // other command: quoting that survives, and UTF-8 output -- this one's is
+  // read line by line to find the address myst listens on, and a byte that
+  // does not decode would take the whole stream with it.
+  const winArg = isWindows ? await windowsScript(line, "mystral-site.bat").catch(() => null) : null;
+  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", winArg ?? `chcp 65001>nul & ${line}`]] : [LOGIN_SHELL, ["-lc", line]];
   const cmd = Command.create(scope, args, { cwd: dir, env: MYST_ENV });
   // myst announces the address it actually listens on, and it is not always
   // the one asked for -- it moves on when the port is taken. Reading it from
