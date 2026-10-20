@@ -94,6 +94,17 @@ const configuredNode = () => {
 
 const nodeCmd = () => configuredNode() || probedNodePath || null;
 
+/** Found by probing, for this session, when config.json names no LaTeX. */
+let probedLatexPath = null;
+
+/** The LaTeX driver the user has chosen, or nothing. Empty by default. */
+const configuredLatex = () => {
+  const value = String(config.export?.latexPath ?? "").trim();
+  return value || null;
+};
+
+const latexCmd = () => configuredLatex() || probedLatexPath || null;
+
 /**
  * The command as the shell should receive it.
  *
@@ -102,8 +113,7 @@ const nodeCmd = () => configuredNode() || probedNodePath || null;
  * line rather than a path, `npx myst` for instance, and quoting would turn that
  * into the name of a file that does not exist.
  */
-const mystInvocation = (cmd = mystCmd()) =>
-  /^[/~]/.test(cmd) || (isWindows && /^[A-Za-z]:[\\/]/.test(cmd)) ? q(cmd) : cmd;
+const mystInvocation = (cmd = mystCmd()) => (/^[/~]/.test(cmd) || (isWindows && /^[A-Za-z]:[\\/]/.test(cmd)) ? q(cmd) : cmd);
 
 /**
  * Put the directory myst lives in at the head of the PATH.
@@ -258,13 +268,10 @@ const MIN_NODE_MAJOR = 22;
  * plainly, this is the one message a new installation most needs to read.
  */
 const nodeDenied = (res) =>
-  /attempt to install Node\.js (?:was unsuccessful|failed because the user denied)/i.test(
-    `${res?.stdout ?? ""}\n${res?.stderr ?? ""}`,
-  );
+  /attempt to install Node\.js (?:was unsuccessful|failed because the user denied)/i.test(`${res?.stdout ?? ""}\n${res?.stderr ?? ""}`);
 
 /** myst saying it has no interpreter, as opposed to failing at its work. */
-const nodeMissing = (res) =>
-  /Node\.js \(node\) is required to run MyST/i.test(`${res?.stdout ?? ""}\n${res?.stderr ?? ""}`);
+const nodeMissing = (res) => /Node\.js \(node\) is required to run MyST/i.test(`${res?.stdout ?? ""}\n${res?.stderr ?? ""}`);
 
 /**
  * Look for the newest node, not the first one.
@@ -409,6 +416,128 @@ async function refreshNode() {
   }
   return found;
 }
+/**
+ * Where a TeX distribution puts its binaries.
+ *
+ * The same blind spot as myst and node, and the one that took longest to name
+ * because the symptom lies: a desktop application does not inherit a
+ * terminal's PATH, so `latexmk` is there in development and gone in a bundled
+ * build. What made it hard to read is that the editor then found a `.log` left
+ * by an earlier run and reported whatever error that stale file held.
+ *
+ * Directories rather than paths, because the command named in
+ * `export.pdfCommand` is configurable -- latexmk by default, but a user may
+ * well put `tectonic` or a wrapper of their own there -- and because finding
+ * it is only half of it: latexmk runs `xelatex` and `kpsewhich` through the
+ * PATH in turn, and they live in the directory it came from.
+ * `export.latexSearchPaths` in config.json adds to the list.
+ */
+const LATEX_DIRS = [
+  // macOS: MacTeX's own symlink farm, then MacPorts, then Homebrew.
+  "/Library/TeX/texbin",
+  "/opt/local/bin",
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  // A TeX Live installed by its own installer, on either system.
+  "/usr/local/texlive/*/bin/*",
+  "$HOME/texlive/*/bin/*",
+  // Distribution packages.
+  "/usr/bin",
+  "$HOME/.local/bin",
+  "$HOME/bin",
+];
+
+/** The program `export.pdfCommand` actually runs, as opposed to its arguments. */
+const latexProgram = () => (config.export?.pdfCommand ?? "").trim().split(/\s+/)[0] || "latexmk";
+
+/**
+ * Look for the LaTeX driver, first match wins.
+ *
+ * Unlike node, where the newest is the one that works, any complete TeX
+ * distribution will do: the order of the list is the preference, and the first
+ * one that answers is taken. The interactive shell at the end is there for the
+ * same reason as in the two other probes -- a TeX Live installed per user adds
+ * its directory in `~/.zshrc`, which `sh -lc` never reads.
+ */
+async function probeLatex() {
+  if (isWindows) return null;
+
+  const program = latexProgram();
+  // Only a plain command name can be looked for; `export.pdfCommand` is
+  // allowed to start with an absolute path, and that one needs no help.
+  if (/[/\\]/.test(program)) return null;
+
+  const dirs = [...LATEX_DIRS, ...(config.export?.latexSearchPaths ?? [])].join(" ");
+  const quick = await runShell(`for d in ${dirs}; do [ -x "$d/${program}" ] && printf '%s\n' "$d/${program}" && exit 0; done; exit 1`);
+  const found = quick.code === 0 && quick.stdout.trim().split("\n")[0];
+  if (found) return found;
+
+  const deep = await runShell(
+    `for s in zsh bash; do command -v $s >/dev/null 2>&1 || continue; ` +
+      `p=$("$s" -ilc 'command -v ${program}' 2>/dev/null | tail -n 1); ` +
+      `[ -x "$p" ] && printf '%s\n' "$p" && exit 0; done; exit 1`,
+  );
+  return (deep.code === 0 && deep.stdout.trim().split("\n")[0]) || null;
+}
+
+/** Set once the search has been made, so that a fruitless one is not repeated. */
+let latexProbed = false;
+
+/**
+ * Settle on a LaTeX driver, once per session, before the chain is ever run.
+ *
+ * Looking first rather than reacting to a failure, because the failure is not
+ * legible: latexmk missing and latexmk stopping on a missing package both end
+ * as a non-zero exit with no PDF beside the `.tex`, and the `.log` that would
+ * tell them apart is exactly the file that is not written when the command
+ * never ran.
+ *
+ * A path recorded in config.json that no longer resolves is dropped rather
+ * than kept: a TeX Live is upgraded by installing the next year beside it and
+ * removing the old one, so a recorded `/usr/local/texlive/2024/bin/...` is
+ * precisely what an upgrade leaves behind.
+ */
+async function ensureLatex() {
+  if (isWindows) return false;
+  const configured = configuredLatex();
+  if (configured) {
+    // A `~` or a command line rather than a path is the user's business.
+    if (!configured.startsWith("/")) return false;
+    if ((await runShell(`[ -x ${shq(configured)} ]`)).code === 0) return false;
+    showToast(`The LaTeX driver recorded in config.json (${configured}) is no longer there; looking for another.`, "warning", 6000);
+    await saveConfigValue("export.latexPath", "");
+    probedLatexPath = null;
+    latexProbed = false;
+  }
+  if (probedLatexPath || latexProbed) return false;
+  latexProbed = true;
+
+  const found = await probeLatex();
+  if (!found) return false;
+
+  probedLatexPath = found;
+  const written = await saveConfigValue("export.latexPath", found);
+  console.debug(`[export] latex found at ${found}${written ? ", recorded in config.json" : ""}`);
+  return true;
+}
+
+/**
+ * Put the TeX distribution's directory at the head of the PATH.
+ *
+ * Naming latexmk by its absolute path is not enough: it is a Perl script that
+ * runs `xelatex`, `biber` and `kpsewhich` by name, and those are its
+ * neighbours. Prefixing instead of substituting also leaves
+ * `export.pdfCommand` readable -- it still says `latexmk`, which is what the
+ * user wrote there.
+ */
+const latexPrefix = () => {
+  if (isWindows) return "";
+  const cmd = latexCmd();
+  if (!cmd || !/^[/~]/.test(cmd)) return "";
+  const dir = parentDir(cmd);
+  return dir ? `export PATH=${shq(dir)}:"$PATH" && ` : "";
+};
+
 const sitePort = () => config.export?.sitePort ?? 3000;
 
 const baseName = (p) => fileName(p);
@@ -560,7 +689,11 @@ function reportFailure(what, res) {
 
   // The one failure that is not about the document: the command itself is
   // nowhere to be found, and the probe did not turn it up either.
-  if (notFound(res)) {
+  // `notFound()` is written for myst, whose output is long and marked; its
+  // textual fallback catches any short line holding "not found", and
+  // `! LaTeX Error: File \`tcolorbox.sty\' not found.` is exactly that. Here
+  // only the shell's own verdict counts: 127 means the command does not exist.
+  if (res?.code === 127 || res?.code === 9009) {
     showToast(
       "myst could not be found. An application launched from the desktop does not inherit a terminal's PATH. " +
         "Run `which myst` in a terminal and put that path in export.mystPath in config.json.",
@@ -602,8 +735,7 @@ function reportFailure(what, res) {
  * @param {"tex"|"pdf"|"docx"} kind
  */
 /** The document's text as it currently stands in the editor. */
-const editorText = (tab) =>
-  (typeof window !== "undefined" && window.myst_editor?.[tab?.editorId]?.text) || "";
+const editorText = (tab) => (typeof window !== "undefined" && window.myst_editor?.[tab?.editorId]?.text) || "";
 
 /** The frontmatter block of `src`, or null. */
 const frontmatterOf = (src) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
@@ -726,14 +858,16 @@ async function mystInit(dir) {
  * which await their result: an exception there is an unhandled rejection and
  * the user sees nothing happen at all.
  */
-const reported = (what, fn) => async (...args) => {
-  try {
-    return await fn(...args);
-  } catch (err) {
-    console.error(`[export] ${what} threw:`, err);
-    showToast(`${what} failed: ${err?.message ?? err}`, "error", 0);
-  }
-};
+const reported =
+  (what, fn) =>
+  async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      console.error(`[export] ${what} threw:`, err);
+      showToast(`${what} failed: ${err?.message ?? err}`, "error", 0);
+    }
+  };
 
 export const exportCurrentFile = reported("Export", exportCurrentFileImpl);
 
@@ -775,29 +909,20 @@ async function exportCurrentFileImpl(tab, kind) {
     ]
       .filter(Boolean)
       .join(", and ");
-    showToast(
-      `Cannot export ${baseName(path)} to ${kind.toUpperCase()} because ${missing}. myst has no default project or export.`,
-      "error",
-      0,
-      {
-        label: needProject && needEntry
-          ? "Set both up and export"
-          : fromProject
-            ? "Copy the project's entry and export"
-            : "Set it up and export",
-        onClick: async () => {
-          // Nothing awaits this callback, so an exception here would be lost.
-          try {
-            if (needProject && !(await mystInit(dirName(path)))) return;
-            if (needEntry) addExportToFrontmatter(tab, buildKind, kind);
-            await runExport(tab, kind);
-          } catch (err) {
-            console.error("[export] failed:", err);
-            showToast(`Export failed: ${err?.message ?? err}`, "error", 0);
-          }
-        },
+    showToast(`Cannot export ${baseName(path)} to ${kind.toUpperCase()} because ${missing}. myst has no default project or export.`, "error", 0, {
+      label: needProject && needEntry ? "Set both up and export" : fromProject ? "Copy the project's entry and export" : "Set it up and export",
+      onClick: async () => {
+        // Nothing awaits this callback, so an exception here would be lost.
+        try {
+          if (needProject && !(await mystInit(dirName(path)))) return;
+          if (needEntry) addExportToFrontmatter(tab, buildKind, kind);
+          await runExport(tab, kind);
+        } catch (err) {
+          console.error("[export] failed:", err);
+          showToast(`Export failed: ${err?.message ?? err}`, "error", 0);
+        }
       },
-    );
+    });
     return;
   }
 
@@ -840,13 +965,13 @@ async function runExport(tab, kind) {
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
   // Try the expected slug, then fall back to the newest file of that type.
-  const out = await resolveExport(
-    `${dir}/${EXPORT_DIR}`,
-    OUTPUT_EXTENSIONS[buildKind] ?? [buildKind],
-    slugify(stemOf(path)),
-  );
+  const out = await resolveExport(`${dir}/${EXPORT_DIR}`, OUTPUT_EXTENSIONS[buildKind] ?? [buildKind], slugify(stemOf(path)));
   if (!out) {
-    showToast(`myst reported success but no ${(OUTPUT_EXTENSIONS[buildKind] ?? [buildKind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`, "error", 0);
+    showToast(
+      `myst reported success but no ${(OUTPUT_EXTENSIONS[buildKind] ?? [buildKind]).map((e) => "." + e).join(" or ")} file was found in ${EXPORT_DIR}.`,
+      "error",
+      0,
+    );
     return;
   }
   // Relative to the document's folder rather than just the file name: a LaTeX
@@ -969,9 +1094,7 @@ async function postProcessTexFile(texPath, sourcePath) {
  * The template the document asks for, from its own frontmatter or config.json.
  */
 function declaredTemplate(tab, kind) {
-  const entry = exportsOf(documentFrontmatter(editorText(tab))).find(
-    (e) => String(formatOf(e) ?? "").trim() === kind,
-  );
+  const entry = exportsOf(documentFrontmatter(editorText(tab))).find((e) => String(formatOf(e) ?? "").trim() === kind);
   const fromEntry = entry && typeof entry === "object" ? entry.template : null;
   return String(fromEntry || config.export?.templates?.[kind] || "").trim() || null;
 }
@@ -1045,16 +1168,35 @@ async function compileTex(texPath, { projectDir, template } = {}) {
     return null;
   }
 
+  // Look for the distribution before running it, not after failing: see
+  // `ensureLatex`. It costs one shell loop, once per session.
+  await ensureLatex();
+
   const engine = (await templateEngine(projectDir, template)) ?? "-xelatex";
   showToast(`Compiling ${file}\u2026`, "success", 4000);
   const line = command.replace("{engine}", engine).replace("{file}", q(file));
-  console.debug("[export] latex:", line);
-  const res = await runShell(isWindows ? line : `cd ${shq(dir)} && ${line}`, dir);
+  console.debug("[export] latex:", latexPrefix() + line);
+  const startedAt = Date.now();
+  const res = await runShell(isWindows ? line : `cd ${shq(dir)} && ${latexPrefix()}${line}`, dir);
 
-  if (notFound(res)) {
+  // Only the shell's own verdict counts here. `notFound()` has a textual
+  // fallback written for myst, and `! LaTeX Error: File \`tcolorbox.sty\' not
+  // found.` matches it word for word -- which is how a missing LaTeX *package*
+  // came to be reported as a missing LaTeX *installation*.
+  if (res?.code === 127 || res?.code === 9009) {
+    // The exit code and the first line it printed are named: a shell that
+    // cannot find a command and a LaTeX run that failed early look alike from
+    // here, and telling someone to install a tool they already have is the
+    // worst of the two mistakes.
+    const first =
+      String(res?.stderr || res?.stdout || "")
+        .trim()
+        .split("\n")[0] ?? "";
     showToast(
-      `The LaTeX chain could not be found. Install it, or set export.pdfViaTex to false in config.json ` +
-        `to let mystmd build the PDF itself -- unstyled.`,
+      `${latexProgram()} could not be run [exit ${res?.code}]${first ? `: ${first}` : ""}, and it is in none of ` +
+        `the places a TeX distribution usually installs. Check it with \`sh -lc 'command -v ${latexProgram()}'\`: ` +
+        `if it answers, put that path in export.latexPath in config.json -- a desktop application does not inherit ` +
+        `a terminal's PATH. Set export.pdfViaTex to false to let mystmd build the PDF itself, unstyled.`,
       "error",
       0,
     );
@@ -1070,8 +1212,46 @@ async function compileTex(texPath, { projectDir, template } = {}) {
     return pdf;
   }
 
-  reportFailure("LaTeX", res);
+  await reportLatexFailure(dir, file, res, startedAt);
   return null;
+}
+
+/**
+ * Say why LaTeX stopped, from its own log.
+ *
+ * In `batchmode` nothing useful reaches the console: the errors are written to
+ * `<name>.log`, each on a line starting with `!`, and the line that follows
+ * usually names the file and the line number. Reporting the tail of stderr
+ * instead, as the myst commands do, says only that something failed.
+ */
+async function reportLatexFailure(dir, file, res, startedAt = 0) {
+  const stem = file.replace(/\.tex$/i, "");
+  let detail = "";
+  try {
+    const { readTextFile, exists, stat } = await import("@tauri-apps/plugin-fs");
+    const logPath = `${dir}/${stem}.log`;
+    // Only a log this run wrote may be quoted. A `.log` left by an earlier,
+    // successful build sits in the same folder and outlives everything, and
+    // reading it is how a LaTeX chain that never started came to be reported
+    // as a LaTeX chain that stopped on someone else's old warning.
+    const fresh = (await exists(logPath)) && ((await stat(logPath))?.mtime?.getTime?.() ?? 0) >= startedAt;
+    if (fresh) {
+      const lines = (await readTextFile(logPath)).split("\n");
+      const at = lines.findIndex((l) => l.startsWith("!"));
+      if (at !== -1) detail = [lines[at], lines[at + 1]].filter(Boolean).join(" ").trim().slice(0, 220);
+    }
+  } catch (err) {
+    console.warn("[export] the LaTeX log could not be read:", err);
+  }
+  console.error("[export] LaTeX failed:", res?.code, res?.stdout, res?.stderr);
+  showToast(
+    detail
+      ? `LaTeX stopped: ${detail} The full log is ${stem}.log, beside the .tex.`
+      : `LaTeX stopped (exit ${res?.code}) without saying why, and wrote no log for this run. ` +
+          `The .tex is there; running ${latexProgram()} on it in a terminal will show the error.`,
+    "error",
+    0,
+  );
 }
 
 /** Hand a produced file to the system's default application. */
@@ -1146,7 +1326,9 @@ async function resolveExport(dir, exts, slug) {
             await consider(`${full}/${child.name}`);
           }
         }
-      } catch { /* an unreadable subfolder is not a reason to give up on the rest */ }
+      } catch {
+        /* an unreadable subfolder is not a reason to give up on the rest */
+      }
     }
     return newest?.full ?? null;
   } catch (err) {
@@ -1156,8 +1338,7 @@ async function resolveExport(dir, exts, slug) {
 }
 
 /** The CSSOM sheets of the <style> elements under a node. */
-const styleElementSheets = (node) =>
-  [...(node?.querySelectorAll?.("style") ?? [])].map((el) => el.sheet).filter(Boolean);
+const styleElementSheets = (node) => [...(node?.querySelectorAll?.("style") ?? [])].map((el) => el.sheet).filter(Boolean);
 
 /**
  * The base the exported page needs, applied after everything that was collected.
@@ -1485,11 +1666,7 @@ function armSiteOpener(timeoutMs = 120000) {
   const timer = setTimeout(() => {
     if (done || !siteChild) return;
     done = true;
-    showToast(
-      `The MyST site has not announced itself yet. If it is up, open ${siteUrl()} yourself.`,
-      "warning",
-      0,
-    );
+    showToast(`The MyST site has not announced itself yet. If it is up, open ${siteUrl()} yourself.`, "warning", 0);
   }, timeoutMs);
 
   openSiteWhenReady = (line) => {
@@ -1519,5 +1696,7 @@ export async function stopSite() {
 // A spawned server outlives the page, so make sure a reload or a quit does not
 // leave it running with the port taken.
 if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => { siteChild?.kill?.(); });
+  window.addEventListener("beforeunload", () => {
+    siteChild?.kill?.();
+  });
 }

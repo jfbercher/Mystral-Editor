@@ -189,6 +189,16 @@ export const DEFAULT_CONFIG = {
     // {engine} is the engine the template asks for in its template.yml, as jtex
     // reads it, and -xelatex when it asks for none -- jtex's own default.
     pdfCommand: 'latexmk -f {engine} -synctex=1 -interaction=batchmode -file-line-error -latexoption="-shell-escape" {file}',
+    // Full path of the program pdfCommand names. Same blind spot as nodePath:
+    // a desktop application does not inherit a terminal's PATH, so latexmk is
+    // found in development and missing from a bundled build -- and a command
+    // that never ran writes no .log, so there is nothing to read afterwards
+    // either. Leave this empty and the editor looks where TeX distributions
+    // install -- MacTeX, MacPorts, Homebrew, TeX Live, the distribution's own
+    // packages -- then records what it found here. The directory is put at the
+    // head of the PATH rather than substituted into the command, because
+    // latexmk runs xelatex and kpsewhich by name and they are its neighbours.
+    latexPath: "",
     // Rewrite the .tex produced by a LaTeX export: admonitions become coloured
     // boxes carrying their kind and their label, proof labels mangled by
     // mystmd are put back as typed, and closing environments get a blank line
