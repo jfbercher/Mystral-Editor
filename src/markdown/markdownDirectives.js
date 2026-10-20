@@ -1045,6 +1045,14 @@ class CodeCellDirective extends Directive {
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
     figwidth: directiveOptions.unchanged,    // largeur des figures : "60%", "20em"...
+    // Ces trois-là ne servent qu'à l'export : l'aperçu montre la figure telle
+    // que la cellule l'a produite, l'export la met en figure numérotée. Elles
+    // sont lues ici pour être transmises, et parce qu'une option inconnue
+    // devient une DirectiveError qui masque la cellule entière.
+    align:    directiveOptions.unchanged,    // left | center | right
+    caption:  directiveOptions.unchanged,    // légende, sous la figure
+    label:    directiveOptions.unchanged,    // étiquette, et donc numérotation
+    name:     directiveOptions.unchanged,    // alias de label
   };
 
   run(data) {
@@ -1065,6 +1073,9 @@ class CodeCellDirective extends Directive {
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
       `data-figwidth="${escapeHtml(String(data.options?.figwidth ?? "").trim())}" ` +
+      `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
+      `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
+      `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
       `data-linenos="${linenos}">` +

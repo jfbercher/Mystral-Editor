@@ -146,7 +146,9 @@ const DIRECTIVE_OPTIONS = {
   math: ["enumerated"],
   code: ["filename", "linenos", "lineno-start", "emphasize-lines"],
   "code-block": ["filename", "linenos", "lineno-start", "emphasize-lines"],
-  "code-cell": ["tags", "linenos", "packages", "figwidth"],
+  // `align`, `caption` and `label` only matter to an export: they turn the
+  // figure a cell produced into a figure of the document.
+  "code-cell": ["tags", "linenos", "packages", "figwidth", "align", "caption", "label"],
   literalinclude: ["lines", "language", "linenos", "start-at", "end-at"],
   admonition: ADMONITION_OPTIONS,
   dropdown: ["open", "icon"],

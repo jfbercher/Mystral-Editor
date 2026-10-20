@@ -135,6 +135,11 @@ export const DEFAULT_CONFIG = {
     // its natural size, bounded by the width of the cell. A cell overrides it
     // with its own :figwidth: option.
     figureWidth: "",
+    // How much larger than its natural size a figure is rasterised for an
+    // export. The figures are SVG, which LaTeX cannot include and which the web
+    // theme does not render directly, so they are turned into PNG when a
+    // document is exported; 2 keeps them sharp in print without weighing much.
+    exportImageScale: 2,
 
     // Keyboard shortcuts of a code-cell editor, in CodeMirror notation:
     // "Mod" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and

@@ -25,6 +25,7 @@ import { scanAdmonitions } from "./scanAdmonitions.js";
 import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmonitions.js";
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments } from "./texTidy.js";
+import { writePyodideOutputs } from "./pyodideExport.js";
 
 /**
  * Environment handed to every myst command.
@@ -814,6 +815,25 @@ async function runExport(tab, kind) {
   // A styled PDF is a LaTeX export compiled here; see pdfViaTex().
   const buildKind = kind === "pdf" && pdfViaTex() ? "tex" : kind;
   showToast(`Exporting ${file} to ${kind.toUpperCase()}\u2026`, "success", 4000);
+
+  // Before the build, not after: mystmd reads the manifest while it runs, so
+  // what the cells produced has to be on disk first.
+  try {
+    const written = await writePyodideOutputs(tab, dir);
+    if (written) {
+      showToast(
+        `${written.cells} cell output${written.cells === 1 ? "" : "s"} handed to myst` +
+          `${written.images ? `, ${written.images} figure${written.images === 1 ? "" : "s"}` : ""}.`,
+        "success",
+        4000,
+      );
+    }
+  } catch (err) {
+    // Not fatal: the document exports without its outputs, which is what it
+    // did before this existed.
+    console.warn("[export] cell outputs could not be written:", err);
+    showToast(`The cell outputs could not be written: ${err?.message ?? err}`, "warning", 8000);
+  }
 
   const res = await runMyst(`build ${q(file)} --${buildKind}`, dir);
   if (res.code !== 0) return reportFailure(`myst build --${buildKind}`, res);
