@@ -64,7 +64,7 @@ const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
  * `cmd.exe` knows only the double quote and has no escape for it -- which costs
  * nothing here, since Windows forbids it in a file name.
  */
-const q = (s) => (isWindows ? `"${String(s).replace(/"/g, "")}"` : shq(s));
+const q = (s) => (isWindows ? `"${String(s).replace(/"/g, "").replace(/\//g, "\\")}"` : shq(s));
 
 /** Found by probing, for this session, when config.json names no path. */
 let probedMystPath = null;
@@ -1150,9 +1150,29 @@ async function publishPdf(pdf, exportsDir, name) {
   const dest = `${exportsDir}/${name || baseName(pdf)}`;
   if (dest === pdf) return pdf;
 
+  // Through the filesystem rather than through a shell. `cp` and `copy` differ
+  // in their switches, in their quoting and in what they make of a path that
+  // mixes separators -- ours do, being joined with "/" on a machine that
+  // writes "\\" -- and a copy is one read and one write. Reading the bytes and
+  // writing them back cannot be parsed wrongly by anything.
+  try {
+    const { readFile, writeFile } = await import("@tauri-apps/plugin-fs");
+    await writeFile(dest, await readFile(pdf));
+    return dest;
+  } catch (err) {
+    console.warn("[export] the PDF could not be copied to the exports folder:", err);
+  }
+
+  // Failing that -- a permission this build does not carry, most likely -- the
+  // shell still knows how to copy a file. `/Y` answers the overwrite question
+  // nobody is there to answer: without it a second export waits for ever on a
+  // prompt whose output we never show. This line is cmd.exe's, which is what
+  // the `windows-shell` scope runs; trying it in PowerShell proves nothing,
+  // since `copy` is an alias of `Copy-Item` there and has no `/Y` at all.
   const res = await runShell(isWindows ? `copy /Y ${q(pdf)} ${q(dest)}` : `cp -f ${shq(pdf)} ${shq(dest)}`);
   if (res?.code !== 0) {
-    console.warn("[export] the PDF could not be copied to the exports folder:", res?.stderr || res?.stdout);
+    console.warn("[export] the shell could not copy it either:", res?.stderr || res?.stdout);
+    showToast(`The PDF was produced but could not be copied beside the other exports; it is in ${baseName(dirName(pdf))}.`, "warning", 8000);
     return pdf;
   }
   return dest;
