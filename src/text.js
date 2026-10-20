@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives, rawDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
@@ -220,7 +220,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...includeDirectives, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...rawDirectives, ...includeDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))

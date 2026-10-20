@@ -382,7 +382,51 @@ details.admonition {
   }
 }
 
+  // A {raw} block: a literal destined for one output format. Deliberately not
+  // under the aside.admonition rule above -- it is not an admonition, and
+  // the frame it needs is the opposite of that one's: no alarm, no icon, just
+  // the content as it stands and the name of the format it is written for.
+  aside.directive-raw {
+    margin-bottom: 1em;
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    overflow: hidden;
 
+    & > header {
+      padding: 4px 10px;
+      background-color: var(--panel-bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85em;
+
+      mark {
+        background: transparent;
+        color: var(--gray-500);
+        font-weight: bold;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      code {
+        background: transparent;
+        padding: 0;
+        margin-left: 0.5em;
+        color: var(--accent);
+        font-weight: bold;
+      }
+    }
+
+    pre {
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      background-color: var(--editor-bg);
+
+      code {
+        background: transparent;
+        color: var(--tok-comment);
+      }
+    }
+  }
 
 // ============================================================
 // CAS PARTICULIER : ANCIENNES ADMONITIONS <aside>

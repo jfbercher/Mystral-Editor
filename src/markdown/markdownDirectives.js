@@ -1090,6 +1090,53 @@ class CodeCellDirective extends Directive {
   }
 }
 
+/**
+ * `{raw}` — a block handed to one output format verbatim.
+ *
+ * Without this it falls to markdown-it-docutils' unhandled branch and is shown
+ * in the grey "unknown directive" frame, which says the opposite of the truth:
+ * mystmd handles it perfectly, passing its content untouched to the format
+ * named and ignoring it everywhere else. The author sees an error where there
+ * is none.
+ *
+ * What is shown is therefore not a rendering of the content — by definition it
+ * only means something to its target — but the content as it stands, framed and
+ * labelled with the target it is destined for. The target comes from the
+ * argument (`{raw} latex`) or from `:format:`, the two forms MyST accepts.
+ *
+ * This changes the preview and nothing else: the `.tex` post-processing counts
+ * the `\begin{framed}` written by hand inside these blocks, and it reads the
+ * source text rather than the DOM.
+ */
+class RawDirective extends Directive {
+  required_arguments = 0;
+  optional_arguments = 1;
+  final_argument_whitespace = false;
+  has_content = true;
+  option_spec = {
+    format: directiveOptions.unchanged,
+  };
+
+  run(data) {
+    const target = String(data.args?.[0] ?? data.options?.format ?? "").trim();
+    const body = data.body ?? "";
+
+    const html =
+      `<aside class="directive-raw">` +
+      `<header><mark>raw</mark>${target ? `<code>${escapeHtml(target)}</code>` : ""}</header>` +
+      `<pre><code>${escapeHtml(body.replace(/\n+$/, ""))}</code></pre>` +
+      `</aside>\n`;
+
+    const token = this.createToken("html_block", "", 0, { map: data.map, block: true });
+    token.content = html;
+    return [token];
+  }
+}
+
+export const rawDirectives = {
+  raw: RawDirective,
+};
+
 export const codeDirectives = {
   "code-cell": CodeCellDirective,
 };

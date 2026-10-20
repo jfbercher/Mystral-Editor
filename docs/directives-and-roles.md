@@ -132,6 +132,7 @@ Two directives are added that address or enhance the documents stucture. The `to
 | --- | --- | --- |
 | `toc`, and the aliases `table-of-contents`, `tableofcontents`, `contents`, `toctree` | This work | Table of contents built from the document's headings, with `:depth:`, `:context:`, `:dropdown:` — see [toc](toc.md) |
 | `include`, `literalinclude` | This work | Inserts another file, parsed as MyST or shown as a code block — see [include](include.md) |
+| `raw` | This work, for the preview only | A block handed verbatim to one output format, named as the argument or in `:format:`. mystmd handles it; what is added here is the preview, which used to show the grey « unknown directive » frame and so reported an error where there is none. It is shown as the literal text it is, labelled with the format it is written for |
 :::
 
 (Roles)=
