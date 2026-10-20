@@ -8,15 +8,27 @@
  *   node bin/check-admonitions.mjs doc.md _build/exports/doc.tex
  *   node bin/check-admonitions.mjs doc.md            (finds the .tex beside it)
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { scanAdmonitions } from "../src/utils/local_utils/scanAdmonitions.js";
-import { framedBlocks, pairAdmonitions } from "../src/utils/local_utils/texAdmonitions.js";
+import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "../src/utils/local_utils/texAdmonitions.js";
 import { expandIncludes } from "../src/markdown/includeExpansion.js";
+import { findProofLabels } from "../src/markdown/scanProofLabels.js";
+import { repairProofLabels } from "../src/utils/local_utils/texProofLabels.js";
+import { separateEnvironments } from "../src/utils/local_utils/texTidy.js";
 
-const [, , mdPath, texArg] = process.argv;
+const argv = process.argv.slice(2);
+const writeAt = argv.indexOf("--write");
+const outPath = writeAt !== -1 ? argv[writeAt + 1] : null;
+if (writeAt !== -1) argv.splice(writeAt, outPath ? 2 : 1);
+const colorsAt = argv.indexOf("--colors");
+const colorsPath = colorsAt !== -1 ? argv[colorsAt + 1] : null;
+if (colorsAt !== -1) argv.splice(colorsAt, colorsPath ? 2 : 1);
+const [mdPath, texArg] = argv;
 if (!mdPath) {
-  console.error("usage: node bin/check-admonitions.mjs <source.md> [export.tex]");
+  console.error(
+    "usage: node bin/check-admonitions.mjs <source.md> [export.tex] [--write <out.tex>] [--colors <config.json>]",
+  );
   process.exit(2);
 }
 
@@ -62,9 +74,22 @@ const whereOf = (expandedLine) => {
   return `${basename(inc.path)}:${key - inc.virtualStart + 1}`;
 };
 
-const { items, warnings } = scanAdmonitions(expansion.text);
 const blocks = framedBlocks(readFileSync(texPath, "utf8"));
-const result = pairAdmonitions(items, blocks);
+
+// Whether {exercise} and {solution} occupy a rank depends on whether the
+// exercise plugin was in use for this build: with it they are framed boxes,
+// without it mystmd drops them. Rather than ask, try both and keep the
+// reading that pairs -- the verification is what decides, which is the whole
+// point of having one.
+const attempts = [true, false].map((withExercises) => {
+  const scan = scanAdmonitions(expansion.text, { withExercises });
+  return { withExercises, ...scan, result: pairAdmonitions(scan.items, blocks) };
+});
+const chosen = attempts.find((a) => a.result.ok) ?? attempts[0];
+const { items, warnings, result } = chosen;
+if (result.ok && chosen.withExercises && items.some((i) => ["exercise", "solution"].includes(i.name))) {
+  console.log("  (exercises and solutions counted: the export was built with the plugin)");
+}
 
 const included = expansion.expanded ? `, ${expansion.includes.length} include(s) expanded` : "";
 console.log(`source : ${mdPath}  (${items.length} admonition${items.length === 1 ? "" : "s"}${included})`);
@@ -88,7 +113,39 @@ if (result.ok) {
   console.log("\nPAIRING VERIFIED — the post-processing would be allowed to run.\n");
   result.pairs.forEach(({ item, block }, i) => show(i, item, block));
   const labelled = result.pairs.filter(({ item }) => item.label).length;
-  console.log(`\n${labelled} of ${result.pairs.length} carry a :label: (those are the ones a \\label{} would be injected for).`);
+  console.log(`\n${labelled} of ${result.pairs.length} carry a :label: (those are the ones a \\label{} is injected for).`);
+
+  if (outPath) {
+    // Either a whole config.json or a bare { kind: "RRGGBB" } map, so that the
+    // user's own file can be pointed at without extracting anything from it.
+    let colors;
+    if (colorsPath) {
+      const parsed = JSON.parse(readFileSync(colorsPath, "utf8"));
+      colors = parsed.export?.admonitionColors ?? parsed.admonitionColors ?? parsed;
+    }
+    const { text, rewritten, numbered, rejected } = rewriteAdmonitions(readFileSync(texPath, "utf8"), result.pairs, {
+      colors,
+    });
+    for (const r of rejected) console.log(`  ! not a six-digit hex colour, default kept -- ${r}`);
+
+    // Second, independent pass: see texProofLabels.js for why it exists and
+    // when it can go away.
+    const proofLabels = findProofLabels(expansion.text.split("\n"));
+    const proof = repairProofLabels(text, proofLabels);
+    for (const r of proof.repairs) {
+      if (r.outcome === "repaired") console.log(`  proof label restored: ${r.identifier} -> ${r.label}`);
+      if (r.outcome === "absent") console.log(`  ! proof label ${JSON.stringify(r.label)} not found in the .tex as ${r.identifier}`);
+      if (r.outcome === "ambiguous") console.log(`  ! proof label ${JSON.stringify(r.label)} is ambiguous once lowercased -- left alone`);
+    }
+    writeFileSync(outPath, separateEnvironments(proof.text));
+    console.log(
+      `\nWrote ${outPath}: ${rewritten} box(es) restyled, ${labelled} labelled, ` +
+        `${numbered} showing a number (those the .tex refers to with \\ref)` +
+        `${proof.repaired ? `, ${proof.repaired} proof label(s) restored` : ""}.`,
+    );
+  } else {
+    console.log("Add --write <out.tex> to produce the rewritten .tex (the original is never modified).");
+  }
   process.exit(0);
 }
 
