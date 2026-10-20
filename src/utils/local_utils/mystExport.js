@@ -788,6 +788,42 @@ function summarise(res) {
   };
 }
 
+/**
+ * A `myst.yml` that is not valid YAML, which stops myst before it starts.
+ *
+ * It deserves its own message because nothing else in the output is about the
+ * document: mystmd throws from `loadConfigYaml`, so what reaches us is a Node
+ * stack trace with the real sentence buried three lines above it. Without
+ * this, the toast showed the tail of a stack and the only way to learn that a
+ * sequence entry was indented wrongly was to open the console -- which a
+ * packaged build does not have.
+ *
+ * The parser's own sentence is kept as it stands ("bad indentation of a
+ * sequence entry (20:5)"): it is js-yaml's, it is precise, and rewording it
+ * would only make it harder to search for.
+ */
+const configError = (res) => {
+  const text = `${res?.stdout ?? ""}\n${res?.stderr ?? ""}`;
+  // `$` is excluded from the path on purpose: node prints the source line it
+  // threw from, `throw Error(\`Unable to read config file ${file} as YAML...\`)`,
+  // above the error itself, and a search that matches it captures the template
+  // placeholder instead of the file.
+  const hit = /Unable to read config file ([^\n$]+?) as YAML/.exec(text);
+  if (!hit) return null;
+  const [, file] = hit;
+  const at = hit.index;
+  // The reason is the first line with content after the thrown sentence; the
+  // numbered extract and the stack that follow are for a console, not a toast.
+  const reason = text
+    .slice(at)
+    .split("\n")
+    .slice(1)
+    .map((l) => l.trim())
+    .find((l) => l && !/^at /.test(l) && !/^\d+ \|/.test(l) && !/^\^+$/.test(l) && !/^-+\^/.test(l));
+  const [, line] = /\((\d+):\d+\)/.exec(reason ?? "") ?? [];
+  return { file: file ? baseName(file) : "myst.yml", reason: reason ?? "", line };
+};
+
 /** Report a command that did not end well, keeping the toast up to be read. */
 function reportFailure(what, res) {
   console.error(`[export] ${what} exited ${res?.code}:`, res?.stderr || res?.stdout);
@@ -802,6 +838,22 @@ function reportFailure(what, res) {
     showToast(
       "myst could not be found. An application launched from the desktop does not inherit a terminal's PATH. " +
         "Run `which myst` in a terminal and put that path in export.mystPath in config.json.",
+      "error",
+      0,
+    );
+    return;
+  }
+
+  // Not about the document either: the project file cannot be parsed, so
+  // nothing was read and nothing will be until it is fixed.
+  const bad = configError(res);
+  if (bad) {
+    showToast(
+      // The parser's own sentence is kept as it stands and carries its own
+      // position -- "bad indentation of a sequence entry (20:5)" -- so no
+      // line number is added to it. `bad.line` is there for a caller that
+      // would want to jump to it.
+      `${bad.file} is not valid YAML, so myst stopped before reading anything` + `${bad.reason ? `: ${bad.reason}` : "."}`,
       "error",
       0,
     );
