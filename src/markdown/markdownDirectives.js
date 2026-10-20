@@ -120,6 +120,13 @@ class BaseAdmonitionV2 extends Directive {
 
   title = "";
   kind = "";
+  /**
+   * Vrai pour une sous-classe qui compose elle-même son titre complet.
+   * `BaseNumberedV2` le fait — « Definition 1 (Trois) » — et passe le résultat
+   * ici en argument : sans ce drapeau, la numérotation ci-dessous le prendrait
+   * pour un titre d'auteur et le préfixerait une seconde fois.
+   */
+  selfNumbered = false;
 
   run(data) {
     const options = normalizeOptions(data.options);
@@ -141,6 +148,9 @@ class BaseAdmonitionV2 extends Directive {
     let titleContent = data.args[0]; // markdown brut, pas encore parsé
     let bodyText = data.body;
     const bodyMapStart = data.bodyMap[0];
+    // Un titre écrit par l'auteur, par opposition au mot par défaut du type :
+    // seul le premier est conservé entre parenthèses derrière le numéro.
+    let authored = Boolean(titleContent);
 
     if (!titleContent) {
       const probe = this.nestedParse(data.body, data.bodyMap[0]);
@@ -153,10 +163,29 @@ class BaseAdmonitionV2 extends Directive {
         const index = lines.findIndex((line) => line.includes(result.full));
 
         titleContent = result.title;
+        authored = true;
         bodyText = index >= 0 ? lines.slice(index + 1).join("\n") : data.body;
       } else {
         titleContent = this.title || DEFAULT_TITLES[kind] || "";
       }
+    }
+
+    // --- Numérotation ---
+    // mystmd ne numérote pas le titre d'une admonition, même énumérée : le
+    // numéro n'existe que dans le renvoi, qui envoie donc le lecteur chercher
+    // un « Warning 2 » qu'aucune boîte ne porte. On l'affiche ici, et au même
+    // endroit que pour les directives déjà numérotées (exercices, théorèmes),
+    // de sorte que « Warning 2 (Mon titre) » se lise partout de la même façon.
+    //
+    // Le numéro n'est pas recalculé : il vient du balayage, seul à connaître
+    // l'ordre de lecture, les inclusions et les réglages de numérotation.
+    // Le rendu ne fait que l'afficher.
+    const env = this.state?.env ?? {};
+    const absoluteLine = data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
+    const scanned = absoluteLine != null ? env.refMap?.byLine?.get(absoluteLine) : null;
+    if (!this.selfNumbered && scanned?.number != null) {
+      const base = displayLabel(this.state, kind, kind);
+      titleContent = authored ? `${base} ${scanned.number} (${titleContent})` : `${base} ${scanned.number}`;
     }
 
     // --- Conteneur : <details> pour dropdown, <aside> sinon ---
@@ -609,6 +638,8 @@ const displayLabel = (state, name, kind) => {
 class BaseNumberedV2 extends BaseAdmonitionV2 {
   /** Nom de la directive, pour retrouver son libellé configuré. */
   name = "";
+  /** Le titre complet est construit par `buildTitle` ci-dessous. */
+  selfNumbered = true;
 
   /**
    * Construit « Exercise 3 », « Exercise 3 (Mon titre) » ou « Exercise ».
@@ -1031,6 +1062,14 @@ class CodeCellDirective extends Directive {
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
     figwidth: directiveOptions.unchanged,    // largeur des figures : "60%", "20em"...
+    // Ces trois-là ne servent qu'à l'export : l'aperçu montre la figure telle
+    // que la cellule l'a produite, l'export la met en figure numérotée. Elles
+    // sont lues ici pour être transmises, et parce qu'une option inconnue
+    // devient une DirectiveError qui masque la cellule entière.
+    align:    directiveOptions.unchanged,    // left | center | right
+    caption:  directiveOptions.unchanged,    // légende, sous la figure
+    label:    directiveOptions.unchanged,    // étiquette, et donc numérotation
+    name:     directiveOptions.unchanged,    // alias de label
   };
 
   run(data) {
@@ -1051,6 +1090,9 @@ class CodeCellDirective extends Directive {
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
       `data-figwidth="${escapeHtml(String(data.options?.figwidth ?? "").trim())}" ` +
+      `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
+      `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
+      `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
       `data-linenos="${linenos}">` +
@@ -1064,6 +1106,53 @@ class CodeCellDirective extends Directive {
     return [token];
   }
 }
+
+/**
+ * `{raw}` — a block handed to one output format verbatim.
+ *
+ * Without this it falls to markdown-it-docutils' unhandled branch and is shown
+ * in the grey "unknown directive" frame, which says the opposite of the truth:
+ * mystmd handles it perfectly, passing its content untouched to the format
+ * named and ignoring it everywhere else. The author sees an error where there
+ * is none.
+ *
+ * What is shown is therefore not a rendering of the content — by definition it
+ * only means something to its target — but the content as it stands, framed and
+ * labelled with the target it is destined for. The target comes from the
+ * argument (`{raw} latex`) or from `:format:`, the two forms MyST accepts.
+ *
+ * This changes the preview and nothing else: the `.tex` post-processing counts
+ * the `\begin{framed}` written by hand inside these blocks, and it reads the
+ * source text rather than the DOM.
+ */
+class RawDirective extends Directive {
+  required_arguments = 0;
+  optional_arguments = 1;
+  final_argument_whitespace = false;
+  has_content = true;
+  option_spec = {
+    format: directiveOptions.unchanged,
+  };
+
+  run(data) {
+    const target = String(data.args?.[0] ?? data.options?.format ?? "").trim();
+    const body = data.body ?? "";
+
+    const html =
+      `<aside class="directive-raw">` +
+      `<header><mark>raw</mark>${target ? `<code>${escapeHtml(target)}</code>` : ""}</header>` +
+      `<pre><code>${escapeHtml(body.replace(/\n+$/, ""))}</code></pre>` +
+      `</aside>\n`;
+
+    const token = this.createToken("html_block", "", 0, { map: data.map, block: true });
+    token.content = html;
+    return [token];
+  }
+}
+
+export const rawDirectives = {
+  raw: RawDirective,
+};
 
 export const codeDirectives = {
   "code-cell": CodeCellDirective,

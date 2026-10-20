@@ -209,7 +209,14 @@ function ensureObserver(parent, owner = "") {
         evictedHost.dataset.pythonSpaceLabel = el.dataset.pythonSpaceLabel ?? "shared";
         // Same reason: :figwidth: is read from the host at each render, so a
         // reused widget would keep the width it had when it was first built.
+        // Les options de présentation suivent le re-render. Elles ne changent
+        // pas le code, donc pas le hash, donc pas la clé de cache : sans cette
+        // recopie l'élément réutilisé garderait celles de son premier rendu,
+        // et modifier `:align:` dans le document resterait sans effet.
         evictedHost.dataset.figwidth = el.dataset.figwidth ?? "";
+        evictedHost.dataset.align = el.dataset.align ?? "";
+        evictedHost.dataset.caption = el.dataset.caption ?? "";
+        evictedHost.dataset.label = el.dataset.label ?? "";
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.

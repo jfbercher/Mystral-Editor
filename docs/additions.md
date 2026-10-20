@@ -5,6 +5,8 @@ extends: mdocs_fm.yml
 
 This document lists every file that exists in ``Mystral Editor'' but not in the upstream `antmicro/myst-editor` repository, based on `git diff --name-status upstream/main...HEAD` (merge-base comparison, so it reflects only what this fork introduced, ignoring unrelated upstream-only changes since the fork point).
 
+State: commit `ce49491`, 2026-10-20. Regenerate the inventory with `git diff --name-status upstream/main...HEAD` and compare it against the lists below.
+
 ## Desktop app (Tauri) scaffolding
 
 - `.github/workflows/release.yaml` — GitHub Actions workflow that builds and publishes cross-platform Tauri desktop app releases (macOS Apple Silicon/Intel, Linux x64/ARM64, Windows) triggered by `v*` tags, using `tauri-apps/tauri-action` and code-signing/updater secrets.
@@ -25,6 +27,8 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 **Stray/cruft files worth cleaning up** (accidental leftovers, not intentional source files):
 
 - `complete_diff_of_modified_and_added_files_in_fork.txt`, `modified_and_added_files_in_fork.txt` — Generated scratch diff dumps produced by `diffs_in_fork.sh`; dev artifacts, not meant to be tracked long-term.
+- `Makefile.old`, `test.md`, `docs/mdocs_fm.yml~`, `docs/myst.yml.sav`, `docs/myst copy.yml`, `docs/test-code-cell.md` — Backups and scratch files committed by accident.
+- `docs/customisation-presentation.md`, `docs/desktop-apps.md`, `docs/document.md`, `docs/document-organisation.md`, `docs/executable-code.md`, `docs/overview-and-heritage.md`, `docs/table-of-differences.md`, `docs/theming.md` — Earlier drafts of pages that now exist under another name; none is in the table of contents of `docs/myst.yml`, so none is built.
 
 ## Root-level scripts, docs, and misc
 
@@ -33,6 +37,7 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 - `myst_editor_dist.sh` — Same launcher pattern as `myst_editor.sh` but runs the built distribution via `node server.mjs` instead of the Vite dev server.
 - `run_myst_editor.sh` — Simpler launcher variant (no file-path argument support).
 - `server.mjs` — Minimal Node.js static file server for the built `dist/` app (SPA fallback), also exposing `/api/file` GET/POST endpoints to read and write local files, used when running the packaged/distributed build outside Tauri.
+- `.readthedocs.yaml` — Read the Docs build configuration for the documentation site.
 - `diffs_in_fork.sh` — Dev utility script that dumps the file-status list and full diff between `upstream/main` and `main` into text files for review.
 - `vite-file-plugin.js` — Vite dev-server plugin registering the same `/api/file` middleware as `server.mjs`, for use during `npm run dev`.
 - `assets/Image-not-found.png` — A placeholder "image not found" PNG, duplicated at the repo root outside the `src/public` tree actually used by the running app.
@@ -85,6 +90,7 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 - `src/markdown/pyodideRunner.js` — Initializes and manages the Pyodide WebAssembly runtime and the individual executable Python cell widgets. Loads Pyodide lazily on first execution (with a loading overlay), wraps each cell in a CodeMirror 6 editor configured with `pythonHighlightStyle`, runs code asynchronously via Pyodide and displays stdout/return-value/error output below the editor, supports `micropip.install()` for extra packages declared in the `{code-cell}` `:packages:` option, and exposes a `cellCache` for widget reuse. The cell UI adapts to light/dark mode through the `--color-background-*` and `--tok-*` CSS variables.
 
 - `src/markdown/scanTargets.js` — Core cross-reference scanner: walks the raw markdown source to find and number all "targetable" directives (figures, tables, equations, exercises, theorems, etc.) and standalone math blocks, building `byLine`/`byLabel` maps used for cross-references; also folds in section (heading) labels.
+- `src/markdown/scanProofLabels.js` — Pure line scan finding the `:label:` / `:name:` of a proof-family directive that is not all lowercase, with fence tracking so that a directive shown inside a code block is not reported. Extracted from `proofLabelCase.js` so that the editor's underlining and the LaTeX post-processing look for the same thing: one decorates what it finds, the other repairs it in the exported `.tex`.
 
 ## New utility modules
 
@@ -104,6 +110,20 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 - `src/config-defaults.js` — Holds `DEFAULT_CONFIG` (intervals, autosave, recent-files limit, shortcuts, Pyodide behaviour, the Tauri export section) and `BUILTIN_DIRECTIVES`, the table describing how each MyST directive is labelled and numbered. Split out of `config.js` so the defaults can be read and documented on their own; `config.js` deep-copies them at startup and merges `config.json` over the copy, leaving the reference table untouched. See [customisation.md](customisation.md) for every key.
 - `src/utils/local_utils/sidecar.js` — Persists a document's Pyodide state beside it: cell outputs and, when the runtime is ready, a cloudpickle snapshot of the user-facing globals. Under Tauri the sidecar is a `<name>.myst.cache.json` file next to the `.md`; on the web it is an IndexedDB entry keyed by working folder plus file name. Exposes `loadSidecar`, `applySidecarOutputs` (synchronous, so restored outputs are in place before the markdown renders), `scheduleNamespaceRestore`, `saveSidecarWithNamespace` and `saveSidecarToFile`. The snapshot is taken of the document's own Python namespace and records which one it was, so it is restored where it came from; the file carries a `version`, and anything older than the current one has its namespace refused rather than read as if it were this document's. Objective: let a notebook-style document reopen with its results and variables intact rather than an empty runtime.
 - `src/utils/local_utils/mystExport.js` — Backend of the Tauri-only export menu. Runs `myst build <file> --tex|--pdf|--docx` for the current document, saves the rendered preview as a self-contained HTML file, and drives the two project-level commands (`myst build`, and `myst start` with start/stop and browser opening). Every command goes through a login shell, since a GUI application launched from the Finder does not inherit an interactive shell's PATH and would not find `myst`. Also detects the two prerequisites myst provides no default for — a `myst.yml` project and an `exports:` frontmatter entry — and offers to create both rather than failing obscurely. Objective: make the standard MyST export formats reachable from the editor without dropping to a terminal.
+- `src/utils/local_utils/scanAdmonitions.js` — Reads a MyST source and lists its admonitions in document order, each with its kind, its title as the reader will see it and its `:label:`. Reproduces mystmd's own rules — the default title of each kind, a bold first line or a heading promoted to a title, a GitHub blockquote callout — so that the list matches what the exporter will produce. Hand-written `\\begin{framed}` inside a `{raw} latex` block is counted separately, as a passthrough, since it will appear in the `.tex` without ever having been an admonition. Used by the `.tex` post-processing and by `bin/check-admonitions.mjs`.
+- `src/utils/local_utils/texAdmonitions.js` — The LaTeX side of the same work: finds every `framed` environment in an exported `.tex` while masking verbatim regions character by character (so that offsets stay exact), pairs them with the admonitions of the source by position and by title, and rewrites each one as a `tcolorbox` carrying its kind's colour, its number and its `\\label`. The pairing is graded rather than assumed, and the whole rewrite is refused when a document and its export cannot be matched beyond doubt — rewriting in the wrong places is worse than not rewriting. Also holds `DEFAULT_ADMONITION_COLORS` and the preamble the rewrite injects.
+- `src/utils/local_utils/texProofLabels.js` — Puts back the proof labels `myst-to-tex` mangles. Its proof handler is the only one to write its anchor with the normalised (lowercased) identifier while every cross-reference writes the label as typed, so an exported PDF resolves neither and shows `??`. Deliberately isolated, with each repair reported as `repaired`, `absent`, `ambiguous` or `unchanged`. To be removed when the bug is fixed upstream.
+- `src/utils/local_utils/texTidy.js` — Cosmetic repairs on an exported `.tex`: `separateEnvironments` puts a blank line after a closing environment, which mystmd writes run together on a single line. Exports the `VERBATIM` pattern the other `.tex` modules share, so that none of them edits inside a `verbatim`, `lstlisting` or `minted` block.
+- `src/utils/local_utils/pyodideExport.js` — Hands what the Pyodide cells produced to mystmd, which otherwise exports a code cell with no output at all: the editor runs the cells, mystmd never does. Writes each figure as a PNG under `_build/pyodide/` — rasterising SVG at `pyodide.exportImageScale` on a white background — plus a manifest keyed by the cell's code, and honours the project's own `output_stderr` and `output_matplotlib_strings` filters. Read back at build time by `extras/myst-plugins/pyodide-outputs.mjs`.
+- `src/utils/headingInline.js` — Heading text rendered as inline Markdown for the places that show a heading outside the document: the side outline and the `{toc}` directive. Both printed the source as it stands in the file — `**Résultats**` with its asterisks, `$x^2$` unrendered — because the heading tree stores source text on purpose, that being what the numbering and the section reordering work on. Anchors are flattened, their content kept: an entry of a table of contents is itself a link, and an `<a>` nested in another swallows the click.
+- `src/utils/ipynb2mystLib.js` — The in-editor half of the notebook conversion: turns a `.ipynb` into MyST code cells and back, commenting the directive options (`# :option: value`) on the way out so that the notebook stays valid Python, and uncommenting them on the way in. Shared with the standalone scripts in `extras/`.
+
+## Export tooling: scripts and mystmd plugins
+
+- `bin/check-admonitions.mjs` — Command-line dry run of the `.tex` post-processing, outside the application: given a source and the `.tex` mystmd produced from it, it expands the includes, scans both sides and reports whether the pairing holds, naming the file and line of anything it cannot match. `--write <out.tex>` applies the full chain — admonitions, proof labels, environment separation — and `--colors <config.json>` reads the palette from a real configuration, so the command answers exactly the question the editor answers.
+- `extras/myst-plugins/exercise-admonition.mjs` — mystmd plugin bringing `{exercise}` and `{solution}` back into the static exports, which drop them: a LaTeX or Word export produced nothing where the editor shows a box. Retypes them as admonitions at the `project` stage — after enumeration and reference resolution, so the number each one received is still the number the cross-references point at — and builds the title `Exercise N (its own title)`.
+- `extras/myst-plugins/pyodide-outputs.mjs` — The other half of `pyodideExport.js`: reads the manifest under `_build/pyodide/`, matches each empty `outputs` node against the trimmed code of its cell and fills it with the figures the editor computed, rebasing the image paths relative to the document and honouring the cell's `:figwidth:` and `:align:`.
+- `extras/ipynb2myst.js`, `extras/ipynb2myst.py`, `extras/myst2ipynb.js`, `extras/myst2ipynb.py` — Standalone converters between Jupyter notebooks and MyST documents, in Node and in Python, sharing the logic of `src/utils/ipynb2mystLib.js`. For converting a set of files without opening the editor.
 
 ## New stylesheets
 
@@ -114,9 +134,44 @@ This document lists every file that exists in ``Mystral Editor'' but not in the 
 - `src/styles/frontmatter.css` — Styles for the rendered document frontmatter block (title, subtitle, authors, date/DOI, GitHub link).
 - `src/styles/preview.css` — Miscellaneous preview styles: numbered document title, fold/unfold markers, hover-preview popup box, and numbering prefixes for table/figure captions.
 
-## Docs/content files
+## The documentation site (`docs/`)
 
-- `Mdocs/keyboard_shortcuts_en.md` — Reference document listing the editor's keyboard shortcuts, including those of the code cells, formatted as MyST tables and demonstrating the fork's frontmatter/numbering/math-macro features.
-- `src/small_presentation.md` — Sample/demo markdown document showcasing MyST Editor features (admonitions, dual-pane sync, images, Mermaid diagrams, view modes, custom transforms, collaboration) used as introductory/demo content.
-- - `macos_app_installation_guide.md` — End-user guide explaining how to bypass macOS Gatekeeper's "unidentified developer" warning for the unsigned/unnotarized app.
-- `windows_app_installation_guide.md` — End-user guide explaining how to bypass Windows SmartScreen's "unknown publisher" warning to run the unsigned installer.
+Upstream's Sphinx documentation was moved aside to `MystEdDocs/` and left as it was; `docs/` is this fork's own documentation, written in MyST and built by mystmd itself — the editor's documentation is a document the editor is made to write. `docs/myst.yml` holds the project and its table of contents, `docs/mdocs_fm.yml` the frontmatter every page extends, and `docs/index.md` is the landing page. Only the files listed in that table of contents are built; the drafts left beside them are named among the stray files above.
+
+Presentation and general documentation:
+
+- `docs/presentation.md` — The editor presented in one piece, exported to PDF and DOCX by the project itself, so that the page doubles as a demonstration of the exports.
+- `docs/overview.md` — What Mystral Editor is and where it comes from.
+- `docs/local-file-management.md` — The file menu: opening, recent files, saving, autosave, backups, the working folder, and the detection of a file changed on disk behind the editor's back.
+- `docs/scientific-authoring.md` — Equations, numbering, cross-references, bibliography, footnotes: the fork's main contribution over upstream.
+- `docs/python-executable-code-cells-(pyodide).md` — Code cells, the Pyodide runtime, the variable inspector, and what is kept in the sidecar between sessions.
+- `docs/document-organization-and-navigation.md` — The side outline, the table of contents, section drag-and-drop, tabs.
+- `docs/theming-and-interface.md` — Light and dark themes, the token groups, and what a `custom.css` can reach.
+- `docs/desktop-application-(tauri).md` — The packaged application: platforms, file associations, the updater.
+- `docs/customisation.md` — `config.json` and `custom.css` from the user's side, with `docs/customisation-reference.md` holding the key-by-key table.
+- `docs/getting-started.md`, `docs/contributing.md` — Installing a release; building from source and running the tests.
+- `docs/differences-vs-myst-editor-(summary).md` — Upstream and this fork feature by feature, as a table.
+- `docs/macos_app_installation_guide.md`, `docs/windows_app_installation_guide.md` — Getting past Gatekeeper and SmartScreen, the application being unsigned.
+
+Precisions and further notes:
+
+- `docs/additions.md`, `docs/modifications.md` — These two inventories.
+- `docs/completion.md` — What the editor proposes as one types, and where each proposal comes from.
+- `docs/export.md` — The export menu, the prerequisites mystmd gives no default for, the PDF built through a post-processed LaTeX, and the settings that govern it.
+- `docs/toc.md`, `docs/include.md` — The `{toc}` and `{include}` directives.
+- `docs/directives-and-roles.md` — Every directive and role understood, each attributed to its origin: library, upstream, or this fork.
+- `docs/executable-content.md` — Code cells from the document's point of view rather than the runtime's.
+- `docs/project-frontmatter-extends.md` — What belongs to the project rather than to a file, and how `extends` chains the frontmatter.
+- `docs/myst-editor-css-variables.md` — The `--tok-*` and UI custom properties, as a reference table.
+- `docs/keyboard_shortcuts_en.md` — Every shortcut, code cells included, as MyST tables — and, like the rest, a demonstration of the features it is written with.
+
+Supporting files:
+
+- `docs/plugins/*.mjs`, `docs/plugins/foldable-solutions.css` — The mystmd plugins the documentation site itself uses: a custom `example` admonition, exercises rendered in PDF builds, foldable solutions, and a per-page last-updated date read from git.
+- `docs/figures/*.gif`, `docs/images/` — The screen recordings the pages show: each feature is demonstrated rather than described.
+- `docs/fourier_signal.bib`, `docs/sf_demo_1.py`, `docs/sf_demo2.py`, `docs/split_markdown.py`, `docs/small_demo.md` — Material the example pages draw on.
+
+## Other content files
+
+- `src/public/newFileTemplate.md` — The starting content of a new file, in its own `.md` so that the editor's own highlighting applies while it is edited.
+- `src/small_presentation.md` — Sample document showcasing admonitions, dual-pane sync, images, Mermaid diagrams, view modes and collaboration, inherited from upstream's demo content.

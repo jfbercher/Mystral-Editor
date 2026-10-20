@@ -135,6 +135,11 @@ export const DEFAULT_CONFIG = {
     // its natural size, bounded by the width of the cell. A cell overrides it
     // with its own :figwidth: option.
     figureWidth: "",
+    // How much larger than its natural size a figure is rasterised for an
+    // export. The figures are SVG, which LaTeX cannot include and which the web
+    // theme does not render directly, so they are turned into PNG when a
+    // document is exported; 2 keeps them sharp in print without weighing much.
+    exportImageScale: 2,
 
     // Keyboard shortcuts of a code-cell editor, in CodeMirror notation:
     // "Mod" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and
@@ -169,6 +174,67 @@ export const DEFAULT_CONFIG = {
     // the newest node it can find the first time myst reports none, then
     // records it here.
     nodePath: "",
+    // Produce a PDF by exporting LaTeX, post-processing it, then running the
+    // LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a
+    // .tex the editor never sees, so the styled boxes, the restored proof
+    // labels and the injected \label{} could not reach the PDF any other way.
+    // The cost is that the document must declare a "tex" export rather than a
+    // "pdf" one -- the editor offers to add it -- and that the LaTeX chain
+    // below has to be installed. Set to false to let mystmd build the PDF
+    // itself, unstyled.
+    pdfViaTex: true,
+    // The command run on the .tex to produce the PDF, with {file} replaced by
+    // the file name. The default is the one jtex uses, so a document that
+    // built under mystmd builds here the same way.
+    // {engine} is the engine the template asks for in its template.yml, as jtex
+    // reads it, and -xelatex when it asks for none -- jtex's own default.
+    pdfCommand: 'latexmk -f {engine} -synctex=1 -interaction=batchmode -file-line-error -latexoption="-shell-escape" {file}',
+    // Full path of the program pdfCommand names. Same blind spot as nodePath:
+    // a desktop application does not inherit a terminal's PATH, so latexmk is
+    // found in development and missing from a bundled build -- and a command
+    // that never ran writes no .log, so there is nothing to read afterwards
+    // either. Leave this empty and the editor looks where TeX distributions
+    // install -- MacTeX, MacPorts, Homebrew, TeX Live, the distribution's own
+    // packages -- then records what it found here. The directory is put at the
+    // head of the PATH rather than substituted into the command, because
+    // latexmk runs xelatex and kpsewhich by name and they are its neighbours.
+    latexPath: "",
+    // Rewrite the .tex produced by a LaTeX export: admonitions become coloured
+    // boxes carrying their kind and their label, proof labels mangled by
+    // mystmd are put back as typed, and closing environments get a blank line
+    // after them. The rewrite only happens when the source and the .tex can be
+    // matched beyond doubt; otherwise the file is left exactly as mystmd wrote
+    // it and the reason is reported.
+    postProcessTex: true,
+    // Colour of each admonition kind in a LaTeX or PDF export, as an RRGGBB
+    // hex string without the leading "#". mystmd draws every admonition as the
+    // same grey box, losing the kind the author chose; the export rewrites
+    // them as coloured boxes using this table. The frame takes the colour and
+    // the background a 6% tint of it. A kind absent from the table is drawn
+    // like "plain", which is also what a generic {admonition} with no title
+    // gets. Deliberately sober: a box that shouts on paper is a box the reader
+    // stops seeing.
+    admonitionColors: {
+      attention: "B5762A",
+      caution: "B5762A",
+      danger: "B3261E",
+      error: "B3261E",
+      hint: "2E7D52",
+      important: "7B4FA8",
+      note: "4A6FA5",
+      seealso: "4A6FA5",
+      tip: "2E7D52",
+      warning: "C8800F",
+      // Not admonition kinds: `{exercise}` and `{solution}`, which a plugin
+      // turns into admonitions so that they survive a static export.
+      exercise: "1F6F8B",
+      solution: "4F7942",
+      plain: "666666",
+      // Not a box: the colour of a hyperlink inside a box's title bar. A
+      // solution's title carries a live reference to its exercise, and
+      // hyperref's default red is unreadable on a coloured bar.
+      titleLink: "CFE8FF",
+    },
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
     // Template written into the exports frontmatter when the editor creates the

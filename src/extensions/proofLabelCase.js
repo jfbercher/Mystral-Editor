@@ -1,6 +1,6 @@
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
-import { PROOF_FAMILY } from "../config-defaults.js";
+import { findProofLabels } from "../markdown/scanProofLabels.js";
 
 /**
  * Mark a label of the proof family that is not all lowercase.
@@ -21,76 +21,6 @@ import { PROOF_FAMILY } from "../config-defaults.js";
  * opening fence, and reading them is simpler and cheaper than walking the
  * syntax tree.
  */
-
-/** Any fence; `info` empty means a closing one. */
-const FENCE_RE = /^ {0,3}([:~`])\1{2,}[ \t]*(.*)$/;
-
-/** `{proof:theorem}`, `{prf:theorem}` or `{theorem}`, as a fence's info string. */
-const PROOF_INFO_RE = new RegExp(String.raw`^\{(?:proof:|prf:)?(?:${Object.keys(PROOF_FAMILY).join("|")})\}`);
-
-/** An option line, and the label options among them. */
-const OPTION_RE = /^\s*:[\w-]+:/;
-const LABEL_OPTION_RE = /^(\s*:(?:label|name):\s*)(\S+)/;
-
-/**
- * The label options of the proof family that carry an uppercase letter.
- *
- * The fences are tracked so that a directive shown inside a code block is not
- * reported: in a document about MyST, that is most of them.
- *
- * @param {Iterable<string>} lines
- * @returns {{from: number, to: number, label: string}[]}
- */
-export function findUppercaseProofLabels(lines) {
-  const out = [];
-  const stack = [];
-  let offset = 0;
-  let inOptions = false;
-
-  for (const line of lines) {
-    const fence = FENCE_RE.exec(line);
-    if (fence) {
-      const char = fence[1];
-      const indent = line.length - line.trimStart().length;
-      const len = /^(.)\1*/.exec(line.slice(indent))[0].length;
-      const info = fence[2].trim();
-      const top = stack[stack.length - 1];
-
-      if (top && char === top.char && len >= top.len && info === "") {
-        stack.pop();
-        inOptions = false;
-      } else if (!top?.code) {
-        if (info !== "") {
-          // A directive is `{name}`; anything else opened with a backtick or a
-          // tilde is code, whose content is not read.
-          const code = char !== ":" && !info.startsWith("{");
-          stack.push({ char, len, code });
-          inOptions = !code && PROOF_INFO_RE.test(info);
-        } else if (char !== ":") {
-          stack.push({ char, len, code: true });
-        }
-      }
-      offset += line.length + 1;
-      continue;
-    }
-
-    if (inOptions && !stack[stack.length - 1]?.code) {
-      const label = LABEL_OPTION_RE.exec(line);
-      if (label) {
-        const [, prefix, value] = label;
-        if (value !== value.toLowerCase()) {
-          out.push({ from: offset + prefix.length, to: offset + prefix.length + value.length, label: value });
-        }
-      } else if (!OPTION_RE.test(line)) {
-        // The first line that is not an option: the body has started.
-        inOptions = false;
-      }
-    }
-    offset += line.length + 1;
-  }
-
-  return out;
-}
 
 const uppercaseLabel = Decoration.mark({
   class: "cm-proof-label-case",
@@ -115,8 +45,10 @@ export const proofLabelCase = ViewPlugin.fromClass(
 
     build(view) {
       const builder = new RangeSetBuilder();
-      for (const m of findUppercaseProofLabels(view.state.doc.iterLines())) {
-        builder.add(m.from, m.to, uppercaseLabel);
+      // Only the ones mystmd will lowercase on the way to LaTeX; the scan
+      // itself is neutral and returns every proof label.
+      for (const m of findProofLabels(view.state.doc.iterLines())) {
+        if (m.label !== m.label.toLowerCase()) builder.add(m.from, m.to, uppercaseLabel);
       }
       return builder.finish();
     }
