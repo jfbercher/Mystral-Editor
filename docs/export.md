@@ -30,7 +30,7 @@ The export menu shells out to [mystmd](https://mystmd.org), so it exists in the 
 Demo of export possibilities. In Tauri apps, mystmd is called to build the output, according to the templates defined in document's frontmatter.
 :::
 
-A PDF built through LaTeX (see `export.pdfViaTex`) is a special case: mystmd gives a LaTeX export a folder of its own, and the PDF is produced there, among the `.aux` and `.fls` files. The editor copies it up into `_build/exports/` so that it sits beside the other exports, and leaves the original where latexmk expects to find it on the next run.
+A PDF built through LaTeX (see `export.pdfViaTex`) is a special case: mystmd gives a LaTeX export a folder of its own, and the PDF is produced there, among the `.aux` and `.fls` files. The editor copies it up into `_build/exports/` so that it sits beside the other exports, under the document's own name, and leaves the original where latexmk expects to find it on the next run. The rename matters more than it looks: myst names an export after the page's slug, and the slug of a project's index page — the first entry of the `toc` in `myst.yml` — is `index` whatever the file is called, so a PDF of `lesson-three.md` would otherwise arrive as `index.pdf`. The `.tex` keeps the name myst gave it.
 
 Myst slugifies the name by rules of its own, and a docx export may land as `.doc` depending on the template. The editor looks for every plausible extension and takes the newest, which is why a stale export beside a fresh one does not confuse it.
 

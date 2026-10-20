@@ -460,12 +460,21 @@ const latexProgram = () => (config.export?.pdfCommand ?? "").trim().split(/\s+/)
  * its directory in `~/.zshrc`, which `sh -lc` never reads.
  */
 async function probeLatex() {
-  if (isWindows) return null;
-
   const program = latexProgram();
   // Only a plain command name can be looked for; `export.pdfCommand` is
   // allowed to start with an absolute path, and that one needs no help.
   if (/[/\\]/.test(program)) return null;
+
+  // Windows hands a desktop application the user's real PATH, so there is
+  // nothing to repair there and nothing to search: `where` answers the only
+  // question worth asking, which is whether the command exists at all. Asking
+  // it is what lets a missing TeX distribution be named as such -- an unknown
+  // command inside a batch file comes back as plain exit 1, in the machine's
+  // own language, and no exit code tells it apart from a LaTeX run that failed.
+  if (isWindows) {
+    const where = await runShell(`where ${program}`);
+    return (where.code === 0 && where.stdout.trim().split(/\r?\n/)[0]) || null;
+  }
 
   const dirs = [...LATEX_DIRS, ...(config.export?.latexSearchPaths ?? [])].join(" ");
   const quick = await runShell(`for d in ${dirs}; do [ -x "$d/${program}" ] && printf '%s\n' "$d/${program}" && exit 0; done; exit 1`);
@@ -483,6 +492,9 @@ async function probeLatex() {
 /** Set once the search has been made, so that a fruitless one is not repeated. */
 let latexProbed = false;
 
+/** Set when that search came up empty: the chain is not on this machine. */
+let latexMissing = false;
+
 /**
  * Settle on a LaTeX driver, once per session, before the chain is ever run.
  *
@@ -498,11 +510,10 @@ let latexProbed = false;
  * precisely what an upgrade leaves behind.
  */
 async function ensureLatex() {
-  if (isWindows) return false;
   const configured = configuredLatex();
   if (configured) {
     // A `~` or a command line rather than a path is the user's business.
-    if (!configured.startsWith("/")) return false;
+    if (isWindows || !configured.startsWith("/")) return false;
     if ((await runShell(`[ -x ${shq(configured)} ]`)).code === 0) return false;
     showToast(`The LaTeX driver recorded in config.json (${configured}) is no longer there; looking for another.`, "warning", 6000);
     await saveConfigValue("export.latexPath", "");
@@ -513,7 +524,12 @@ async function ensureLatex() {
   latexProbed = true;
 
   const found = await probeLatex();
-  if (!found) return false;
+  if (!found) {
+    // Remembered, so that `compileTex` can say the chain is missing instead of
+    // reporting whatever the shell said in whatever language it said it in.
+    latexMissing = true;
+    return false;
+  }
 
   probedLatexPath = found;
   const written = await saveConfigValue("export.latexPath", found);
@@ -1080,7 +1096,15 @@ async function runExport(tab, kind) {
       template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf"),
     });
     if (!built) return;
-    const pdf = await publishPdf(built, `${dir}/${EXPORT_DIR}`);
+    // Renamed only where the name is not the document's doing: `index`, which
+    // myst gives the project's index page, and the `-only` of a trimmed main.
+    // Anywhere else myst's name is either the document's own or one the author
+    // chose with `output:` in the frontmatter, and neither is ours to replace.
+    const slug = slugify(stemOf(path));
+    const stem = baseName(built).replace(/\.pdf$/i, "");
+    const core = stem.replace(/-only$/, "");
+    const wanted = `${core === "index" && slug !== "index" ? slug : core}.pdf`;
+    const pdf = await publishPdf(built, `${dir}/${EXPORT_DIR}`, wanted === baseName(built) ? null : wanted);
     const pdfShown = pdf.startsWith(`${dir}/`) ? pdf.slice(dir.length + 1) : baseName(pdf);
     showToast(`Exported to ${pdfShown}`, "success", 6000);
     await openExported(pdf);
@@ -1107,9 +1131,23 @@ async function runExport(tab, kind) {
  * every following build start from nothing. A copy that fails is not an error
  * either -- the PDF exists, it is simply one folder further down, and that is
  * what the toast then names.
+ *
+ * `name` renames the copy, and the caller passes one only where myst's name
+ * says nothing about the document: `index`, which myst gives the project's
+ * index page -- the first entry of the `toc` -- whatever the file is called,
+ * so that asking for a PDF of `lesson-three.md` produced `index.pdf`. Every
+ * other page, in the `toc` or not, is already named after itself, and a name
+ * the author chose with `output:` in the frontmatter is theirs; neither is
+ * ours to replace. The `.tex` keeps myst's name in every case -- it is myst's
+ * file, and the rest of the chain finds it by that name.
+ *
+ * `myst build -o` would have renamed the export at the source and was tried
+ * first: it silently drops the template declared in the frontmatter, with no
+ * option to put it back, turning an arxiv_nips PDF into a plain_latex one
+ * without a word.
  */
-async function publishPdf(pdf, exportsDir) {
-  const dest = `${exportsDir}/${baseName(pdf)}`;
+async function publishPdf(pdf, exportsDir, name) {
+  const dest = `${exportsDir}/${name || baseName(pdf)}`;
   if (dest === pdf) return pdf;
 
   const res = await runShell(isWindows ? `copy /Y ${q(pdf)} ${q(dest)}` : `cp -f ${shq(pdf)} ${shq(dest)}`);
@@ -1408,6 +1446,16 @@ async function compileTex(texPath, { projectDir, template } = {}) {
   // Look for the distribution before running it, not after failing: see
   // `ensureLatex`. It costs one shell loop, once per session.
   await ensureLatex();
+  if (latexMissing) {
+    showToast(
+      `${latexProgram()} is not installed, or not on the PATH this application sees. Install a TeX distribution ` +
+        `(MiKTeX or TeX Live on Windows, MacTeX or MacPorts on macOS, texlive-full on Linux), or set ` +
+        `export.pdfViaTex to false to let mystmd build the PDF itself, unstyled. The .tex is ready either way.`,
+      "error",
+      0,
+    );
+    return null;
+  }
 
   const engine = (await templateEngine(projectDir, template)) ?? "-xelatex";
   showToast(`Compiling ${file}\u2026`, "success", 4000);
