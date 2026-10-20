@@ -981,8 +981,9 @@ async function runExport(tab, kind) {
   if (buildKind === "tex") await postProcessTexFile(out, path);
 
   if (kind === "pdf" && buildKind === "tex") {
-    const pdf = await compileTex(out, { projectDir: dir, template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf") });
-    if (!pdf) return;
+    const built = await compileTex(out, { projectDir: dir, template: declaredTemplate(tab, "tex") ?? declaredTemplate(tab, "pdf") });
+    if (!built) return;
+    const pdf = await publishPdf(built, `${dir}/${EXPORT_DIR}`);
     const pdfShown = pdf.startsWith(`${dir}/`) ? pdf.slice(dir.length + 1) : baseName(pdf);
     showToast(`Exported to ${pdfShown}`, "success", 6000);
     await openExported(pdf);
@@ -994,6 +995,32 @@ async function runExport(tab, kind) {
   // Open the result in whatever the system uses for it. Not for .tex, which is
   // usually an intermediate the user processes further rather than reads.
   if (kind !== "tex") await openExported(out);
+}
+
+/**
+ * Put the PDF where the other exports are.
+ *
+ * A LaTeX export is a folder of its own -- the .tex, its images, its class
+ * file -- and the PDF is produced in it, among the .aux, .fls and .fdb files
+ * nobody wants to go looking through. Every other export lands directly in
+ * _build/exports, so that is where this one is expected too.
+ *
+ * Copied rather than moved: latexmk decides what to redo by comparing its
+ * output with the auxiliary files beside it, so taking the PDF away would make
+ * every following build start from nothing. A copy that fails is not an error
+ * either -- the PDF exists, it is simply one folder further down, and that is
+ * what the toast then names.
+ */
+async function publishPdf(pdf, exportsDir) {
+  const dest = `${exportsDir}/${baseName(pdf)}`;
+  if (dest === pdf) return pdf;
+
+  const res = await runShell(isWindows ? `copy /Y ${q(pdf)} ${q(dest)}` : `cp -f ${shq(pdf)} ${shq(dest)}`);
+  if (res?.code !== 0) {
+    console.warn("[export] the PDF could not be copied to the exports folder:", res?.stderr || res?.stdout);
+    return pdf;
+  }
+  return dest;
 }
 
 /**
