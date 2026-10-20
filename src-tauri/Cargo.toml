@@ -1,6 +1,6 @@
 [package]
 name = "MystralEditor"
-version = "1.0.8"
+version = "1.0.9"
 description = "Mystral Editor"
 authors = ["jfb"]
 license = "GPL 3.0+"
