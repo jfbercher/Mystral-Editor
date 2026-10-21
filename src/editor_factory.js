@@ -198,6 +198,19 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
             },
           },
           {
+            id: "myst-site-data",
+            text: "🔄 Update MyST site data",
+            // The site rebuilds when the document changes, and the cell
+            // outputs live beside it: a cell re-executed without a save leaves
+            // the site a version behind. Saving does this on its own; this is
+            // for when there is nothing to save.
+            disabled: !running,
+            tooltip: running
+              ? "Push the current cell outputs to the running site"
+              : "Only while the MyST site is running",
+            action: async () => { await mystExport.updateSiteData(tab); },
+          },
+          {
             id: "myst-site",
             text: running ? `⏹️ Stop the MyST site` : "🚀 Start the MyST site",
             action: async () => {

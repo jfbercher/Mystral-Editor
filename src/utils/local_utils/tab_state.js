@@ -1,5 +1,6 @@
 // Gère l'état et la manipulation d'un onglet ou d'un fichier ouvert.
 import { get, set, del } from "idb-keyval";
+import { refreshPyodideOutputs } from "./pyodideExport.js";
 import { applyThemeAtStartup, applyCodeMirrorTheme } from './theme.js';
 import { showStatsPopup } from './stats.js';
 import { config } from "../../config.js";
@@ -732,6 +733,10 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       console.log(`Saved (via path param): ${tab.currentFilePathParam}`);
     } else if (isTauri) {
       if (!(await clearedToWrite(interactive))) return false;
+      // Before the document, not after: `myst start` watches the file and
+      // rebuilds as soon as it changes, so the manifest of cell outputs has to
+      // be the current one by then. See `refreshPyodideOutputs`.
+      await refreshPyodideOutputs(tab);
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
       await tab.rememberMtime();
       tab.markSaved(editorText);

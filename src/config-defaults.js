@@ -237,6 +237,11 @@ export const DEFAULT_CONFIG = {
     },
     // Port used by "myst start" for the local site preview.
     sitePort: 3000,
+    // Port of myst's *content* server, which is not the one the site is read
+    // on: `myst start` runs two servers. Named explicitly so that stopping the
+    // site knows which ports to free; left to drift it climbed by one at each
+    // run. Defaults to sitePort + 100, which is myst's own convention.
+    siteContentPort: 3100,
     // Template written into the exports frontmatter when the editor creates the
     // entry, per format. Empty means no `template:` line at all, which is what
     // myst itself defaults to -- there is no built-in template for any format.

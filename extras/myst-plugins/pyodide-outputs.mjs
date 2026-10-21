@@ -12,14 +12,14 @@
  * cells with identical code share their outputs, which is what the editor does
  * too -- its cache is keyed by the code.
  *
- * Each output is written twice, in the two fields the spec provides, because
- * the two chains read different ones (see BACKLOG point 4, "form D"):
- *
- *   - `children`: ordinary mdast -- an `image` and a `code` -- which
- *     `reduceOutputs` leaves alone (it returns early for an `output` that
- *     already has children) and hands to the LaTeX, Word and Typst writers.
- *   - `jupyter_data`: the minified MIME bundle the web theme reads, so the
- *     site shows the outputs and the cell stays executable.
+ * The empty node is *replaced* by ordinary mdast -- an `image`, a `code` --
+ * rather than filled with `output` nodes carrying a Jupyter MIME bundle. The
+ * bundle was the faithful route and it does not survive outside a notebook:
+ * myst-cli only resolves a bundle's `path` when the bundle carries a `hash`
+ * from its own output cache, which ours never will, and whatever is left is
+ * then prefixed with the content server's origin by the web theme. An
+ * ordinary `image` travels the road every figure already travels, and each
+ * target copies the file and rewrites the URL for itself.
  *
  * The manifest is written by the editor next to the document; a document built
  * without one is left exactly as it is.
@@ -57,12 +57,22 @@ function readManifest(file) {
   return null;
 }
 
-/** mdast for the static writers, and a MIME bundle for the web theme. */
+/**
+ * The mdast each result is made of.
+ *
+ * One entry per *result*, never one per node. A centred image is three mdast
+ * nodes -- `\begin{center}`, the image, `\end{center}` -- but a single output,
+ * and emitting three `output` nodes put two of them in front of the web theme
+ * with no data to render: "Cannot render output node / Jupyter output data
+ * package is missing or not an object", twice, around each figure. The raw
+ * braces are LaTeX punctuation; they belong inside the output they punctuate,
+ * where `reduceOutputs` hands them to the LaTeX writer in order and the theme
+ * never looks at them.
+ */
 function nodesFor(outputs, insideContainer) {
-  // Pairs rather than two arrays: a centred image is three nodes and one
-  // bundle, and keeping two indices in step by hand is how they fall apart.
-  const pairs = [];
-  const add = (node, bundle = null) => pairs.push({ node, bundle });
+  // One entry per result, holding the mdast nodes it is made of.
+  const results = [];
+  const add = (nodes) => results.push({ nodes: [].concat(nodes) });
 
   for (const out of outputs ?? []) {
     if (out.type === "image" && out.path) {
@@ -78,12 +88,6 @@ function nodesFor(outputs, insideContainer) {
         ...(out.width ? { width: out.width } : {}),
         ...(out.align ? { align: out.align } : {}),
       };
-      const bundle = {
-        output_type: "display_data",
-        data: { "image/png": { content_type: "image/png", path: out.path, hash: out.hash ?? out.path } },
-        metadata: {},
-      };
-
       // A `{code-cell}` carrying `:caption:` or `:label:` is wrapped by mystmd
       // itself in a figure holding the code and its outputs -- it reads the
       // source, not our HTML, so it sees those options. That figure already
@@ -104,21 +108,16 @@ function nodesFor(outputs, insideContainer) {
       // right-aligned one needs saying, and an environment inside the figure
       // is what overrides it for that one image.
       if (insideContainer && env === "center") {
-        add(image, bundle);
+        add(image);
       } else {
-        add({ type: "raw", tex: `\\begin{${env}}` });
-        add(image, bundle);
-        add({ type: "raw", tex: `\\end{${env}}` });
+        add([{ type: "raw", tex: `\\begin{${env}}` }, image, { type: "raw", tex: `\\end{${env}}` }]);
       }
     } else if (out.type === "text" && String(out.value ?? "").trim()) {
-      add({ type: "code", data: { type: "output" }, value: String(out.value) }, {
-        output_type: "stream",
-        name: out.stream === "stderr" ? "stderr" : "stdout",
-        text: { content_type: "text/plain", content: String(out.value) },
-      });
+      // A plain string, as nbformat writes it: the same reason as above.
+      add({ type: "code", data: { type: "output" }, value: String(out.value) });
     }
   }
-  return pairs;
+  return results;
 }
 
 const fillOutputs = {
@@ -157,17 +156,34 @@ const fillOutputs = {
           const code = kids.slice(0, i).reverse().find((n) => n.type === "code");
           const outputs = code && byCode.get(String(code.value ?? "").trim());
           if (outputs) {
-            const pairs = nodesFor(outputs, inContainer);
-            if (pairs.length) {
-              child.children = pairs.map(({ node, bundle }) => ({
-                type: "output",
-                children: [node],
-                // Only the nodes that stand for an output of their own carry a
-                // bundle; the `raw` braces around a centred image are LaTeX
-                // punctuation, and the web theme must not try to render them.
-                ...(bundle ? { jupyter_data: bundle } : {}),
-              }));
+            const results = nodesFor(outputs, inContainer);
+            if (results.length) {
+              // The empty `outputs` node is *replaced* by ordinary mdast,
+              // rather than filled with `output` nodes carrying a Jupyter
+              // bundle.
+              //
+              // The bundle route was the faithful one and it does not work
+              // outside a notebook: `transformOutputsToFile` in myst-cli only
+              // rewrites a bundle's `path` when the bundle carries a `hash`
+              // its own output cache knows, which ours never will -- and what
+              // is left is handed to the web theme, where something prefixes
+              // it with the content server's origin, whatever it holds. A
+              // relative path arrived as `http://localhost:3100_build/...`; a
+              // data URI arrived as `http://localhost:3101data:image/png...`.
+              // The value was never the problem.
+              //
+              // An ordinary `image` node has none of that trouble: it is the
+              // road every figure in the document already travels, so mystmd
+              // copies the file where each target needs it and rewrites the
+              // URL itself -- the site's public folder, the export's `files/`.
+              // We stop claiming to be Jupyter outputs and simply emit the
+              // picture.
+              kids.splice(i, 1, ...results.flatMap(({ nodes }) => nodes));
               filled++;
+              // The children array just changed under the loop; the nodes we
+              // inserted hold no `outputs` of their own, so skipping past them
+              // is both correct and cheaper.
+              i += results.reduce((n, r) => n + r.nodes.length, 0) - 1;
             }
           }
         }

@@ -25,7 +25,7 @@ import { scanAdmonitions } from "./scanAdmonitions.js";
 import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmonitions.js";
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments } from "./texTidy.js";
-import { writePyodideOutputs } from "./pyodideExport.js";
+import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 
 /**
  * Environment handed to every myst command.
@@ -556,6 +556,15 @@ const latexPrefix = () => {
 
 const sitePort = () => config.export?.sitePort ?? 3000;
 
+/**
+ * The port myst's *content* server uses, which is not the one the site is read
+ * on: `myst start` runs two servers, the application on `--port` and the
+ * content on `--server-port`, 3100 by default. It is named explicitly so that
+ * stopping the site knows which ports to free -- left to drift, it moved to
+ * 3101, 3102 and so on, each run leaking one more.
+ */
+const siteContentPort = () => config.export?.siteContentPort ?? sitePort() + 100;
+
 const baseName = (p) => fileName(p);
 
 /**
@@ -853,7 +862,7 @@ function reportFailure(what, res) {
       // position -- "bad indentation of a sequence entry (20:5)" -- so no
       // line number is added to it. `bad.line` is there for a caller that
       // would want to jump to it.
-      `${bad.file} is not valid YAML, so myst stopped before reading anything` + `${bad.reason ? `: ${bad.reason}` : "."}`,
+      `${bad.file} is not valid YAML, so myst stopped before reading anything${bad.reason ? `: ${bad.reason}` : "."}`,
       "error",
       0,
     );
@@ -1046,6 +1055,26 @@ async function exportCurrentFileImpl(tab, kind) {
     return;
   }
 
+  // myst builds the file on disk, so what is on screen has to be on disk --
+  // and the save is also what refreshes the manifest of cell outputs, since a
+  // cell's current code is read from its own editor. Without this, exporting
+  // right after editing a cell built the previous version of the document and
+  // lost that cell's figure, which looked like an export fault and was not.
+  // An ordinary save, the one the toolbar button makes. Asked for it not to be
+  // interactive at first, and that was the mistake: `clearedToWrite` gives up
+  // silently when it is not, so a file the conflict guard was unhappy about
+  // was never written and nothing said so -- myst then built the previous
+  // version and the newly edited cell lost its figure. A dialog is the right
+  // answer here: the export was asked for, and a question beats a surprise.
+  if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  try {
+    if ((await tab?.saveCurrentDoc?.()) === false) {
+      showToast("The document was not saved, so the export will build the version on disk.", "warning", 8000);
+    }
+  } catch (err) {
+    console.warn("[export] the document could not be saved before exporting:", err);
+  }
+
   // What myst is actually asked to build. A styled PDF is a LaTeX export that
   // we then compile, so it is a "tex" entry the document must declare -- the
   // "pdf" one is never used on that route.
@@ -1101,7 +1130,12 @@ async function runExport(tab, kind) {
   // Before the build, not after: mystmd reads the manifest while it runs, so
   // what the cells produced has to be on disk first.
   try {
-    const written = await writePyodideOutputs(tab, dir);
+    // The whole shadow root, not just `.myst-preview`: in Inline mode the
+    // preview element is never filled and the rendered blocks live in the
+    // editor's own widgets, so looking only there found no live cell at all.
+    // Both modes are under this root.
+    const root = (tab?.editorId && document.getElementById(tab.editorId)?.shadowRoot) || null;
+    const written = await writePyodideOutputs(tab, dir, root);
     if (written) {
       showToast(
         `${written.cells} cell output${written.cells === 1 ? "" : "s"} handed to myst` +
@@ -1955,9 +1989,10 @@ export async function startSite(tab) {
   // rather than a wrapper that would leave it orphaned. cmd.exe has no such
   // verb: there the server is a grandchild, and stopping it kills the shell
   // first -- to be checked on Windows.
+  const ports = `--port ${port} --server-port ${siteContentPort()}`;
   const line = isWindows
-    ? `${mystInvocation()} start --port ${port}`
-    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start --port ${port} < /dev/null`;
+    ? `${mystInvocation()} start ${ports}`
+    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start ${ports} < /dev/null`;
   console.log("[export] sh -lc", line);
   // Through a script of its own on Windows, for the same two reasons as every
   // other command: quoting that survives, and UTF-8 output -- this one's is
@@ -2058,16 +2093,112 @@ function armSiteOpener(timeoutMs = 120000) {
   };
 }
 
+/**
+ * Free the two ports `myst start` was using.
+ *
+ * `kill()` reaches the process we started and no further: `myst start` runs
+ * its application and content servers as children of its own, and those went
+ * on holding their ports after every stop. The next run then moved to 3001 and
+ * 3101, the one after to 3002 and 3102, and so on for the session.
+ *
+ * Windows has the straight answer -- `taskkill /T` kills the tree -- so the
+ * recorded pid is enough there. On POSIX the equivalent would be killing the
+ * process group, which is the application's own group and therefore the
+ * application: what is freed instead is precisely the ports that were asked
+ * for, and only just after stopping the server that was asked to use them.
+ */
+async function freeSitePorts(pid) {
+  const ports = [sitePortInUse ?? sitePort(), siteContentPort()];
+  const line = isWindows
+    ? pid
+      ? `taskkill /F /T /PID ${pid}`
+      : null
+    : `for p in ${ports.join(" ")}; do pids=$(lsof -ti tcp:$p -sTCP:LISTEN 2>/dev/null); [ -n "$pids" ] && kill $pids; done; exit 0`;
+  if (!line) return;
+  const res = await runShell(line);
+  if (res?.code !== 0) console.warn("[export] the site's ports may still be held:", res?.stderr || res?.stdout);
+}
+
+/**
+ * Push what the cells hold now to the running site.
+ *
+ * The site is rebuilt when the document changes, and the cell outputs live in
+ * a manifest beside it, so a cell re-executed without the document being saved
+ * leaves the site showing the previous run -- or, when the cell's code was
+ * edited, nothing at all: the manifest is keyed by the code, and the old entry
+ * is no longer claimed by anything.
+ *
+ * Saving refreshes the manifest on its own; this is for the case where there
+ * is nothing to save. The document is rewritten with the content it already
+ * has, which changes nothing but its mtime, and that is what the watcher is
+ * waiting for -- writing the manifest alone would not reach it, `_build` being
+ * myst's own output folder and not something it watches.
+ */
+/**
+ * Push a cell's pending edit down into the document before anything reads it.
+ *
+ * A cell's editor writes back to the document on blur, or when the cell is
+ * run, inserted or deleted -- never on every keystroke, which would re-render
+ * the preview under the cursor. So while the caret is still in a cell, the
+ * document does not hold what the cell shows, and saving writes the version
+ * from before the edit: the manifest, which reads the cell itself, then keys
+ * an output on code the document does not have, and the figure disappears.
+ *
+ * Blurring is the editor's own way of saying it: the handler that writes back
+ * is on blur, so there is nothing else to call and nothing to duplicate.
+ */
+function flushCellEdits(tab) {
+  const root = (tab?.editorId && document.getElementById(tab.editorId)?.shadowRoot) || null;
+  const active = root?.activeElement;
+  const cell = active?.closest?.(".pyodide-editor");
+  if (!cell) return false;
+  active.blur?.();
+  return true;
+}
+
+export async function updateSiteData(tab) {
+  const path = tab?.currentFileHandle;
+  if (typeof path !== "string" || !path) {
+    showToast("Save the document first: the site is built from the file on disk.", "error", 5000);
+    return;
+  }
+  // Before the manifest is built from the cells: see `flushCellEdits`.
+  if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  const written = await refreshPyodideOutputs(tab, { create: true });
+  // Saved rather than touched. Rewriting the file with what it already holds
+  // was enough to wake the watcher, but it pushed the version on disk -- so
+  // anything typed since the last save, in the document or in a cell, stayed
+  // behind. Saving writes what is on screen and changes the mtime just the
+  // same, which is all the watcher ever wanted.
+  try {
+    if ((await tab?.saveCurrentDoc?.()) === false) {
+      showToast("The document was not saved, so the site still shows the version on disk.", "warning", 8000);
+      return;
+    }
+  } catch (err) {
+    console.warn("[export] the document could not be saved:", err);
+    showToast(`The site could not be updated: ${err?.message ?? err}`, "error", 0);
+    return;
+  }
+  showToast(
+    written?.unchanged === false ? "Cell outputs updated; the site is rebuilding." : "The site is rebuilding with the current cell outputs.",
+    "success",
+    5000,
+  );
+}
+
 export async function stopSite() {
   if (!siteChild) return;
   siteStopping = true;
   cancelSiteOpener();
+  const pid = siteChild.pid;
   try {
     await siteChild.kill();
   } catch (err) {
     console.warn("[export] could not stop the site:", err);
   }
   siteChild = null;
+  await freeSitePorts(pid);
   sitePortInUse = null;
   showToast("MyST site stopped.", "success", 4000);
 }
