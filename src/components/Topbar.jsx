@@ -128,6 +128,15 @@ const Topbar = styled.div`
     &:hover {
       background-color: var(--button-bg-hover);
     }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    &:disabled:hover {
+      background-color: transparent;
+    }
   }
 
   @media print {
@@ -411,8 +420,11 @@ const OptionsDropdown = ({ button, onClose }) => {
           key={option.id || idx}
           className="dropdown-item"
           type="button"
+          disabled={Boolean(option.disabled)}
+          title={option.tooltip}
           onClick={(ev) => {
             ev.stopPropagation();
+            if (option.disabled) return;
             onClose();
             option.action?.(option);
           }}
