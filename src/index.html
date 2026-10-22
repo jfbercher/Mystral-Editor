@@ -3,6 +3,13 @@
 
 <head>
   <title>Mystral Editor</title>
+  <!--
+    frame-src also allows http://localhost:* so that the MyST site `myst start`
+    serves can be shown in a panel: it is the only way to see the published
+    rendering, with its Jupyter stack, from inside the editor. Loopback only,
+    and no wildcard host. connect-src deliberately does *not* allow it: the
+    site's readiness is read from myst's own stdout rather than by polling it.
+  -->
   <meta 
   http-equiv="Content-Security-Policy" 
   content="
@@ -12,7 +19,7 @@
     font-src 'self' https://fonts.gstatic.com data:;
     img-src 'self' asset: https://asset.localhost asset://* blob: data: https: http:;
     connect-src 'self' https: tauri: asset: https://asset.localhost ipc: http://ipc.localhost;
-    frame-src https://accounts.google.com;
+    frame-src https://accounts.google.com http://localhost:* http://127.0.0.1:*;
   "
 />
   <link rel="stylesheet" href="./styles/MystEditor.css" />
