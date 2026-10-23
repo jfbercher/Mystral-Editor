@@ -747,6 +747,11 @@ img.align-center {
 const Preview = styled.div`
   background-color: var(--panel-bg);
   padding: 20px;
+  /* Room to scroll past the end, as a code editor gives.
+     The last block of a document could otherwise never be brought anywhere
+     but the bottom of the pane: a cell ending the document had its figure cut
+     off, and the only remedy was to type blank lines under it. */
+  padding-bottom: 40vh;
   box-sizing: border-box;
   height: 100%;
   border: 1px solid var(--border);
@@ -768,6 +773,8 @@ const Preview = styled.div`
       box-shadow: none !important;
       border-radius: 0px !important;
       word-break: unset !important;
+      /* The scroll-past-end room is for scrolling, not for paper. */
+      padding-bottom: 20px !important;
     }
 
     p {

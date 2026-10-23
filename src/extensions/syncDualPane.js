@@ -59,7 +59,18 @@ function scrollPreviewElemIntoView({ view, matchingLine, matchingElem, behavior 
   const elemScrollOffset = cursorBlock.top + previewTopPadding;
 
   const top = matchingRect.top + preview.scrollTop - elemScrollOffset - previewRect.top + (editor?.scrollTop ?? 0);
-  preview.scrollTo({ top, behavior });
+
+  // A line maps to the *top* of the block it produced, which is what one wants
+  // for a paragraph and not for a code cell: the figure a cell draws sits
+  // below the line that draws it, so aligning on the line can leave the whole
+  // output under the fold -- and the pane then scrolls back there as soon as
+  // it resynchronises. When the block does not fit where that alignment put
+  // it, scroll on far enough to show its end; never past its beginning, so a
+  // block taller than the pane still starts at the top rather than ending at
+  // the bottom.
+  const elemTop = matchingRect.top + preview.scrollTop - previewRect.top;
+  const showEnd = elemTop + matchingRect.height - preview.clientHeight + previewTopPadding;
+  preview.scrollTo({ top: Math.max(top, Math.min(showEnd, elemTop - previewTopPadding)), behavior });
 }
 
 /**
