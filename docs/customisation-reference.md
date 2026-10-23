@@ -116,8 +116,11 @@ One section for both, deliberately: the view, the fullscreen presentation and th
 | `slides.width` | `1280` | Nominal width of a slide, in pixels. |
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9; set `1024×768` for 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
+| `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next: `"none"`, `"fade"` or `"slide"`. |
+
+A document can override any of these for itself with a `slides:` block in its frontmatter — geometry and type size usually belong to the deck rather than to the installation. How large the slides are *drawn in the pane* is neither: that is `Ctrl`/`Cmd` and the wheel, remembered across sessions, and it is kept separate on purpose, since enlarging the text would change what fits on a slide and the view would stop agreeing with the projector. See [slides](slides.md).
 
 A slide is laid out at its nominal size and then optically reduced to fit whatever panel it is shown in. That is the reason the size is a setting rather than the panel's width: a preview that reflowed to the panel would show text wrapping differently from the projector, and would report an overflow where there is none, or miss one — which is worse than having no preview.
 

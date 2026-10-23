@@ -164,7 +164,7 @@ const MystEditor = () => {
     if (options.mode.value !== "Slides") return;
     const el = text.preview.value;
     if (!el) return;
-    return attachSlideView(el);
+    return attachSlideView(el, () => text.slideSettings);
   });
 
   useEffect(() => {

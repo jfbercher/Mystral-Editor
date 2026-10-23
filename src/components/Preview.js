@@ -759,9 +759,26 @@ img.align-center {
  * one -- which is worse than having no preview.
  */
 const SlideStyles = css`
-  /* The slides are wider than the pane before they are scaled down, and the
-     transform leaves the layout width untouched. */
-  overflow-x: hidden;
+  /* At 100% a slide is scaled to fit and nothing spills sideways; zoomed past
+     that it is wider than the pane, which is what the scrollbar is for. */
+  overflow-x: auto;
+
+  .slide-zoom-badge {
+    position: fixed;
+    transform: translateX(-100%);
+    z-index: 5;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--panel-bg);
+    background: var(--icon-color, #555);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .slide-zoom-badge[hidden] {
+    display: none;
+  }
 
   /* The marker opening each slide is the cut itself; a rule across the top of
      every slide would only say so a second time. */
@@ -770,7 +787,13 @@ const SlideStyles = css`
   }
 
   & > html-chunk {
-    display: block;
+    /* A column, so slides.verticalAlign can place the content in the box.
+       Children keep their own widths, and margins no longer collapse between
+       them -- which is why the spacing of a slide is a touch airier than the
+       same text in the ordinary preview. */
+    display: flex;
+    flex-direction: column;
+    justify-content: var(--slide-align, flex-start);
     position: relative;
     box-sizing: border-box;
     width: var(--slide-w, 1280px);
@@ -791,6 +814,11 @@ const SlideStyles = css`
        back here: the box occupies its full height in the layout and only its
        scaled height on screen. */
     margin-bottom: calc(var(--slide-h, 720px) * (var(--slide-scale, 1) - 1) + 24px);
+  }
+
+  /* While the overflow is being measured: see slidesView.js. */
+  &.measuring-slides > html-chunk {
+    justify-content: flex-start;
   }
 
   & > html-chunk::after {

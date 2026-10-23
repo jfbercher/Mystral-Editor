@@ -182,6 +182,11 @@ export const DEFAULT_CONFIG = {
     // the width of the pane: 28 looks the same in a half-width panel and on
     // the projector. Roughly 15 lines of body text fit at 28, 11 at 36.
     fontSize: 28,
+    // Where the content of a slide sits in its box: "top" or "center".
+    // Centring suits a deck of short slides; a lecture whose slides are uneven
+    // reads better flush to the top, where the titles line up from one slide
+    // to the next instead of drifting up and down.
+    verticalAlign: "top",
     // Also start a slide at every heading of this level or above, which makes
     // a document that was never written as a deck presentable without touching
     // it. 0 means only the explicit `---` markers cut.

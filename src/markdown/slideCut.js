@@ -178,7 +178,10 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
   const cut = fm.cutAtHeading ?? fm.cutatheading ?? fm["cut-at-heading"] ?? defaults.cutAtHeading;
   const cutLevel = Number(cut);
 
+  const align = String(fm.verticalAlign ?? fm.verticalalign ?? fm["vertical-align"] ?? defaults.verticalAlign ?? "top").toLowerCase();
+
   return {
+    verticalAlign: ["center", "centre", "middle"].includes(align) ? "center" : "top",
     width: pick(fm.width, defaults.width) ?? 1280,
     height: pick(fm.height, defaults.height) ?? 720,
     fontSize: pick(fontSize, defaults.fontSize) ?? 28,

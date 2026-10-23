@@ -38,6 +38,46 @@ Each slide is drawn at its **nominal size** — 1280×720 by default, `slides.wi
 
 The text is bigger than a document's, as it must be: `slides.fontSize` sets it, 28 pixels by default, and everything on a slide — headings, lists, maths, code, cell outputs — is sized in em, so that one number scales the whole slide together. The size is nominal, measured inside the 1280×720 box and reduced with it, so it means the same thing in a half-width panel and on the projector. As a rule of thumb, about fifteen lines of body text fit at 28 and eleven at 36; raising it is the quickest way to find out which slides are carrying too much.
 
+### Per deck, in the frontmatter  
+
+What a deck looks like usually belongs to the deck and not to the machine it is opened on — a 4:3 room, or a lecture whose slides carry three lines in very large type. A `slides:` block in the document's frontmatter overrides `config.json` for that file alone, and travels with it:  
+
+```yaml
+---
+title: Fourier series
+slides:
+  fontSize: 40
+  width: 1024
+  height: 768
+  verticalAlign: center
+  cutAtHeading: 2
+---
+```
+
+`fontSize`, `font-size` and `fontsize` are all accepted, as are `cutAtHeading` and `cut-at-heading`; a value that is not a positive number falls back to the setting rather than breaking the view.
+
+### What `width` and `height` are for  
+
+Not for how big the slides look — that is the zoom, below. They are the **shape of the box and how much goes in it**.
+
+The shape first: `1280×720` is 16:9, `1024×768` is 4:3. Since the slide is always scaled to the width of the pane, what you see of these two numbers is the aspect ratio, and that should be the projector's.
+
+Then the capacity. What decides how much text a slide holds is not the type size on its own but its size *relative to the box*: at `fontSize: 28` in a 1280-wide box a line runs to about seventy characters, and twenty-eight-pixel lines fit about fifteen times into 720. Double the box and leave the type size alone and you have halved the type, in effect, and doubled what fits. So in practice you set the pair once, to the room's projector, and from then on `fontSize` is the knob — it is the only one of the three that says anything about the deck rather than the hardware.
+
+They matter again later, and more literally: the standalone export and the printed PDF will use these as real dimensions.
+
+### Centring  
+
+`slides.verticalAlign: center` puts the content in the middle of the box instead of flush with the top. Centring suits a deck of short slides; a lecture whose slides are uneven usually reads better flush to the top, where the titles line up from one slide to the next instead of drifting up and down. It is per deck too, so it can live in the frontmatter.
+
+### Zoom, which is a different thing  
+
+`Ctrl` (or `Cmd`) and the wheel, over the pane, makes the slides **bigger on screen**. There is a detent at 100%, and the level is remembered across sessions, like the width of a pane.
+
+That is deliberately not the same control as the type size, and the distinction is what makes the view worth trusting. The type size changes *what fits on a slide* and belongs to the document; the zoom changes only *how big the picture of the slide is here* and belongs to whoever is looking at it. Enlarging the text to see better — the obvious shortcut — would make the pane disagree with the projector about what overflows, which is the one thing the view exists to get right.
+
+So: if the slides look too small to read comfortably while editing, zoom. If they look too small *projected*, raise `fontSize` — and expect some slides to start overflowing, which is the view telling you something true.
+
 A slide whose content does not fit its box is marked, with a red border and a band across its foot. That is the question the view exists to answer: a slide is a fixed box and a document does not know it is one, so the overflow is found here, before the lecture, rather than on the screen during it.
 
 Everything stays alive in this view: the Pyodide kernel, the cell editors, the outputs. A cell can be edited and run while the deck is being written — and, later, during the lecture itself.
@@ -57,6 +97,7 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.width` | `1280` | Nominal width of a slide, in pixels. |
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9, `1024×768` is 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
+| `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cutAtHeading` | `0` | Also cut at every heading of this level or above. `0` means markers only. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next in the presentation: `"none"`, `"fade"` or `"slide"`. |
 
