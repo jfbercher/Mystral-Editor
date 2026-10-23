@@ -85,6 +85,17 @@ function slideSize(settings) {
   };
 }
 
+/** The fragment breaks of a slide, which are its direct children. */
+function fragmentCount(el) {
+  return el.querySelectorAll(":scope > hr.fragment-break").length;
+}
+
+/** True when the caret is inside a cell's editor, where the arrows must edit. */
+function inCellEditor() {
+  const el = document.activeElement;
+  return !!(el && el.closest && el.closest(".pyodide-wrapper"));
+}
+
 /**
  * Turn `preview` into a strip of slides, and keep it measured.
  * @returns {() => void} a cleanup that undoes everything it set.
@@ -96,6 +107,13 @@ export function attachSlideView(preview, getSettings = () => null) {
   let settle = 0;
   let badgeTimer = 0;
   let zoom = readZoom();
+
+  // Presentation state. `slide` is the one being shown, `fragment` how many of
+  // its breaks have been passed -- 0 meaning only the part before the first.
+  // Cumulative, so revealing never takes anything away.
+  let presenting = false;
+  let slide = 0;
+  let fragment = 0;
 
   const badge = document.createElement("div");
   badge.className = "slide-zoom-badge";
@@ -122,6 +140,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const slides = () => [...preview.querySelectorAll(":scope > html-chunk")];
 
+
   const measure = () => {
     frame = 0;
     const { w, h, font, align } = slideSize(getSettings());
@@ -136,11 +155,21 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.setProperty("--slide-h", `${h}px`);
     preview.style.setProperty("--slide-font", `${font}px`);
     preview.style.setProperty("--slide-align", align);
-    // The fitting scale, then the viewer's zoom on top. Above 1 the slide is
-    // wider than the pane and the pane scrolls, which is the point.
-    // One pixel shy of the exact fit, so that at 100% the pane does not grow a
-    // horizontal scrollbar over a rounding error.
-    preview.style.setProperty("--slide-scale", String(Math.min(1, (inner - 1) / w) * zoom));
+    if (presenting) {
+      // Projecting: one slide, as large as the display allows. The zoom does
+      // not apply -- there is nothing to zoom towards once the slide fills the
+      // screen -- and *both* dimensions have to fit, which is why this is not
+      // the editing formula with a different number in it.
+      const box = getComputedStyle(preview);
+      const innerH = preview.clientHeight - parseFloat(box.paddingTop || 0) - parseFloat(box.paddingBottom || 0);
+      preview.style.setProperty("--slide-scale", String(Math.max(0.05, Math.min(inner / w, innerH / h))));
+    } else {
+      // Editing: fit the width, then the viewer's zoom on top. Above 1 the
+      // slide is wider than the pane and the pane scrolls, which is the point.
+      // One pixel shy of the exact fit, so that at 100% the pane does not grow
+      // a horizontal scrollbar over a rounding error.
+      preview.style.setProperty("--slide-scale", String(Math.min(1, (inner - 1) / w) * zoom));
+    }
 
     // Centred content that overflows spills out of *both* ends of the box, and
     // `scrollHeight` only counts what spills downwards -- so a centred slide
@@ -164,6 +193,21 @@ export function attachSlideView(preview, getSettings = () => null) {
     });
 
     if (centred) preview.classList.remove("measuring-slides");
+
+    // Which slide is showing, and how much of it. Attributes rather than
+    // inline styles, because what they drive is a stylesheet: everything
+    // except the current slide is hidden, and inside it everything past the
+    // last passed break is made invisible -- invisible, not removed, so the
+    // layout does not shift under the audience as a list is uncovered.
+    all.forEach((el, i) => {
+      if (presenting && i === slide) {
+        el.dataset.slideCurrent = "1";
+        el.dataset.fragment = String(fragment);
+      } else {
+        delete el.dataset.slideCurrent;
+        delete el.dataset.fragment;
+      }
+    });
   };
 
   const schedule = () => {
@@ -179,6 +223,136 @@ export function attachSlideView(preview, getSettings = () => null) {
     clearTimeout(settle);
     settle = setTimeout(schedule, SETTLE_MS);
   };
+
+  // ── Presenting ────────────────────────────────────────────────────────────
+
+  const slideCount = () => slides().length;
+
+  /** The slide nearest the top of the pane: where "present" starts from. */
+  const slideInView = () => {
+    const all = slides();
+    const top = preview.getBoundingClientRect().top;
+    let best = 0;
+    let bestGap = Infinity;
+    all.forEach((el, i) => {
+      const gap = Math.abs(el.getBoundingClientRect().top - top);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  const go = (dir) => {
+    const all = slides();
+    if (!all.length) return;
+    if (dir > 0) {
+      if (fragment < fragmentCount(all[slide])) fragment += 1;
+      else if (slide < all.length - 1) {
+        slide += 1;
+        fragment = 0;
+      }
+    } else {
+      if (fragment > 0) fragment -= 1;
+      else if (slide > 0) {
+        slide -= 1;
+        // Coming back to a slide shows it as it was left: fully revealed.
+        fragment = fragmentCount(all[slide]);
+      }
+    }
+    schedule();
+  };
+
+  const startPresenting = (from = slideInView()) => {
+    presenting = true;
+    slide = Math.max(0, Math.min(from, slideCount() - 1));
+    fragment = 0;
+    preview.classList.add("presenting");
+    // Asked for, not relied on. The class above already makes the pane cover
+    // the window, so a browser that refuses the request -- or a gesture it
+    // does not consider a user action -- still gives a clean projection
+    // rather than nothing.
+    preview.requestFullscreen?.().catch(() => {});
+    schedule();
+  };
+
+  const stopPresenting = () => {
+    presenting = false;
+    preview.classList.remove("presenting");
+    if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});
+    schedule();
+    // Leave the audience's slide under the author's eyes rather than wherever
+    // the pane happened to be scrolled before.
+    slides()[slide]?.scrollIntoView({ block: "start" });
+  };
+
+  const onKey = (ev) => {
+    if (!presenting) return;
+    const inCell = inCellEditor();
+
+    // PageUp and PageDown first, and unconditionally: that is what every
+    // presenter remote sends, and a remote has to keep working while the
+    // caret sits in a cell -- which is the whole point of being able to type
+    // Python in front of the room.
+    if (ev.key === "PageDown") return void (ev.preventDefault(), go(1));
+    if (ev.key === "PageUp") return void (ev.preventDefault(), go(-1));
+
+    if (ev.key === "Escape" && !inCell) return void (ev.preventDefault(), stopPresenting());
+
+    // The arrows and the space bar navigate -- except inside a cell, where
+    // they must edit. This exception is the one that decides whether the mode
+    // is pleasant or unbearable, and it costs one test.
+    if (inCell) return;
+    if (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === " " || ev.key === "Enter") {
+      ev.preventDefault();
+      go(1);
+    } else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "Backspace") {
+      ev.preventDefault();
+      go(-1);
+    } else if (ev.key === "Home") {
+      ev.preventDefault();
+      slide = 0;
+      fragment = 0;
+      schedule();
+    } else if (ev.key === "End") {
+      ev.preventDefault();
+      slide = Math.max(0, slideCount() - 1);
+      fragment = fragmentCount(slides()[slide] ?? preview);
+      schedule();
+    }
+  };
+
+  // Leaving fullscreen by the browser's own means -- Escape, the system
+  // gesture, another window -- has to end the presentation too, or the pane
+  // would stay in projection mode inside the editor.
+  const onFullscreen = () => {
+    if (presenting && document.fullscreenElement !== preview) stopPresenting();
+  };
+
+  const onClick = (ev) => {
+    if (!presenting) return;
+    // A click advances, as in every other presenter -- but not one that was
+    // aimed at something: a cell's button, its editor, a link, a figure to
+    // open full screen.
+    const t = ev.target;
+    if (t instanceof Element && t.closest("a, button, input, .cm-editor, .pyodide-wrapper, img")) return;
+    go(1);
+  };
+
+  const present = document.createElement("button");
+  present.type = "button";
+  present.className = "slide-present-btn";
+  present.title = "Present from the slide in view (Escape to leave)";
+  present.textContent = "▶";
+  present.addEventListener("click", () => startPresenting());
+  // First, not last: the pane scrolls, and a control appended after every
+  // slide sits at the far end of that scroll rather than in the corner.
+  preview.insertBefore(present, preview.firstChild);
+
+  document.addEventListener("keydown", onKey);
+  document.addEventListener("fullscreenchange", onFullscreen);
+  preview.addEventListener("click", onClick);
 
   // Ctrl/Cmd and the wheel: the gesture every viewer already knows, and one
   // that needs no focus -- the cursor is in the source, which is where it
@@ -200,7 +374,18 @@ export function attachSlideView(preview, getSettings = () => null) {
   const resizeObserver = new ResizeObserver(schedule);
   resizeObserver.observe(preview);
 
-  const mutationObserver = new MutationObserver(settled);
+  // The pane is emptied and rebuilt on a full re-render, taking the button
+  // with it; it is put back rather than assumed to be there.
+  const keepControls = () => {
+    if (present.parentNode !== preview || preview.firstChild !== present) {
+      preview.insertBefore(present, preview.firstChild);
+    }
+  };
+
+  const mutationObserver = new MutationObserver(() => {
+    keepControls();
+    settled();
+  });
   mutationObserver.observe(preview, { childList: true, subtree: true });
 
   preview.addEventListener("load", settled, true);
@@ -211,7 +396,13 @@ export function attachSlideView(preview, getSettings = () => null) {
     clearTimeout(settle);
     clearTimeout(badgeTimer);
     preview.removeEventListener("wheel", onWheel);
+    preview.removeEventListener("click", onClick);
+    document.removeEventListener("keydown", onKey);
+    document.removeEventListener("fullscreenchange", onFullscreen);
+    if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});
+    preview.classList.remove("presenting");
     badge.remove();
+    present.remove();
     resizeObserver.disconnect();
     mutationObserver.disconnect();
     preview.removeEventListener("load", settled, true);
@@ -219,6 +410,8 @@ export function attachSlideView(preview, getSettings = () => null) {
       delete el.dataset.slideIndex;
       delete el.dataset.slideTotal;
       delete el.dataset.slideOverflow;
+      delete el.dataset.slideCurrent;
+      delete el.dataset.fragment;
     }
     preview.style.removeProperty("--slide-w");
     preview.style.removeProperty("--slide-h");

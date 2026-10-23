@@ -3,7 +3,7 @@
 A deck here is not a different kind of file. It is a document, cut into slides by markers it already knows how to write — which is the whole point: the admonitions, the cross-references, the bibliography, the maths with the document's own macros, the `{include}`s and the outputs of code cells are all still there, because nothing was converted.
 
 :::{note} What exists so far
-The **view** is in place: the document cut into slides, each drawn at projector size, with the overflows flagged. The fullscreen presentation and the standalone export are the next two steps, and they will read the same cut — that is the reason the cut lives in a function of its own.
+The **view** and the **presentation** are in place: the document cut into slides, drawn at projector size with the overflows flagged, and projected one at a time with the cells still live. The standalone export is the step that remains, and it reads the same cut — that is the reason the cut lives in a function of its own.
 :::
 
 ## Cutting a document into slides
@@ -82,11 +82,46 @@ A slide whose content does not fit its box is marked, with a red border and a ba
 
 Everything stays alive in this view: the Pyodide kernel, the cell editors, the outputs. A cell can be edited and run while the deck is being written — and, later, during the lecture itself.
 
+## Presenting  
+
+The round **▶** at the top right of the pane starts the presentation, from the slide currently in view rather than from the beginning — so rehearsing the one slide you are working on costs nothing.
+
+The pane then covers the window and asks the browser for real fullscreen. It asks rather than depends: a browser that refuses the request still gives a clean projection, because covering the window is done by the editor itself. `Escape` leaves.
+
+One slide at a time, centred, as large as the display allows — both dimensions fit, which is why a 4:3 deck on a 16:9 screen gets bars rather than a crop.
+
+### Moving through the deck  
+
+| | |
+|---|---|
+| `Page Down`, `Page Up` | next, previous — **always**, even from inside a cell |
+| `→` `↓` `Space` `Enter` | next |
+| `←` `↑` `Backspace` | previous |
+| `Home`, `End` | first slide, last slide fully revealed |
+| click on the slide | next |
+| `Escape` | leave |
+
+Each step reveals the next fragment if the slide has one left, and otherwise moves on. Going back to a slide shows it as you left it — fully revealed — rather than making you uncover it again.
+
+A click advances, except on something that was clearly aimed at: a cell's buttons or editor, a link, a figure to open.
+
+### Cells during the lecture  
+
+Everything stays live. A cell can be edited and run in front of the room, which is the reason this was not built on reveal.js or Marp.
+
+That is also why `Page Down` and `Page Up` are listed first and marked *always*: they are what every presenter remote sends, and a remote has to keep working while the caret sits in a cell. The arrows and the space bar navigate too — except when the caret is inside a cell's editor, where they do what they must and move the caret. That single exception is what decides whether the mode is pleasant or unbearable.
+
+A slide can of course overflow if a cell's output turns out longer than expected. That is the author's business, and the editing view flags it beforehand.
+
 ## How it works, and why it matters
 
 The cut is made **in the source**, before rendering: in slide mode the preview's render chunks *are* the slides. A slide is therefore one element, and the view is a stylesheet.
 
 The alternative — rendering as usual and regrouping the result afterwards — was rejected for a reason worth stating, because it is the constraint the whole feature is built around. Re-rendering a code cell destroys its editor, its output and its attachment to the kernel; the editor goes to some length elsewhere to avoid exactly that. A regrouping pass would also have to be redone at every keystroke. Cutting upstream costs nothing at runtime and leaves the cells alone.
+
+The presentation moves nothing either. The slide being shown carries an attribute and the rest are hidden by a stylesheet; a fragment that has not been reached yet is made *invisible* rather than removed, so the slide does not reflow under the audience as a list is uncovered. Cells therefore survive the presentation exactly as they survive typing — same reason, same mechanism.
+
+Printing reveals everything: a fragment that stayed hidden in a printed copy would hand out slides carrying their first third only, which is the kind of omission one discovers after distributing the file.
 
 One function decides where a cut falls, and both halves of the feature call it. If the view and the export ever disagreed on that, what was rehearsed would not be what is projected.
 

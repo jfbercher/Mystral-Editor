@@ -831,6 +831,106 @@ const SlideStyles = css`
     pointer-events: none;
   }
 
+  /* First child of the pane, and sticky: it rides along at the top right
+     while the slides scroll under it. Appended last -- the obvious thing --
+     it landed below every slide, at the far end of the scroll, which is to
+     say nowhere. */
+  .slide-present-btn {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    display: block;
+    margin: 0 2px 10px auto;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--button-bg);
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.55;
+  }
+  .slide-present-btn:hover {
+    opacity: 1;
+  }
+
+  /* -- Projecting ---------------------------------------------------------
+     One slide, centred, as large as the display allows. The pane covers the
+     window on its own, so a browser that refuses the fullscreen request still
+     projects properly instead of doing nothing. */
+  &.presenting {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--panel-bg);
+  }
+
+  &.presenting > html-chunk {
+    display: none;
+    margin: 0;
+    transform-origin: center center;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  &.presenting > html-chunk[data-slide-current] {
+    display: flex;
+  }
+  &.presenting .slide-present-btn {
+    display: none;
+  }
+
+  /* Cumulative reveal, without moving or removing anything: what lies past
+     the last break passed is made *invisible*, so the slide does not reflow
+     under the audience as a list is uncovered. One rule per level; twelve
+     fragments on a single slide is already more than anyone should write. */
+  & > html-chunk[data-fragment="0"] hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="1"] hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="2"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="3"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="4"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="5"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="6"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="7"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="8"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="9"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="10"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+  & > html-chunk[data-fragment="11"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+    visibility: hidden;
+  }
+
   /* The question the author actually has. A slide is a fixed box and a
      document does not know it is one: this is what says, before the lecture
      rather than during it, which slides do not fit. */
@@ -887,6 +987,18 @@ const Preview = styled.div`
       word-break: unset !important;
       /* The scroll-past-end room is for scrolling, not for paper. */
       padding-bottom: 20px !important;
+    }
+
+    /* On paper everything is there at once. A reveal that survived into the
+       printed copy would hand out slides carrying their first third only --
+       and it is the kind of omission one discovers after distributing the
+       file. */
+    html-chunk[data-fragment] hr.fragment-break ~ * {
+      visibility: visible !important;
+    }
+    html-chunk {
+      display: block !important;
+      break-after: page;
     }
 
     p {
