@@ -1005,6 +1005,9 @@ function addExportToFrontmatter(tab, kind, templateKind = kind) {
 /** Where a project keeps the plugins the editor needs, relative to myst.yml. */
 const PLUGIN_DIR = "myst-plugins";
 
+/** Where the cell images are written, and what the site must serve. */
+const PYODIDE_OUTPUT_DIR = "_build/pyodide";
+
 const PROJECT_PLUGINS = [
   ["exercise-admonition.mjs", exerciseAdmonitionSource],
   ["pyodide-outputs.mjs", pyodideOutputsSource],
@@ -1026,9 +1029,13 @@ const PROJECT_PLUGINS = [
  * carrying its own plugins can be opened by anyone, built without the editor,
  * and committed as it stands.
  */
-async function ensureProjectPlugins(dir) {
+async function ensureProjectPlugins(dir, { declare = true } = {}) {
   const { exists, mkdir, readTextFile, writeTextFile } = await import("@tauri-apps/plugin-fs");
   try {
+    // Without `declare` this only keeps the files in step and writes nothing
+    // else: it is called before every build, and a project that has never had
+    // our plugins is not to be given them behind its author's back.
+    if (!declare && !(await exists(`${dir}/${PLUGIN_DIR}`))) return false;
     await mkdir(`${dir}/${PLUGIN_DIR}`, { recursive: true }).catch(() => {});
     for (const [name, source] of PROJECT_PLUGINS) {
       const file = `${dir}/${PLUGIN_DIR}/${name}`;
@@ -1039,12 +1046,14 @@ async function ensureProjectPlugins(dir) {
       if (current !== source) await writeTextFile(file, source);
     }
 
+    if (!declare) return false;
+
     const ymlPath = `${dir}/myst.yml`;
     if (!(await exists(ymlPath))) return false;
     const yml = await readTextFile(ymlPath);
     const wanted = PROJECT_PLUGINS.map(([name]) => `${PLUGIN_DIR}/${name}`);
     const missing = wanted.filter((entry) => !yml.includes(entry));
-    if (!missing.length) return false;
+    if (!missing.length && yml.includes(PYODIDE_OUTPUT_DIR) && /^\s*jupyter:/m.test(yml)) return false;
 
     // Inserted under `project:` rather than parsed and rewritten: the file is
     // the user's, with their comments and their order, and a round trip
@@ -1056,6 +1065,17 @@ async function ensureProjectPlugins(dir) {
       return false;
     }
     const block = ["  plugins:", ...missing.map((entry) => `    - ${entry}`)];
+    // The folder the cell images live in, served by the site under its own
+    // name. Without it the site renders them from a path it does not serve,
+    // and a reader who starts a kernel has nowhere for the result to land:
+    // the image and the receptacle are the same node, and that node is only
+    // valid when its URL resolves. See the plugin's `nodesFor`.
+    if (!yml.includes(PYODIDE_OUTPUT_DIR)) block.push("  static_files:", `    - ${PYODIDE_OUTPUT_DIR}`);
+    // The in-browser kernel, so that a reader can re-run a cell on the site.
+    // It costs nothing to anyone who does not: the outputs the editor computed
+    // are shown as they are, and the kernel is only loaded on demand. A
+    // document still decides for itself by carrying a `kernelspec` or not.
+    if (!/^\s*jupyter:/m.test(yml)) block.push("  jupyter:", "    lite: true");
     lines.splice(at + 1, 0, ...block);
     await writeTextFile(ymlPath, lines.join("\n"));
     showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs and exercises need it to reach the exports.`, "success", 8000);
@@ -1147,6 +1167,8 @@ async function exportCurrentFileImpl(tab, kind) {
   } catch (err) {
     console.warn("[export] the document could not be saved before exporting:", err);
   }
+
+  await ensureProjectPlugins(dirName(path), { declare: false });
 
   // What myst is actually asked to build. A styled PDF is a LaTeX export that
   // we then compile, so it is a "tex" entry the document must declare -- the
@@ -2024,6 +2046,7 @@ export async function mystBuild(tab) {
   // never had -- an export or a site start will, and both are about this
   // document.
   if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  await ensureProjectPlugins(dir, { declare: false });
   await refreshPyodideOutputs(tab);
   try {
     if ((await tab?.saveCurrentDoc?.()) === false) {
@@ -2066,6 +2089,10 @@ export async function startSite(tab) {
   // and `siteRunning()` is still false here, so the save's own refresh would
   // decline to make a manifest.
   if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  // A project carries its own copy of the plugins; keep it in step with the
+  // application, or a correction made here would never reach a project set up
+  // before it. Files only -- `declare: false` writes nothing into myst.yml.
+  await ensureProjectPlugins(dir, { declare: false });
   await refreshPyodideOutputs(tab, { create: true });
   try {
     if ((await tab?.saveCurrentDoc?.()) === false) {

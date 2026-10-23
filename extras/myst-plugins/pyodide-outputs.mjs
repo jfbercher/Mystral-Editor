@@ -12,14 +12,25 @@
  * cells with identical code share their outputs, which is what the editor does
  * too -- its cache is keyed by the code.
  *
- * The empty node is *replaced* by ordinary mdast -- an `image`, a `code` --
- * rather than filled with `output` nodes carrying a Jupyter MIME bundle. The
- * bundle was the faithful route and it does not survive outside a notebook:
- * myst-cli only resolves a bundle's `path` when the bundle carries a `hash`
- * from its own output cache, which ours never will, and whatever is left is
- * then prefixed with the content server's origin by the web theme. An
- * ordinary `image` travels the road every figure already travels, and each
- * target copies the file and rewrites the URL for itself.
+ * Each result becomes an `output` node carrying both forms, because the two
+ * chains read different ones:
+ *
+ *   - `children`: ordinary mdast -- an `image`, a `code` -- which
+ *     `reduceOutputs` hands to the LaTeX, Word and Typst writers.
+ *   - `jupyter_data`: the minified MIME bundle, which is the only thing the
+ *     web theme looks at. `Output` in `@myst-theme/jupyter` reads
+ *     `node.jupyter_data` and never its children: before a kernel is
+ *     connected it renders our image, and once one is, the same node is the
+ *     receptacle thebe writes its own results into. Dropping the bundle, as
+ *     an earlier version did, gave a site that showed the figures and had
+ *     nowhere to put a recomputed one.
+ *
+ * The bundle's `path` is what took two attempts. It is used verbatim --
+ * `<img src={image.path}>` -- so it has to be a URL the site actually serves:
+ * a path into `_build/pyodide` is not one, and a bare base64 string has no
+ * `.path` at all. `_build/pyodide` is declared in the project's
+ * `static_files`, which copies it to the site's public folder under its own
+ * name, so `/pyodide/<file>.png` is served and resolves from any page.
  *
  * The manifest is written by the editor next to the document; a document built
  * without one is left exactly as it is.
@@ -36,6 +47,13 @@ import { dirname, join, relative, resolve } from "node:path";
  * folder holding `_build`, so they are what the document itself would write.
  */
 const MANIFEST = "_build/pyodide/pyodide-outputs.json";
+
+/**
+ * The folder the images are served from, once `_build/pyodide` has been copied
+ * into the site's public folder by `static_files` -- `copyStaticFiles` keeps
+ * the directory's own name, so this is simply its basename.
+ */
+const PUBLIC_DIR = "pyodide";
 
 /** The manifest governing a file: the nearest one from its folder upwards. */
 function readManifest(file) {
@@ -70,9 +88,10 @@ function readManifest(file) {
  * never looks at them.
  */
 function nodesFor(outputs, insideContainer) {
-  // One entry per result, holding the mdast nodes it is made of.
+  // One entry per result: the mdast it is made of, and the bundle that stands
+  // for the same thing for the web theme.
   const results = [];
-  const add = (nodes) => results.push({ nodes: [].concat(nodes) });
+  const add = (nodes, bundle = null) => results.push({ nodes: [].concat(nodes), bundle });
 
   for (const out of outputs ?? []) {
     if (out.type === "image" && out.path) {
@@ -102,19 +121,34 @@ function nodesFor(outputs, insideContainer) {
       // travels in `raw` nodes, which the LaTeX writer reads and no other.
       // The environment the cell's `:align:` asks for; these three are the
       // ones myst-to-tex's own commented code used.
+      // Served from the site's public folder: `_build/pyodide` is declared in
+      // the project's `static_files`, which copies it there under its own
+      // name. Absolute, so the URL resolves from any page of the site.
+      const bundle = {
+        output_type: "display_data",
+        data: { "image/png": { content_type: "image/png", path: `/${PUBLIC_DIR}/${out.path.split("/").pop()}` } },
+        metadata: {},
+      };
+
       const env = { left: "flushleft", right: "flushright" }[String(out.align ?? "").toLowerCase()] ?? "center";
       // Inside mystmd's own figure, `\centering` already applies to everything
       // it holds, so a centred image needs nothing -- but a left- or
       // right-aligned one needs saying, and an environment inside the figure
       // is what overrides it for that one image.
       if (insideContainer && env === "center") {
-        add(image);
+        add(image, bundle);
       } else {
-        add([{ type: "raw", tex: `\\begin{${env}}` }, image, { type: "raw", tex: `\\end{${env}}` }]);
+        add([{ type: "raw", tex: `\\begin{${env}}` }, image, { type: "raw", tex: `\\end{${env}}` }], bundle);
       }
     } else if (out.type === "text" && String(out.value ?? "").trim()) {
       // A plain string, as nbformat writes it: the same reason as above.
-      add({ type: "code", data: { type: "output" }, value: String(out.value) });
+      add({ type: "code", data: { type: "output" }, value: String(out.value) }, {
+        output_type: "stream",
+        name: out.stream === "stderr" ? "stderr" : "stdout",
+        // A plain string: `Stream` in the theme reads it through
+        // `ensureString(output.text)`.
+        text: String(out.value),
+      });
     }
   }
   return results;
@@ -158,32 +192,19 @@ const fillOutputs = {
           if (outputs) {
             const results = nodesFor(outputs, inContainer);
             if (results.length) {
-              // The empty `outputs` node is *replaced* by ordinary mdast,
-              // rather than filled with `output` nodes carrying a Jupyter
-              // bundle.
-              //
-              // The bundle route was the faithful one and it does not work
-              // outside a notebook: `transformOutputsToFile` in myst-cli only
-              // rewrites a bundle's `path` when the bundle carries a `hash`
-              // its own output cache knows, which ours never will -- and what
-              // is left is handed to the web theme, where something prefixes
-              // it with the content server's origin, whatever it holds. A
-              // relative path arrived as `http://localhost:3100_build/...`; a
-              // data URI arrived as `http://localhost:3101data:image/png...`.
-              // The value was never the problem.
-              //
-              // An ordinary `image` node has none of that trouble: it is the
-              // road every figure in the document already travels, so mystmd
-              // copies the file where each target needs it and rewrites the
-              // URL itself -- the site's public folder, the export's `files/`.
-              // We stop claiming to be Jupyter outputs and simply emit the
-              // picture.
-              kids.splice(i, 1, ...results.flatMap(({ nodes }) => nodes));
+              // The `outputs` node is filled, not replaced: it is what the
+              // web theme renders, and what thebe writes its own results
+              // into once a kernel is connected. Each child carries both
+              // forms -- mdast for the static writers, a MIME bundle for the
+              // theme -- and `Output` reads only the bundle, so nothing is
+              // drawn twice. See `nodesFor` for why the bundle's path is an
+              // absolute URL into the site's public folder.
+              child.children = results.map(({ nodes, bundle }) => ({
+                type: "output",
+                children: nodes,
+                ...(bundle ? { jupyter_data: bundle } : {}),
+              }));
               filled++;
-              // The children array just changed under the loop; the nodes we
-              // inserted hold no `outputs` of their own, so skipping past them
-              // is both correct and cheaper.
-              i += results.reduce((n, r) => n + r.nodes.length, 0) - 1;
             }
           }
         }
