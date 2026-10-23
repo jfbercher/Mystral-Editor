@@ -1814,6 +1814,13 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     } finally {
       wrapper.classList.remove("pyodide-running");
       runBtn.disabled = false;
+      // A run is the moment the outputs change, and the only one the editor
+      // can see. Said rather than acted upon: this module knows nothing of
+      // sites or of saving, and `runAllCells` fires it once per cell, so
+      // whoever listens has to settle down before acting. Carries its owner,
+      // like the edit event above, so two open documents do not answer for
+      // each other.
+      document.dispatchEvent(new CustomEvent("pyodide-cell-ran", { detail: { owner } }));
     }
   });
 }

@@ -1,6 +1,7 @@
 // Gère l'état et la manipulation d'un onglet ou d'un fichier ouvert.
 import { get, set, del } from "idb-keyval";
 import { refreshPyodideOutputs } from "./pyodideExport.js";
+import { siteRunning } from "./mystExport.js";
 import { applyThemeAtStartup, applyCodeMirrorTheme } from './theme.js';
 import { showStatsPopup } from './stats.js';
 import { config } from "../../config.js";
@@ -736,7 +737,11 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
       // Before the document, not after: `myst start` watches the file and
       // rebuilds as soon as it changes, so the manifest of cell outputs has to
       // be the current one by then. See `refreshPyodideOutputs`.
-      await refreshPyodideOutputs(tab);
+      // `create` while the site is running: that is precisely when the cell
+      // outputs are wanted live, and a folder that had never exported would
+      // otherwise never get a manifest at all -- its site would stay mute,
+      // which is the worst moment to be mute, the first one.
+      await refreshPyodideOutputs(tab, { create: siteRunning() });
       await tauriFs.writeTextFile(tab.currentFileHandle, contentToSave);
       await tab.rememberMtime();
       tab.markSaved(editorText);

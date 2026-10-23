@@ -26,6 +26,12 @@ import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmoniti
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments } from "./texTidy.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
+// The two mystmd plugins, embedded in the bundle as text rather than shipped
+// as files: `?raw` means they travel with the application, always of the same
+// version as the editor that writes them, and there is no resource path to
+// resolve differently on each platform.
+import exerciseAdmonitionSource from "../../../extras/myst-plugins/exercise-admonition.mjs?raw";
+import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.mjs?raw";
 
 /**
  * Environment handed to every myst command.
@@ -996,6 +1002,70 @@ function addExportToFrontmatter(tab, kind, templateKind = kind) {
 }
 
 /** Make the folder a MyST project, non-interactively and in place. */
+/** Where a project keeps the plugins the editor needs, relative to myst.yml. */
+const PLUGIN_DIR = "myst-plugins";
+
+const PROJECT_PLUGINS = [
+  ["exercise-admonition.mjs", exerciseAdmonitionSource],
+  ["pyodide-outputs.mjs", pyodideOutputsSource],
+];
+
+/**
+ * Give a project the plugins its documents need, and declare them.
+ *
+ * Without them a build is silently incomplete: the cell outputs are written to
+ * the manifest, correctly, and nobody reads it; exercises and solutions
+ * disappear the same way. Nothing fails, nothing is said -- the figures are
+ * simply absent, which is the hardest kind of defect to attribute. A project
+ * created here had never declared them, so every new folder started broken
+ * while an older one, whose myst.yml had been written by hand, worked.
+ *
+ * Written into the project rather than referenced from the application: a
+ * myst.yml pointing at an absolute path inside an app bundle builds on one
+ * machine and nowhere else, and would break on the next update. A project
+ * carrying its own plugins can be opened by anyone, built without the editor,
+ * and committed as it stands.
+ */
+async function ensureProjectPlugins(dir) {
+  const { exists, mkdir, readTextFile, writeTextFile } = await import("@tauri-apps/plugin-fs");
+  try {
+    await mkdir(`${dir}/${PLUGIN_DIR}`, { recursive: true }).catch(() => {});
+    for (const [name, source] of PROJECT_PLUGINS) {
+      const file = `${dir}/${PLUGIN_DIR}/${name}`;
+      // Rewritten when it differs: the plugin travels with the application, so
+      // an update to the editor has to reach the projects it has set up.
+      let current = null;
+      if (await exists(file)) current = await readTextFile(file).catch(() => null);
+      if (current !== source) await writeTextFile(file, source);
+    }
+
+    const ymlPath = `${dir}/myst.yml`;
+    if (!(await exists(ymlPath))) return false;
+    const yml = await readTextFile(ymlPath);
+    const wanted = PROJECT_PLUGINS.map(([name]) => `${PLUGIN_DIR}/${name}`);
+    const missing = wanted.filter((entry) => !yml.includes(entry));
+    if (!missing.length) return false;
+
+    // Inserted under `project:` rather than parsed and rewritten: the file is
+    // the user's, with their comments and their order, and a round trip
+    // through a YAML parser would return it rearranged and stripped.
+    const lines = yml.split("\n");
+    const at = lines.findIndex((l) => /^project:\s*$/.test(l));
+    if (at === -1) {
+      console.warn("[export] myst.yml has no `project:` block; the plugins were not declared");
+      return false;
+    }
+    const block = ["  plugins:", ...missing.map((entry) => `    - ${entry}`)];
+    lines.splice(at + 1, 0, ...block);
+    await writeTextFile(ymlPath, lines.join("\n"));
+    showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs and exercises need it to reach the exports.`, "success", 8000);
+    return true;
+  } catch (err) {
+    console.warn("[export] the project plugins could not be installed:", err);
+    return false;
+  }
+}
+
 async function mystInit(dir) {
   showToast("Creating the MyST project (myst init)…", "success", 4000);
   const res = await runMyst("init --site --write-toc", dir);
@@ -1003,6 +1073,9 @@ async function mystInit(dir) {
     reportFailure("myst init", res);
     return false;
   }
+  // `myst init` knows nothing of our plugins, so a project created here would
+  // build without them -- silently, which is the whole trouble.
+  await ensureProjectPlugins(dir);
   return true;
 }
 
@@ -1944,6 +2017,22 @@ export async function exportHtml(tab) {
 export async function mystBuild(tab) {
   const dir = projectDir(tab);
   if (!dir) return;
+
+  // The third place that reads the disk, after an export and a site start, and
+  // it would be a version behind for the same reason. `create` is left off:
+  // a whole-project build is not the moment to give a folder a manifest it
+  // never had -- an export or a site start will, and both are about this
+  // document.
+  if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  await refreshPyodideOutputs(tab);
+  try {
+    if ((await tab?.saveCurrentDoc?.()) === false) {
+      showToast("The document was not saved; the build will use the version on disk.", "warning", 8000);
+    }
+  } catch (err) {
+    console.warn("[export] the document could not be saved before building:", err);
+  }
+
   showToast("Running myst build…", "success", 4000);
   const res = await runMyst("build", dir);
   if (res.code !== 0) return reportFailure("myst build", res);
@@ -1968,6 +2057,23 @@ export async function startSite(tab) {
   const dir = projectDir(tab);
   if (!dir) return;
   const port = sitePort();
+
+  // The site is built from the files on disk, and what is on disk is the last
+  // save -- so a cell re-run since then would come out a version behind, from
+  // the first page the site ever shows. The follow-up that keeps them in step
+  // only arms itself once the site is running, which leaves exactly this gap.
+  // `create` because this may be the first site this folder has ever served,
+  // and `siteRunning()` is still false here, so the save's own refresh would
+  // decline to make a manifest.
+  if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
+  await refreshPyodideOutputs(tab, { create: true });
+  try {
+    if ((await tab?.saveCurrentDoc?.()) === false) {
+      showToast("The document was not saved, so the site will show the version on disk.", "warning", 8000);
+    }
+  } catch (err) {
+    console.warn("[export] the document could not be saved before starting the site:", err);
+  }
 
   // `myst start` is spawned, not executed, so it cannot probe after the fact:
   // look for the command first when nothing has told us where it is.
@@ -2154,37 +2260,6 @@ function flushCellEdits(tab) {
   if (!cell) return false;
   active.blur?.();
   return true;
-}
-
-export async function updateSiteData(tab) {
-  const path = tab?.currentFileHandle;
-  if (typeof path !== "string" || !path) {
-    showToast("Save the document first: the site is built from the file on disk.", "error", 5000);
-    return;
-  }
-  // Before the manifest is built from the cells: see `flushCellEdits`.
-  if (flushCellEdits(tab)) await new Promise((r) => requestAnimationFrame(r));
-  const written = await refreshPyodideOutputs(tab, { create: true });
-  // Saved rather than touched. Rewriting the file with what it already holds
-  // was enough to wake the watcher, but it pushed the version on disk -- so
-  // anything typed since the last save, in the document or in a cell, stayed
-  // behind. Saving writes what is on screen and changes the mtime just the
-  // same, which is all the watcher ever wanted.
-  try {
-    if ((await tab?.saveCurrentDoc?.()) === false) {
-      showToast("The document was not saved, so the site still shows the version on disk.", "warning", 8000);
-      return;
-    }
-  } catch (err) {
-    console.warn("[export] the document could not be saved:", err);
-    showToast(`The site could not be updated: ${err?.message ?? err}`, "error", 0);
-    return;
-  }
-  showToast(
-    written?.unchanged === false ? "Cell outputs updated; the site is rebuilding." : "The site is rebuilding with the current cell outputs.",
-    "success",
-    5000,
-  );
 }
 
 export async function stopSite() {

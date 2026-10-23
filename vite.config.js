@@ -9,6 +9,11 @@ import { filePlugin } from "./vite-file-plugin.js";
 export default defineConfig({
   base: "",
   root: "src",
+  // The two mystmd plugins live in extras/, outside the Vite root, and are
+  // imported with `?raw` so that the editor can write them into a project it
+  // sets up. The build resolves the path by itself; the dev server serves
+  // nothing above its root unless it is told to.
+  server: { fs: { allow: [resolve("src"), resolve("extras"), resolve("node_modules")] } },
   plugins: [
     macrosPlugin(),
     preact(),

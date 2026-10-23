@@ -198,19 +198,6 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
             },
           },
           {
-            id: "myst-site-data",
-            text: "🔄 Update MyST site data",
-            // The site rebuilds when the document changes, and the cell
-            // outputs live beside it: a cell re-executed without a save leaves
-            // the site a version behind. Saving does this on its own; this is
-            // for when there is nothing to save.
-            disabled: !running,
-            tooltip: running
-              ? "Push the current cell outputs to the running site"
-              : "Only while the MyST site is running",
-            action: async () => { await mystExport.updateSiteData(tab); },
-          },
-          {
             id: "myst-site",
             text: running ? `⏹️ Stop the MyST site` : "🚀 Start the MyST site",
             action: async () => {
@@ -330,6 +317,44 @@ export function mountEditor(mnt_options) {
       ],
       getBibliographyDirectory: () => localUtils.getWorkingDirectory().value,
       onReady: ({ state }) => {
+        // The running site follows the runs. A run is the moment the outputs
+        // change, and the only one the editor can see -- an output is not a
+        // source, so nothing marks the document as modified. Pushing them is
+        // therefore a save, and `tab.autosave()` carries the whole condition
+        // on its own: it does nothing unless the user has left autosave on,
+        // which is their consent to the editor writing by itself. No setting
+        // of our own asks again what has already been answered.
+        let followTimer = null;
+        const onCellRan = (ev) => {
+          if (ev.detail?.owner !== editorId) return;
+          if (!mystExport.siteRunning?.() || !tab.autoSaveEnabled) return;
+          // `runAllCells` clicks the buttons one after another, so this waits
+          // for the series to settle rather than saving once per cell.
+          clearTimeout(followTimer);
+          followTimer = setTimeout(async () => {
+            // `tab.autosave()` would be the obvious call and it is the wrong
+            // one: it writes only when the document is dirty, and re-running a
+            // cell changes no text -- an output is not a source. Nothing was
+            // written, so the watcher never fired and the site stayed a run
+            // behind. What is wanted here is precisely a write of a document
+            // that has not changed. `autoSaveEnabled` is still the condition,
+            // since it is the user's consent to the editor writing by itself;
+            // only the action differs.
+            try {
+              if ((await tab.saveCurrentDoc?.({ interactive: false })) === false) {
+                showToast("The site was not updated: the document could not be saved.", "warning", 8000);
+              }
+            } catch (err) {
+              console.warn("[site] the follow-up save failed:", err);
+            }
+          }, 600);
+        };
+        // Removed first: onReady runs again when a tab is remounted, and a
+        // second listener would save twice.
+        if (tab._onCellRan) document.removeEventListener("pyodide-cell-ran", tab._onCellRan);
+        tab._onCellRan = onCellRan;
+        document.addEventListener("pyodide-cell-ran", onCellRan);
+
         let commentsLoaded = false;
         let loadStarted = false;
         effect(async () => {
