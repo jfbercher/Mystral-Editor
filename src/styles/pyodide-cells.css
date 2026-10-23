@@ -19,6 +19,16 @@
    whole cell at once: header, editor and status bar all read that variable. */
 .pyodide-wrapper.pyodide-running{--pyodide-cell-bg:var(--pyodide-cell-running-bg,#fdeeec)}
 .pyodide-controls{display:flex;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
+/* Parameters declared with `:params:` — a control per name and one Apply.
+   Deliberately below the editor rather than in the header: these belong to
+   the code above them, and pressing Apply rewrites that code. */
+.pyodide-params-bar{display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;padding:.4rem .75rem;background:var(--pyodide-cell-bg,#f2f6fc);border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6))}
+.pyodide-params-bar[hidden]{display:none}
+.pyodide-param{display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem}
+.pyodide-param-name{font-family:var(--mono-font,monospace);opacity:.85}
+.pyodide-param input[type=range]{width:9rem;vertical-align:middle}
+.pyodide-param-value{font-family:var(--mono-font,monospace);min-width:3ch;text-align:right;opacity:.9}
+.pyodide-btn-apply{margin-left:auto;font-weight:600}
 /* Which Python namespace the cell runs in. An indicator, not a control: the
    namespace is set in the document's frontmatter. */
 .pyodide-space-tag{flex:none;font-size:.68rem;letter-spacing:.02em;padding:0 .4rem;border-radius:999px;border:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));opacity:.8;white-space:nowrap;cursor:default;user-select:none}

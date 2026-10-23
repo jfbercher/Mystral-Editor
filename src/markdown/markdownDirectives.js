@@ -1062,6 +1062,10 @@ class CodeCellDirective extends Directive {
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
     figwidth: directiveOptions.unchanged,    // largeur des figures : "60%", "20em"...
+    // Parameters of the cell, not widgets: `n = 1..100 step 1, amp = 0.1..5`
+    // declares the *range*; the current value stays in the code, where
+    // applying a control writes it. See src/markdown/cellParams.js.
+    params:   directiveOptions.unchanged,
     // Ces trois-là ne servent qu'à l'export : l'aperçu montre la figure telle
     // que la cellule l'a produite, l'export la met en figure numérotée. Elles
     // sont lues ici pour être transmises, et parce qu'une option inconnue
@@ -1090,6 +1094,7 @@ class CodeCellDirective extends Directive {
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
       `data-figwidth="${escapeHtml(String(data.options?.figwidth ?? "").trim())}" ` +
+      `data-params="${escapeHtml(String(data.options?.params ?? "").trim())}" ` +
       `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
       `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
       `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +

@@ -57,11 +57,12 @@ print(x.mean())
 ```  
 The word after the marker is the language. It is informative — everything runs as Python — but it drives syntax highlighting and is kept when the cell is edited. Three fenced spellings are recognised as well: ` ```{code-cell} `, ` ```{code-cell} python ` and ` ```code-cell `.  
 
-Three options are understood:  
+The options understood are:  
 
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
 - `:tags: hide-input` carries cell metadata. It is stored and round-tripped but not otherwise interpreted at present.  
+- `:params: n = 1..100 step 1` puts a control under the cell. See *Parameters*, below.
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
 A figure opens full screen when clicked: the wheel zooms about the pointer, dragging moves it, a double-click returns to the initial view, and `Escape` or a click beside the figure closes it. Figures are captured as SVG, with their text converted to outlines so that the result does not depend on the fonts available wherever it is later shown or exported; a zoom therefore stays sharp however far it goes. A figure too dense for that -- a scatter plot of a hundred thousand points -- falls back to a PNG capture at 120 dpi, which zooms as a picture does.  
@@ -148,6 +149,42 @@ again as soon as the cursor leaves it, or on `Escape`.
 Under the editor, a bar reports on the cell rather than acting on it: a message when there is one, the time of the last run, how long that run took, and the namespace the cell belongs to.  
 
 The time is shown as a clock time while it is today's and with the date once it is not. It is saved with the cell's output and restored with it, which is what it is for: a document reopened a week later shows its results exactly as if they had just been computed, and the bar is what says otherwise. Changing a cell's code clears it, along with the output it described.  
+
+## Parameters  
+
+A cell can declare that one of its numbers is meant to be varied:  
+
+```
+:::{code-cell}
+:params: n = 1..100 step 1, amp = 0.1..5
+
+n = 12
+amp = 1.0
+import numpy as np, matplotlib.pyplot as plt
+x = np.linspace(0, 1, 400)
+plt.plot(x, amp * np.sin(2 * np.pi * n * x))
+:::
+```
+
+A strip appears under the editor with a slider per declared name and a single **Apply**. Each declaration is `name = min..max`, optionally followed by `step s`, and declarations are separated by commas. One that does not parse costs its own control rather than the whole cell.
+
+The range is declared in the option; the *value* is read from the code and written back to it. Pressing Apply rewrites the cell's assignment -- `n = 12` becomes `n = 37` -- and then runs the cell. Reopening the document therefore shows what it will actually run, and there is no second place to keep in step.
+
+That is the point of the feature, and the reason it is not `ipywidgets`. The cell stays plain Python: it reads an `n` that its own first line sets, so it runs the same way under `myst build --execute`, in Jupyter, or for a reader who copies it out. A value injected into the namespace by a widget would work here and raise `NameError` everywhere else. The cost is one line rewritten per apply; the gain is a document that is still a document.
+
+### Integers and floats  
+
+The precision of a parameter is read from the way its range is written, and the value written back keeps it. `n = 1..100` is an integer parameter, so Apply writes `n = 37`; `amp = 0.1..5` and `z = 1.0..3.0` are float parameters, so Apply writes `amp = 2.45` and `z = 2.00` — with the decimal point still there at a round value. That is not cosmetic: in Python `2` and `2.0` are different types, and silently turning one into the other changes what `//` means, what `/` returns exactly, and whether the value can index an array.
+
+So the rule to remember is that a parameter meant to stay a float should be declared as one — `t = 0..10 step 0.5` or `z = 1.0..3.0` rather than `z = 1..3`. The decimals of the widest of `min`, `max` and `step` are the ones kept.
+
+A range that declares no step gets one rounded to 1, 2 or 5 times a power of ten near a hundredth of its span, rather than the hundredth itself: `0.1..5` steps by 0.05 and not by 0.049, and `1..100` steps by 1. A slider can therefore not produce a value nobody chose, and never a `0.30000000000000004`.
+
+### Applying  
+
+The slider does nothing until Apply is pressed, deliberately: applying is an edit to the source, and a drag would otherwise produce thirty of them, thirty saves, and thirty site rebuilds. If the declared name has no assignment in the cell, Apply adds one at the top.
+
+These are parameters, not a widget toolkit. There is no layout, no composition, no callbacks, and no controls linked to each other; a cell that needs those wants a notebook and a kernel, not this.  
 
 ## Keyboard shortcuts  
 

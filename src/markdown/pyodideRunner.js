@@ -22,6 +22,7 @@ import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirro
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { pythonHighlightStyle as pythonHighlight } from "../extensions/pythonHighlightStyle";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
+import { parseParams, readValue, writeValue, quantise, formatValue } from "./cellParams.js";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -1431,7 +1432,84 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     restoredOutputCache.delete(cacheKey);
   }
 
-  wrapper.append(header, editorRow, statusBar, outputArea);
+  // ── Paramètres de la cellule ──────────────────────────────────────────────
+  // Built from `:params:`, rebuilt whenever that attribute changes. A control
+  // per declared name, and one Apply: moving a slider changes nothing until it
+  // is pressed, because applying rewrites the cell's source and runs it, which
+  // is a document edit and not something a drag should produce thirty times.
+  const paramsBar = document.createElement("div");
+  paramsBar.className = "pyodide-params-bar";
+  paramsBar.hidden = true;
+
+  // In the inline preview the cell is a CodeMirror widget, and the editor
+  // around it is contenteditable. A mousedown on a non-editable element inside
+  // a contenteditable starts a *native drag of that element*, which pre-empts
+  // the slider's own drag: the thumb never moves. Stopping the gesture here is
+  // what makes the control work in both panes, and it has to be on the bar
+  // rather than on each slider because the browser decides at mousedown.
+  for (const type of ["mousedown", "pointerdown", "touchstart"]) {
+    paramsBar.addEventListener(type, (ev) => ev.stopPropagation());
+  }
+  paramsBar.addEventListener("dragstart", (ev) => ev.preventDefault());
+
+  const syncParams = () => {
+    const specs = parseParams(el.dataset.params ?? "");
+    paramsBar.textContent = "";
+    paramsBar.hidden = specs.length === 0;
+    if (!specs.length) return;
+
+    const controls = [];
+    for (const spec of specs) {
+      const field = document.createElement("label");
+      field.className = "pyodide-param";
+      const name = document.createElement("span");
+      name.className = "pyodide-param-name";
+      name.textContent = spec.name;
+
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = String(spec.min);
+      slider.max = String(spec.max);
+      slider.step = String(spec.step);
+
+      const readout = document.createElement("output");
+      readout.className = "pyodide-param-value";
+
+      // The range is declared in the directive, the value lives in the code:
+      // one source of truth, so reopening a document shows what it will run.
+      const found = readValue(editorContainer.value, spec.name);
+      const start = quantise(spec, Math.min(spec.max, Math.max(spec.min, found ?? spec.min)));
+      slider.value = String(start);
+      slider.draggable = false;
+      readout.textContent = formatValue(spec, start);
+      field.title = `${spec.name} — ${spec.min} to ${spec.max}, step ${spec.step}`;
+
+      slider.addEventListener("input", () => {
+        readout.textContent = formatValue(spec, quantise(spec, Number(slider.value)));
+      });
+
+      field.append(name, slider, readout);
+      paramsBar.append(field);
+      controls.push({ spec, slider });
+    }
+
+    const applyBtn = mkBtn("pyodide-btn-apply", "Apply");
+    applyBtn.title = "Write these values into the cell's code and run it";
+    applyBtn.addEventListener("click", () => {
+      let next = editorContainer.value;
+      for (const { spec, slider } of controls) {
+        next = writeValue(next, spec.name, formatValue(spec, quantise(spec, Number(slider.value))));
+      }
+      // Setting .value dispatches a CM change; _syncToEditor then moves the
+      // cache entry and tells the source side, exactly as a typed edit would.
+      if (next !== editorContainer.value) editorContainer.value = next;
+      _syncToEditor(view);
+      runBtn.click();
+    });
+    paramsBar.append(applyBtn);
+  };
+
+  wrapper.append(header, editorRow, paramsBar, statusBar, outputArea);
   editorRow.appendChild(editorContainer);
   el.innerHTML = "";
   el.appendChild(wrapper);
@@ -1600,6 +1678,12 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     },
     configurable: true,
   });
+
+  // Built now rather than above: it reads the cell's code through the `.value`
+  // getter that was just defined. Exposed on the host so a reused widget can
+  // be told that `:params:` changed (see markdownPyodide.js).
+  el._syncParams = syncParams;
+  syncParams();
 
   // ── Événements des boutons ────────────────────────────────────────────────
 

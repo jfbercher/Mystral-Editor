@@ -217,6 +217,10 @@ function ensureObserver(parent, owner = "") {
         evictedHost.dataset.align = el.dataset.align ?? "";
         evictedHost.dataset.caption = el.dataset.caption ?? "";
         evictedHost.dataset.label = el.dataset.label ?? "";
+        // Same reason again, and one more: the strip of controls is built from
+        // this attribute, so the reused widget has to be told to rebuild it.
+        evictedHost.dataset.params = el.dataset.params ?? "";
+        evictedHost._syncParams?.();
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.
