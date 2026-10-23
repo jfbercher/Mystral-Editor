@@ -1198,6 +1198,35 @@ export const cellCache = new Map();
  * it stores stays keyed by the code, as before.
  */
 export const OWNER_SEP = "\u0000";
+/**
+ * Forget every cell an editor instance built.
+ *
+ * The cache lets a widget survive a re-render, which is its whole purpose; it
+ * was never meant to survive the editor itself. But `suspendTab()` removes the
+ * instance and `mountEditor()` builds a new one under the same `editorId`, so
+ * the keys still matched and hosts made for the previous shadow root were
+ * handed back into the new one. A CodeMirror view resolves its root at
+ * construction and reads focus and selection through it ever after: moved
+ * across roots, it still draws and no longer takes a keystroke -- a cell that
+ * looks normal and cannot be typed in, until the editor is reloaded.
+ *
+ * Nothing of value is lost by forgetting: a document's outputs are kept by the
+ * sidecar, which restores them by document rather than by tab.
+ */
+export function clearCellCache(owner) {
+  if (!owner) return 0;
+  const prefix = owner + OWNER_SEP;
+  let gone = 0;
+  for (const key of [...cellCache.keys()]) {
+    if (key.startsWith(prefix)) {
+      cellCache.delete(key);
+      gone++;
+    }
+  }
+  if (gone) console.debug(`[cells] ${gone} cached cell(s) dropped with editor ${owner}`);
+  return gone;
+}
+
 export const cellKey = (owner, hash, linenos) =>
   `${owner ?? ""}${OWNER_SEP}${hash}${linenos ? "-ln" : ""}`;
 /** Populated from sidecar before render; consumed by initCodeCell(). */

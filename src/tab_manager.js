@@ -1,5 +1,6 @@
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor } from "./editor_factory.js";
+import { clearCellCache } from "./markdown/pyodideRunner.js";
 import { config, getNewFileTemplate } from "./config.js";
 import { isTauri, currentFileDir, workingDirectory, parentDir, fileName as baseNameOf } from "./utils/local_utils/fs.js";
 
@@ -282,6 +283,10 @@ export class TabManager {
 
     tabInfo.savedText = window.myst_editor[editorId]?.text ?? "";
     window.myst_editor[editorId]?.remove();
+    // The widgets it built go with it: see `clearCellCache`. A host kept past
+    // the instance that made it comes back into a different shadow root, where
+    // its editor no longer takes a keystroke.
+    clearCellCache(editorId);
     tabInfo.container.innerHTML = "";
     tabInfo.mounted = false;
   }
@@ -350,6 +355,7 @@ export class TabManager {
 
     const removeTab = () => {
       if (tabInfo.mounted) window.myst_editor[editorId]?.remove();
+      clearCellCache(editorId);
       tabInfo.container.remove();
       tabInfo.buttonEl.remove();
       tabInfo.tabState.delKeyFromDB();
