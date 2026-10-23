@@ -2349,3 +2349,279 @@ if (typeof window !== "undefined") {
     siteChild?.kill?.();
   });
 }
+
+// ---------------------------------------------------------------------------
+// Slides export
+// ---------------------------------------------------------------------------
+
+/**
+ * The navigation of the exported deck.
+ *
+ * The same rules as the editor's own presentation, written once more because
+ * the exported file must stand alone -- no Pyodide, no CodeMirror, no import.
+ * It is deliberately small: a deck that needs two hundred kilobytes of library
+ * to turn its own pages is a deck that stops working the day the library does.
+ */
+const SLIDES_EXPORT_JS = `
+(function () {
+  var pane = document.querySelector(".myst-preview");
+  if (!pane) return;
+  var slides = Array.prototype.slice.call(pane.children).filter(function (el) {
+    return el.tagName.toLowerCase() === "html-chunk";
+  });
+  if (!slides.length) return;
+
+  var i = 0, f = 0;
+  var W = parseFloat(pane.style.getPropertyValue("--slide-w")) || 1280;
+  var H = parseFloat(pane.style.getPropertyValue("--slide-h")) || 720;
+
+  function frags(el) { return el.querySelectorAll(":scope > hr.fragment-break").length; }
+
+  function fit() {
+    pane.style.setProperty("--slide-scale", String(Math.min(window.innerWidth / W, window.innerHeight / H)));
+  }
+
+  function show() {
+    for (var k = 0; k < slides.length; k++) {
+      if (k === i) {
+        slides[k].dataset.slideCurrent = "1";
+        slides[k].dataset.fragment = String(f);
+      } else {
+        delete slides[k].dataset.slideCurrent;
+        delete slides[k].dataset.fragment;
+      }
+    }
+    if (location.hash !== "#" + (i + 1)) history.replaceState(null, "", "#" + (i + 1));
+  }
+
+  function go(d) {
+    if (d > 0) {
+      if (f < frags(slides[i])) f++;
+      else if (i < slides.length - 1) { i++; f = 0; }
+    } else {
+      if (f > 0) f--;
+      else if (i > 0) { i--; f = frags(slides[i]); }
+    }
+    show();
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    var k = ev.key;
+    if (k === "PageDown" || k === "ArrowRight" || k === "ArrowDown" || k === " " || k === "Enter") { ev.preventDefault(); go(1); }
+    else if (k === "PageUp" || k === "ArrowLeft" || k === "ArrowUp" || k === "Backspace") { ev.preventDefault(); go(-1); }
+    else if (k === "Home") { ev.preventDefault(); i = 0; f = 0; show(); }
+    else if (k === "End") { ev.preventDefault(); i = slides.length - 1; f = frags(slides[i]); show(); }
+    else if (k === "f") { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
+  });
+
+  pane.addEventListener("click", function (ev) {
+    if (ev.target.closest && ev.target.closest("a, img")) return;
+    go(1);
+  });
+
+  window.addEventListener("resize", fit);
+  var start = parseInt((location.hash || "").slice(1), 10);
+  if (start >= 1 && start <= slides.length) i = start - 1;
+  fit();
+  show();
+})();
+`;
+
+/**
+ * Freeze the code cells of a cloned preview.
+ *
+ * The export carries no Pyodide and no CodeMirror -- tens of megabytes of wasm
+ * plus the packages, which a file sent by email does not carry, and which a CDN
+ * would only make someone else's problem in a room with no network. So the
+ * cells become what they are on paper: the code as text, and the output as it
+ * last stood. The live editor keeps the live cells; an export is an export.
+ *
+ * `live` and `clone` hold the same hosts in the same order, which is how the
+ * code is read from the editor that still has it.
+ */
+function freezeCells(live, clone) {
+  const liveHosts = [...live.querySelectorAll(".code-cell-host")];
+  const cloneHosts = [...clone.querySelectorAll(".code-cell-host")];
+
+  cloneHosts.forEach((host, i) => {
+    const source = liveHosts[i]?.querySelector(".pyodide-editor");
+    const code = typeof source?.value === "string" ? source.value : "";
+
+    host.querySelector(".pyodide-header")?.remove();
+    host.querySelector(".pyodide-status-bar")?.remove();
+    host.querySelector(".pyodide-params-bar")?.remove();
+
+    const row = host.querySelector(".pyodide-editor-row");
+    if (row) {
+      const pre = clone.ownerDocument.createElement("pre");
+      pre.className = "slide-frozen-code";
+      pre.textContent = code;
+      row.replaceWith(pre);
+    }
+  });
+}
+
+/**
+ * Export the deck as one standalone HTML file.
+ *
+ * It reuses everything: the cut (the render chunks are the slides), the
+ * stylesheet of the slide view, the theme snapshot, and the navigation rules
+ * of the presentation. That reuse is the reason reveal.js was turned down on
+ * both sides rather than only in the editor -- there is no library here, and
+ * the file is ours.
+ */
+/**
+ * A deck taken out of the editor: its stylesheet, and a frozen copy of it.
+ *
+ * Shared by the HTML export and by printing, which need exactly the same
+ * thing and differ only in what they do with it. The copy keeps its classes,
+ * so the collected stylesheet -- which carries the slide view's own rules --
+ * applies to it wherever it is put.
+ */
+function slidesMaterial(tab, preview) {
+  const root = preview.getRootNode();
+  const collected = [
+    cssTextOf(document.adoptedStyleSheets),
+    cssTextOf(root.adoptedStyleSheets),
+    cssTextOf(styleElementSheets(root)),
+    cssTextOf(styleElementSheets(document.head)),
+  ].join("\n");
+  const css = [collected, EXPORT_BASE_CSS, resolvedCustomProperties(collected, preview)].join("\n");
+  const theme = root.host?.dataset?.theme || document.getElementById("myst-css-namespace")?.dataset?.theme || "lightTheme";
+
+  const clone = preview.cloneNode(true);
+  freezeCells(preview, clone);
+  // Controls of the editor, which mean nothing in a file or on paper.
+  clone.querySelector(".slide-present-btn")?.remove();
+  clone.querySelector(".slide-zoom-badge")?.remove();
+  // The caret highlight of the dual pane. Hidden by the stylesheet, but it is
+  // still a block between the pane and its first slide, and a block is all it
+  // takes to push a page.
+  clone.querySelector(".cm-previewFocus")?.remove();
+
+  const settings = window.myst_editor?.[tab?.editorId]?.state?.text?.slideSettings;
+  return { css, theme, clone, settings, w: settings?.width ?? 1280, h: settings?.height ?? 720 };
+}
+
+/** The deck is open and rendered, or a message saying which of the two is not. */
+function slidesReady(preview) {
+  if (!preview) {
+    showToast("No rendered preview: open the slide view first.", "error", 5000);
+    return false;
+  }
+  if (!preview.querySelector("html-chunk")) {
+    showToast("Switch to the slide view first.", "error", 5000);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The rules that make the exported deck print as a deck.
+ *
+ * They live in the exported file and nowhere else. Printing the deck from
+ * inside the application was tried and dropped: a stylesheet can declare the
+ * size and orientation of a printed page, and WebKit -- which the desktop
+ * build runs inside on macOS -- ignores that declaration, so the deck could
+ * only ever be fitted to whatever sheet the dialog handed it, with the
+ * orientation chosen by hand. The exported file printed by a browser gets it
+ * exactly right and costs nothing; bundling a headless browser, which is what
+ * reveal.js and Marp require for their PDF, would have cost a dependency to
+ * install, locate and explain.
+ */
+function slidesPrintCss(w, h) {
+  return [
+    // A pixel of slack, so that the browser's own rounding of the printable
+    // area has somewhere to go. Given to the page rather than taken from the
+    // slide, so nothing of the deck is clipped.
+    `@page { size: ${w + 1}px ${h + 1}px; margin: 0; }`,
+    `@media print {`,
+    // The frame the exported page is wrapped in is made for reading on
+    // screen: twenty pixels of padding and a full viewport of minimum
+    // height. On paper that padding pushed the first slide twenty pixels down
+    // its page, so the slide spilled over by exactly that much and the
+    // overflow -- empty, since a slide clips its own -- took a second page;
+    // the padding at the foot of the deck then added one more at the end. One
+    // blank after the first slide and one at the very end, which is a
+    // signature worth remembering.
+    `  #myst-css-namespace {`,
+    `    padding: 0 !important; min-height: 0 !important; background: transparent !important;`,
+    `  }`,
+    `  .myst-preview {`,
+    `    display: block !important; position: static !important;`,
+    `    height: auto !important; max-height: none !important; overflow: visible !important;`,
+    `    padding: 0 !important; border: 0 !important; box-shadow: none !important; background: transparent !important;`,
+    `  }`,
+    `  html-chunk {`,
+    // Every slide, not the one on screen. The exported pane is in presentation
+    // mode, which hides all but the current slide -- so without this, printing
+    // produced a one-page PDF of wherever the reader happened to be.
+    `    display: flex !important;`,
+    `    width: ${w}px !important; height: ${h}px !important;`,
+    `    transform: none !important;`,
+    `    margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;`,
+    `    overflow: hidden; break-inside: avoid;`,
+    `  }`,
+    // Breaks declared *before* each slide but the first, rather than after
+    // each one. `break-after` asks for a break that the next slide's own
+    // start can duplicate, and anything at all between two slides -- or a
+    // fraction of a pixel of overshoot on the last line -- then costs a blank
+    // page. Asking for the break where it is wanted leaves no room for a
+    // second one.
+    `  html-chunk + html-chunk { break-before: page; }`,
+    `  hr.slide-break { display: none !important; }`,
+    // Everything is on the page at once: a reveal that survived into print
+    // would hand out slides carrying their first third only.
+    `  hr.fragment-break ~ * { visibility: visible !important; }`,
+    `}`,
+  ].join("\n");
+}
+
+export async function exportSlides(tab) {
+  const path = tab?.currentFileHandle;
+  const preview = findPreview(tab);
+  if (!slidesReady(preview)) return;
+  if (typeof path !== "string" || !path) {
+    showToast("Save the document first, so the export has a name and a folder.", "error", 5000);
+    return;
+  }
+
+  const title = stemOf(path);
+  const { css, theme, clone, w, h } = slidesMaterial(tab, preview);
+  // The exported deck is always projecting: one slide, centred, filling the
+  // window. The class is the editor's own, so the collected stylesheet
+  // already says what it means.
+  clone.classList.add("presenting");
+
+  // The exported file prints as a deck from any browser: the same page rules
+  // as the editor's own printing, with nothing to hide around them. The page
+  // size cannot be a custom property, so it is written with the deck's own
+  // numbers -- which is why these rules are built rather than kept in a file.
+  const extra =
+    `${slidesPrintCss(w, h)}\n` +
+    `html, body { margin: 0; padding: 0; height: 100%; background: var(--panel-bg, #fff); }\n` +
+    `.slide-frozen-code { margin: 0; padding: 0.6em 0.9em; overflow: auto; font-family: ui-monospace, monospace;\n` +
+    `  font-size: 0.75em; line-height: 1.35; background: rgba(127,127,127,0.09); border-radius: 4px; white-space: pre-wrap; }\n`;
+
+  const html =
+    `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
+    `<title>${title.replace(/[<&]/g, (m) => (m === "<" ? "&lt;" : "&amp;"))}</title>\n` +
+    `<style>\n${css}\n${extra}\n</style>\n</head>\n<body>\n` +
+    `<div id="myst-css-namespace" data-theme="${theme}">\n${clone.outerHTML}\n</div>\n` +
+    `<script>${SLIDES_EXPORT_JS}<\/script>\n` +
+    `</body>\n</html>\n`;
+
+  try {
+    const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+    const dir = `${dirName(path)}/${EXPORT_DIR}`;
+    await mkdir(dir, { recursive: true }).catch(() => {});
+    const name = `${slugify(title)}-slides.html`;
+    await writeTextFile(`${dir}/${name}`, html);
+    showToast(`Exported to ${EXPORT_DIR}/${name}`, "success", 6000);
+    await openExported(`${dir}/${name}`);
+  } catch (err) {
+    console.error("[export] slides export failed:", err);
+    showToast(`Slides export failed: ${err}`, "error", 0);
+  }
+}

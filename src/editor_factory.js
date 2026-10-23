@@ -164,6 +164,10 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
       action: async () => { await mystExport.exportCurrentFile(tab, "pdf"); },
       options: () => {
         const running = mystExport.siteRunning();
+        // Only while the slide view is open: these two act on the deck as it
+        // is cut and drawn on screen, and offering them over an ordinary
+        // preview would promise something the pane is not showing.
+        const inSlides = window.myst_editor?.[tab.editorId]?.state?.options?.mode?.value === "Slides";
         return [
           {
             id: "export-pdf",
@@ -185,6 +189,17 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
             text: "🌐 Export HTML (rendered)",
             action: async () => { await mystExport.exportHtml(tab); },
           },
+          ...(inSlides
+            ? [
+                {
+                  id: "export-slides-html",
+                  // Also the way to a PDF: the exported file opens in the
+                  // browser, which prints it as a deck. See docs/slides.md.
+                  text: "🖥️ Export slides (HTML)",
+                  action: async () => { await mystExport.exportSlides(tab); },
+                },
+              ]
+            : []),
           // ----
           {
             id: "myst-build",

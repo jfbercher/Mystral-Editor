@@ -3,7 +3,7 @@
 A deck here is not a different kind of file. It is a document, cut into slides by markers it already knows how to write — which is the whole point: the admonitions, the cross-references, the bibliography, the maths with the document's own macros, the `{include}`s and the outputs of code cells are all still there, because nothing was converted.
 
 :::{note} What exists so far
-The **view** and the **presentation** are in place: the document cut into slides, drawn at projector size with the overflows flagged, and projected one at a time with the cells still live. The standalone export is the step that remains, and it reads the same cut — that is the reason the cut lives in a function of its own.
+The **view**, the **presentation** and the **exports** are in place: the document cut into slides, drawn at projector size with the overflows flagged, projected one at a time with the cells still live, and written out as a standalone HTML deck or printed to PDF. A PDF comes out of the print dialog, and the deck exports to one standalone HTML file. What remains is polish, and it reads the same cut — that is the reason the cut lives in a function of its own.
 :::
 
 ## Cutting a document into slides
@@ -112,6 +112,30 @@ Everything stays live. A cell can be edited and run in front of the room, which 
 That is also why `Page Down` and `Page Up` are listed first and marked *always*: they are what every presenter remote sends, and a remote has to keep working while the caret sits in a cell. The arrows and the space bar navigate too — except when the caret is inside a cell's editor, where they do what they must and move the caret. That single exception is what decides whether the mode is pleasant or unbearable.
 
 A slide can of course overflow if a cell's output turns out longer than expected. That is the author's business, and the editing view flags it beforehand.
+
+## Exporting  
+
+While the slide view is open, the 📦 menu carries two more entries.
+
+**Export slides (HTML)** writes one standalone file into `_build/exports` and opens it in your browser. It is also how you get a PDF — see below. It opens as a deck: one slide at a time, filling the window, with the same keys as the presentation — and `f` for fullscreen, since there is no editor around it to ask. The slide number is kept in the address, so a link can point at a slide.
+
+Nothing is loaded from anywhere: the stylesheet, the theme and the navigation are all inside the file. The navigation is about seventy lines, which is the point — a deck that needs two hundred kilobytes of library to turn its own pages is a deck that stops working the day the library does.
+
+The **code cells are frozen**: the code as text, the output as it last stood. Neither Pyodide nor CodeMirror is embedded, and that is deliberate — Pyodide is tens of megabytes of wasm plus its packages, which a file sent by email does not carry, and loading it from a CDN would only move the problem to a room with no network. The live cells stay in the editor, which is where the demonstration happens. An export is an export, and says so.
+
+### The PDF  
+
+There is no PDF command, and that is the design rather than a gap. Exporting the deck opens it in your browser; printing it from there — "Save as PDF" in the dialog — gives edge-to-edge pages at exactly the slide's dimensions, one slide per page, every fragment revealed, in the right orientation and with nothing to adjust. Two clicks, and they are the two you were already making.
+
+A PDF command inside the application was built and taken out again, which is worth recording so it is not rebuilt. A stylesheet can declare the size and orientation of a printed page — the `@page` rule — and WebKit, which the desktop application runs inside on macOS, ignores that declaration. From inside the application the deck could therefore only be fitted to whatever sheet the dialog handed it, with the orientation chosen by hand, and the result was never quite right. Browsers honour the declaration, so the exported file prints correctly without any of that.
+
+The remaining alternative would be to bundle a headless browser, which is what reveal.js and Marp both require to make their PDF — a dependency to install, locate on three platforms and explain. A browser already on the machine does the same job for nothing.
+
+The same thing is on `shortcuts.print`, `Mod-Alt-p` by default — not plain `Mod-P`, which is the webview's own print on some platforms and is routinely claimed by a screenshot tool. It is a setting, so take whichever key is free on your machine; and if the key does nothing on yours, the menu entry does the same job.
+
+The page is sized to the slide — 1280×720 or whatever the deck declares — so nothing is scaled or cropped on the way to the paper. That one rule has to be written at the moment of printing rather than kept in the stylesheet, because `@page` cannot read a custom property; it is written and then removed.
+
+Printing is also how this editor avoids a dependency the alternatives carry: reveal.js and Marp both need a headless browser to produce a PDF, which would have to be installed, found and explained. A print dialog is already on every machine.
 
 ## How it works, and why it matters
 

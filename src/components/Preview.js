@@ -996,9 +996,18 @@ const Preview = styled.div`
     html-chunk[data-fragment] hr.fragment-break ~ * {
       visibility: visible !important;
     }
-    html-chunk {
-      display: block !important;
-      break-after: page;
+
+    /* Note: printing a deck is NOT done from here. A stylesheet inside a
+       shadow root cannot select anything outside it, so a rule hung on a
+       class put on <html> matches nothing -- and printing then falls back to
+       the screen layout, which clips the output to one screenful. The deck is
+       printed from a copy placed in the page's own document; see
+       utils/local_utils/mystExport.js. */
+
+    /* Controls are for the screen. */
+    .slide-present-btn,
+    .slide-zoom-badge {
+      display: none !important;
     }
 
     p {

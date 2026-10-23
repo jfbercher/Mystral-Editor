@@ -16,6 +16,7 @@
     "process:allow-restart",
     "dialog:default",
     "core:webview:allow-set-webview-zoom",
+    "core:webview:allow-print",
     "shell:allow-open",
     "opener:default",
     "opener:allow-default-urls",
