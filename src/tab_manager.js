@@ -354,6 +354,18 @@ export class TabManager {
     if (!tabInfo) return;
 
     const removeTab = () => {
+      // Marked closed, and its listeners taken down, *before* anything else.
+      // Editor ids are reused -- `nextAvailableEditorId()` hands back the
+      // lowest free one -- so anything of this tab's that outlives it will
+      // answer for the next tab to take that id. A document listener still
+      // holding this tab would then write that document's text into this
+      // tab's file, which is how a closed tab's file came back holding the
+      // contents of a file opened after it.
+      tabInfo.tabState.closed = true;
+      if (tabInfo.tabState._onCellRan) {
+        document.removeEventListener("pyodide-cell-ran", tabInfo.tabState._onCellRan);
+        tabInfo.tabState._onCellRan = null;
+      }
       if (tabInfo.mounted) window.myst_editor[editorId]?.remove();
       clearCellCache(editorId);
       tabInfo.container.remove();

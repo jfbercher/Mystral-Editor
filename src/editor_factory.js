@@ -327,11 +327,18 @@ export function mountEditor(mnt_options) {
         let followTimer = null;
         const onCellRan = (ev) => {
           if (ev.detail?.owner !== editorId) return;
+          // Belt and braces against the hazard above: a tab that has been
+          // closed never writes again, whatever reaches its listener.
+          if (tab.closed) return;
           if (!mystExport.siteRunning?.() || !tab.autoSaveEnabled) return;
           // `runAllCells` clicks the buttons one after another, so this waits
           // for the series to settle rather than saving once per cell.
           clearTimeout(followTimer);
           followTimer = setTimeout(async () => {
+            // Closed while the timer was pending: the handle still points at
+            // this tab's file, and the editor it would read from belongs to
+            // somebody else by now.
+            if (tab.closed) return;
             // `tab.autosave()` would be the obvious call and it is the wrong
             // one: it writes only when the document is dirty, and re-running a
             // cell changes no text -- an output is not a source. Nothing was
@@ -350,7 +357,12 @@ export function mountEditor(mnt_options) {
           }, 600);
         };
         // Removed first: onReady runs again when a tab is remounted, and a
-        // second listener would save twice.
+        // second listener would save twice. The tab manager removes it for
+        // good when the tab closes -- `tab._onCellRan` is the handle it uses,
+        // and leaving one behind is not a leak but a hazard: editor ids are
+        // reused (`nextAvailableEditorId` returns the lowest free one), so a
+        // listener outliving its tab answers for the next tab to take that id,
+        // and writes that document's text into this tab's file.
         if (tab._onCellRan) document.removeEventListener("pyodide-cell-ran", tab._onCellRan);
         tab._onCellRan = onCellRan;
         document.addEventListener("pyodide-cell-ran", onCellRan);
