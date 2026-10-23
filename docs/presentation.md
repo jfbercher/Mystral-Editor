@@ -384,6 +384,14 @@ What is separated is the variables; imported modules, matplotlib's state and the
 
 Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. 
 
+ℹ️ **On the published site, the cells stay alive.** The figures the editor
+computed are carried into the MyST site as they are, so a reader sees them
+without waiting for anything; and if the document declares a `kernelspec`, the
+same cells can be re-run in the reader's own browser, the result replacing the
+figure in place. Nothing is installed for that — the kernel is JupyterLite,
+fetched on demand, and only when someone actually presses Run. See
+[export](export.md) for the keys that enable it.
+
 There is more information on [executable-content](executable-content.md) which covers all of it.
 
 ## Document Organization and Navigation

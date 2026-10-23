@@ -52,6 +52,75 @@ exports:
 
 A `template:` line is written only when `config.json` names one for that format, under `export.templates`. `mystmd` ships no default template (therefore inventing one here would silently change how every export looks).
 
+### The plugins the editor installs
+
+Two things a document does here have no equivalent in `mystmd` and would vanish
+from every export without help: what the Pyodide cells computed, which `mystmd`
+never executed and therefore knows nothing about, and the `exercise` /
+`solution` pair, which it parses and then has no writer for. Two small mystmd
+plugins carry both across.
+
+They are written into `myst-plugins/` beside `myst.yml` when the editor sets a
+project up, and declared there:
+
+```yaml
+project:
+  plugins:
+    - myst-plugins/exercise-admonition.mjs
+    - myst-plugins/pyodide-outputs.mjs
+  static_files:
+    - _build/pyodide
+```
+
+In the project rather than referenced from the application, so that the project
+builds for anyone who opens it, with `myst build` alone and without this
+editor. They are kept in step with the application — rewritten when they differ,
+before an export, a build or a site start — but `myst.yml` itself is never
+touched again after the project is created. **A project made before this
+existed, or set up by hand, needs those lines added once.** Without them
+nothing fails: the figures are simply absent, which is the hardest kind of
+defect to attribute.
+
+`static_files` is what makes the cell images reachable from the site: the
+editor writes them under `_build/pyodide`, and that entry copies the folder
+into the site's public folder under its own name.
+
+### Cells that stay executable on the site
+
+The figures the editor computed travel into the site as they are, so a reader
+sees them straight away. If the document also declares a `kernelspec`, the same
+cells can be re-run in the reader's browser, the result replacing the figure in
+place:
+
+```yaml
+---
+kernelspec:
+  name: python3
+  display_name: 'Python 3'
+---
+```
+
+and, in the project file:
+
+```yaml
+project:
+  jupyter:
+    lite: true
+```
+
+`kernelspec` is what decides, document by document: without it a page is never
+executed and keeps the editor's figures; with it the page becomes replayable.
+`jupyter.lite` is the in-browser kernel (JupyterLite), loaded on demand — a
+reader who never presses Run pays nothing for it. The editor writes
+`jupyter: lite: true` when it creates a project; `kernelspec` is yours to add,
+since it is a statement about that document.
+
+`myst start --execute` exists as well and is rarely what you want: it computes
+the outputs at build time with a **local** Jupyter kernel — so it needs one
+installed, with your packages — and its results are cached and then take
+precedence for good. The editor's own figures already provide the initial state
+without any of that.
+
 ### The project file as a model for the exports
 
 The entry has to be in the **document's** frontmatter, not only in the project's `myst.yml`: `myst build <file>` reads the page's own block, and an export declared only in the project is built with the default template as though it had not been declared at all. Declaring it per file is therefore not a preference but what mystmd requires.
@@ -67,7 +136,7 @@ Rather than leave that to be discovered, the editor looks for it the first time 
 ### Directives mystmd does not know
 What leaves the editor is the source, not the rendered preview: `mystmd` parses the document again, with its own set of directives. One it does not know is not left as it is and is not reported in the exported file -- it is emptied of its content at parse time, so the block and everything inside it are simply absent from the PDF, the LaTeX or the Word file, while `myst build` says `unknown directive: <name>` in its output.
 
-This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair, [described here](https://mystmd.org/guide/exercises),  has no equivalent at all in `mystmd` and does not survive an export for now, except if you use this [plugin](https://github.com/jupyter-book/myst-plugins/tree/main/plugins/exercise-admonition-pdf).
+This matters for the proof family, which `mystmd` registers only as `proof:theorem` and `prf:theorem`, never as a bare `theorem`: write the prefixed form in a document meant to be exported (see [directives and roles](directives-and-roles.md)). The `exercise` and `solution` pair, [described here](https://mystmd.org/guide/exercises), has no writer at all in `mystmd`: the nodes are parsed and then dropped silently. The editor's own plugin brings them back as titled admonitions, numbered as mystmd numbered them, in every static export — see *The plugins the editor installs* above. (A [plugin of the same spirit](https://github.com/jupyter-book/myst-plugins/tree/main/plugins/exercise-admonition-pdf) exists upstream for PDF builds.)
 
 ### Labels of the proof family: lowercase only
 A theorem, a proposition or any other member of the proof family must be given a **lowercase** label in a document meant to be exported. `mystmd` writes its anchor in the `.tex` with the normalised form of the label, which is lowercased, while it writes every cross-reference with the label as it was typed: a `:label: My-Theorem` therefore produces `\label{my-theorem}` and `\ref{My-Theorem}` in the same file, LaTeX resolves neither, and the number comes out as `??` in the PDF. An issue has been open on that. Headings, equations, figures and tables are not affected -- their handlers write the label unchanged.

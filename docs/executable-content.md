@@ -240,6 +240,30 @@ Modules are recorded by name and re-imported on load. A module the document inst
 
 One subtlety about restored functions. `cloudpickle` rebuilds a function with its own copy of the globals it reads, which would leave a restored `f()` seeing the value a variable had when the document was saved rather than its current one. Restored functions are therefore rebound to the live namespace, so they follow the document's variables as they did before it was closed. Methods of a restored class keep their own snapshot, which is out of reach of that mechanism.  
 
+## Cells that stay alive on the published site  
+
+A cell is not only alive in the editor. When a document is published as a MyST
+site, what its cells computed here is carried across and shown as it is, so a
+reader sees the figures straight away, without waiting and without running
+anything.  
+
+And if the document declares a `kernelspec` in its frontmatter, those same
+cells can be **re-run by the reader**, in their own browser, the new result
+replacing the figure in place. The kernel is JupyterLite — Python compiled to
+WebAssembly, like the one running here — fetched only when someone actually
+presses Run, so a reader who never does pays nothing for it. Nothing is
+installed on their machine, and nothing on yours: no Jupyter server is
+involved.  
+
+The two states coexist on purpose: the figures you computed are the document's
+initial condition, and a kernel, when the reader starts one, takes over from
+there. A document without `kernelspec` is simply never executed on the site and
+keeps your figures — which is the right choice for notes meant to be read
+rather than played with.  
+
+The keys that enable this, and where each belongs, are in
+[export](export.md#cells-that-stay-executable-on-the-site).  
+
 ## The variable inspector  
 
 **Vars**, or `Alt-v`, opens a window listing what the document's namespace holds: one row per variable with its type, memory footprint, shape and a short `repr`. Its title names the namespace when it is not the shared one. Columns sort on click, the filter box matches names and types, and a checkbox adds modules, functions and classes, which are hidden by default.  
