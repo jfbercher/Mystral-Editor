@@ -303,6 +303,9 @@ export class TabManager {
     this.activeTabId = editorId;
     this.touchTab(editorId);
     const tabInfo = this.openTabs.get(editorId);
+    // A tab mounted before the site was started holds a stale URL for the
+    // "MyST site" view; it is asked again each time the tab comes forward.
+    tabInfo?.tabState?._refreshSiteUrl?.();
     if (tabInfo.tabState.currentFileHandle && !tabInfo.mounted && !tabInfo.savedText){ //Startup
       const fileHandle = tabInfo.tabState.currentFileHandle;
       await localUtils.loadWorkingFolderOnStartup();

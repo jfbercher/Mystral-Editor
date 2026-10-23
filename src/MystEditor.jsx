@@ -12,6 +12,7 @@ import { batch, computed, signal, effect, useSignal, useSignalEffect } from "@pr
 import { MystContainer } from "./styles/MystStyles";
 import { syncCheckboxes } from "./markdown/markdownCheckboxes";
 import { TableOfContents } from "./components/TableOfContents";
+import { SitePane } from "./components/SitePane";
 import ErrorModal from "./components/ErrorModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createLogger, Logger } from "./logger";
@@ -41,6 +42,8 @@ const EditorParent = styled.div`
       case "Outline":
         return "#preview-wrapper { display: none };";
       case "Inline":
+        return "#preview-wrapper { display: none }";
+      case "Site":
         return "#preview-wrapper { display: none }";
       default:
         return ``;
@@ -296,6 +299,11 @@ function stopResize() {
               {options.mode.value === "Outline" && (
                 <FlexWrapper className="flex-wrapper">
                   <TableOfContents />
+                </FlexWrapper>
+              )}
+              {options.mode.value === "Site" && (
+                <FlexWrapper id="site-wrapper" className="flex-wrapper">
+                  <SitePane />
                 </FlexWrapper>
               )}
             </MystWrapper>

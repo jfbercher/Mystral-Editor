@@ -2066,6 +2066,8 @@ export async function mystBuild(tab) {
 
 let siteChild = null;
 let sitePortInUse = null;
+/** The folder the running server was started in; a site serves one project. */
+let siteDir = null;
 /** Set while stopping on purpose, so the close handler stays quiet. */
 let siteStopping = false;
 /** Disarms the opener armed for the current run; a no-op when none is armed. */
@@ -2166,6 +2168,7 @@ export async function startSite(tab) {
   try {
     siteChild = await cmd.spawn();
     sitePortInUse = port;
+    siteDir = dir;
   } catch (err) {
     cancelSiteOpener();
     console.error("[export] myst start failed:", err);
@@ -2289,6 +2292,39 @@ function flushCellEdits(tab) {
   return true;
 }
 
+/**
+ * The page of the running site that shows this document, or "".
+ *
+ * Empty whenever there is nothing to point at -- no server, or a server
+ * serving another project -- which is what the editor reads to decide whether
+ * the site view exists at all. Better an absent button than one leading to
+ * somebody else's document.
+ *
+ * The index page is the exception that cost an evening elsewhere: myst gives
+ * the first entry of the `toc` the slug `index` and serves it at the root,
+ * whatever the file is called. The toc is read rather than guessed, since
+ * guessing is what went wrong before.
+ */
+export async function sitePageUrl(tab) {
+  const path = tab?.currentFileHandle;
+  if (!siteChild || typeof path !== "string" || !path) return "";
+  const dir = projectDir(tab);
+  if (!dir || (siteDir && dir !== siteDir)) return "";
+
+  const base = `http://localhost:${sitePortInUse ?? sitePort()}`;
+  try {
+    const { readTextFile, exists } = await import("@tauri-apps/plugin-fs");
+    const ymlPath = `${dir}/myst.yml`;
+    if (await exists(ymlPath)) {
+      const first = /^\s*-\s*file:\s*(.+?)\s*$/m.exec(await readTextFile(ymlPath));
+      if (first && baseName(first[1]) === baseName(path)) return `${base}/`;
+    }
+  } catch (err) {
+    console.warn("[export] the project's toc could not be read:", err);
+  }
+  return `${base}/${slugify(stemOf(path))}`;
+}
+
 export async function stopSite() {
   if (!siteChild) return;
   siteStopping = true;
@@ -2302,6 +2338,7 @@ export async function stopSite() {
   siteChild = null;
   await freeSitePorts(pid);
   sitePortInUse = null;
+  siteDir = null;
   showToast("MyST site stopped.", "success", 4000);
 }
 

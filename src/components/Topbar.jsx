@@ -491,6 +491,18 @@ export const EditorTopbar = ({ alert, buttons }) => {
       },
       { id: "outline", text: "Table of Contents", action: () => (options.mode.value = "Outline"), icon: TocIcon },
     ];
+    // Only while a site is being served: `options.siteUrl` is set by the
+    // desktop build when `myst start` runs and empty everywhere else, so this
+    // button exists exactly when it has somewhere to go.
+    if (options.siteUrl.value) {
+      modeButtons.push({
+        id: "site",
+        text: "MyST site",
+        tooltip: "The document as the published site renders it",
+        action: () => setMode("Site"),
+        icon: PreviewIcon,
+      });
+    }
     if (options.collaboration.value.resolvingCommentsEnabled) {
       modeButtons.push({ id: "resolved", text: "Resolved", action: () => (options.mode.value = "Resolved"), icon: ResolvedIcon });
     }

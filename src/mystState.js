@@ -212,8 +212,17 @@ const defaults = {
   id: "",
   title: "",
   subtitle: "",
-  /** @type {"Both" | "Preview" | "Source" | "Diff" | "Resolved" | "Outline" | "Inline"} */
+  /** @type {"Both" | "Preview" | "Source" | "Diff" | "Resolved" | "Outline" | "Inline" | "Site"} */
   mode: "Both",
+  /**
+   * The page of the running MyST site that shows the current document, or "".
+   *
+   * Set by the desktop build while `myst start` is running, and empty
+   * everywhere else -- which is also what tells the "Site" view mode and its
+   * button that there is nothing to show. The editor itself knows nothing of
+   * myst: it is handed a URL or it is not.
+   */
+  siteUrl: "",
   initialText: "",
   includeButtons: defaultButtons,
   topbar: true,

@@ -201,12 +201,19 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
             id: "myst-site",
             text: running ? `⏹️ Stop the MyST site` : "🚀 Start the MyST site",
             action: async () => {
-              if (mystExport.siteRunning()) { await mystExport.stopSite(); return; }
+              if (mystExport.siteRunning()) {
+                await mystExport.stopSite();
+                // Through the tab: this menu is built in `makeButtons`, and
+                // the function itself lives in `mountEditor`.
+                await tab._refreshSiteUrl?.();
+                return;
+              }
               if (!(await mystExport.hasMystYml(tab))) {
                 showToast("No myst.yml in this folder: myst start has no site to serve.", "error", 6000);
                 return;
               }
               await mystExport.startSite(tab);
+              await tab._refreshSiteUrl?.();
             },
           },
         ];
@@ -279,6 +286,32 @@ export function mountEditor(mnt_options) {
     openTab,
   } = mnt_options;
   
+  /**
+   * Point the "MyST site" view at this document's page, or at nothing.
+   *
+   * Asked for rather than watched: a server starts and stops from the menu
+   * here, and those are the only two moments it can change -- plus the
+   * editor's own start-up, in case one was already running. `sitePageUrl`
+   * answers "" when there is no server or when it serves another project,
+   * which is what makes the view's button disappear.
+   *
+   * "Site" is deliberately absent from `allowedModes` below: a mode restored
+   * from the last session must not open on an empty frame.
+   */
+  const refreshSiteUrl = async () => {
+    const opts = window.myst_editor?.[editorId]?.state?.options;
+    if (!opts?.siteUrl) return;
+    try {
+      opts.siteUrl.value = (await mystExport.sitePageUrl?.(tab)) || "";
+    } catch (err) {
+      console.warn("[site] the page URL could not be computed:", err);
+    }
+  };
+
+  // Reachable from the tab manager: a tab activated while a site is already
+  // running was mounted before it started, so its URL is stale until asked.
+  tab._refreshSiteUrl = refreshSiteUrl;
+
   //type EditorMode = "Source" | "Preview" | "Both" | "Diff" | "Resolved" | "Outline" | "Inline"; // version typeScript
   const allowedModes = ["Source", "Preview", "Both", "Diff", "Resolved", "Outline", "Inline"];
   const storedMode = localStorage.getItem("editorMode");
@@ -324,6 +357,11 @@ export function mountEditor(mnt_options) {
         // on its own: it does nothing unless the user has left autosave on,
         // which is their consent to the editor writing by itself. No setting
         // of our own asks again what has already been answered.
+        // What the "MyST site" view points at. Empty unless a server is running
+        // for this document's project, which is also what makes the view's
+        // button appear at all.
+        refreshSiteUrl();
+
         let followTimer = null;
         const onCellRan = (ev) => {
           if (ev.detail?.owner !== editorId) return;
