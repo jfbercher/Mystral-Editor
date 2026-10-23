@@ -37,6 +37,9 @@ import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
 import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
+import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
+import { splitTextForSlides, resolveSlideSettings } from "./markdown/slideCut";
+import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
 import { scanFootnotes, markdownItFootnoteRefs, markdownItFootnoteDefs, renderFootnotesSection } from "./markdown/markdownFootnotes";
 import {
@@ -229,6 +232,7 @@ export class TextManager {
         .use(markdownPyodide, { parent: options.parent, editorId: options.id.value })
         .use(markdownItMath, this.options.id.value)
         .use(markdownSourceMap)
+        .use(markdownSlideBreaks)
         .use(markdownItHeadings)
         .use(markdownItFootnoteDefs)
         .use(markdownItFootnoteRefs)
@@ -399,7 +403,7 @@ export class TextManager {
       : {};
     const newChunks = this.splitTextIntoChunks(chunkLookup);
 
-    const previewVisible = ["Both", "Preview"].includes(this.options.mode.value) || force;
+    const previewVisible = ["Both", "Preview", "Slides"].includes(this.options.mode.value) || force;
     if (this.preview.value && previewVisible) {
       const chunkEls =
         this.chunks.length == newChunks.length ? newChunks.map((c) => this.preview.value.querySelector(`html-chunk#html-chunk-${c.id}`)) : [];
@@ -771,8 +775,19 @@ export class TextManager {
     let renderMs = 0
     let sanitizeMs = 0
     let cacheHits = 0
-    const realChunks = this.text.value
-      .split(/(?=\n#{1,3} )/g)
+    // In slide mode the render chunks are the slides. That is not an
+    // optimisation but the whole design: a slide is then one `<html-chunk>`,
+    // the view is a stylesheet, and no node is ever moved -- which is what
+    // keeps a cell's editor, its output and its kernel attachment alive while
+    // the document is being typed. See markdown/slideCut.js.
+    const slideMode = this.options.mode.value === "Slides";
+    // Resolved here because this is where the effective frontmatter already
+    // is, and kept on the instance for the view to read: a deck declares its
+    // own geometry and type size, and the cut must use the same ones.
+    this.slideSettings = resolveSlideSettings(fm, appConfig.slides);
+    const realChunks = (slideMode
+      ? splitTextForSlides(this.text.value, { cutAtHeading: this.slideSettings.cutAtHeading })
+      : this.text.value.split(/(?=\n#{1,3} )/g))
       .reduce((chunks, textChunk) => {
         const lastChunkIdx = chunks.length - 1;
         const lastChunk = chunks[lastChunkIdx];

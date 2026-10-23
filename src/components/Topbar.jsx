@@ -309,6 +309,13 @@ const BothIcon = () => (
   </svg>
 );
 
+const SlidesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+    <rect x="1.5" y="2.5" width="13" height="9" rx="1" />
+    <path d="M8 11.5v2M5.5 13.5h5" />
+  </svg>
+);
+
 const InlinePreviewIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
     <path d="M120-240v-80h520v80H120Zm664-40L584-480l200-200 56 56-144 144 144 144-56 56ZM120-440v-80h400v80H120Zm0-200v-80h520v80H120Z" />
@@ -490,6 +497,7 @@ export const EditorTopbar = ({ alert, buttons }) => {
         icon: DiffIcon,
       },
       { id: "outline", text: "Table of Contents", action: () => (options.mode.value = "Outline"), icon: TocIcon },
+      { id: "slides", text: "Slides", tooltip: "The document cut into slides, at projector size", action: () => setMode("Slides"), icon: SlidesIcon },
     ];
     // Only while a site is being served: `options.siteUrl` is set by the
     // desktop build when `myst start` runs and empty everywhere else, so this

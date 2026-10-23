@@ -744,6 +744,88 @@ img.align-center {
   }
 `;
 
+/**
+ * The slide view.
+ *
+ * A slide is a render chunk -- `splitTextForSlides` cuts the text where the
+ * slides are cut -- so the whole view is this stylesheet plus the measurements
+ * `slidesView.js` writes as attributes and custom properties. Nothing is
+ * moved, which is what lets a cell keep its editor, its output and its kernel
+ * while the document is typed.
+ *
+ * The box is laid out at its nominal size and optically reduced by `scale()`,
+ * so text wraps here exactly as it will wrap on the projector. A preview that
+ * reflowed to the pane would report an overflow where there is none, or miss
+ * one -- which is worse than having no preview.
+ */
+const SlideStyles = css`
+  /* The slides are wider than the pane before they are scaled down, and the
+     transform leaves the layout width untouched. */
+  overflow-x: hidden;
+
+  /* The marker opening each slide is the cut itself; a rule across the top of
+     every slide would only say so a second time. */
+  hr.slide-break {
+    display: none;
+  }
+
+  & > html-chunk {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    width: var(--slide-w, 1280px);
+    height: var(--slide-h, 720px);
+    padding: 48px 56px;
+    overflow: hidden;
+    /* Headings, lists, maths and code are all sized in em, so this one
+       declaration sets the scale of the whole slide. 16px is a document; a
+       slide is read from the back of a room. slides.fontSize sets it. */
+    font-size: var(--slide-font, 28px);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px var(--box-shadow);
+    transform: scale(var(--slide-scale, 1));
+    transform-origin: top left;
+    /* scale() does not change the space a box takes, so the surplus is taken
+       back here: the box occupies its full height in the layout and only its
+       scaled height on screen. */
+    margin-bottom: calc(var(--slide-h, 720px) * (var(--slide-scale, 1) - 1) + 24px);
+  }
+
+  & > html-chunk::after {
+    content: attr(data-slide-index) " / " attr(data-slide-total);
+    position: absolute;
+    right: 20px;
+    bottom: 14px;
+    font-size: 18px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* The question the author actually has. A slide is a fixed box and a
+     document does not know it is one: this is what says, before the lecture
+     rather than during it, which slides do not fit. */
+  & > html-chunk[data-slide-overflow] {
+    border-color: #c4463a;
+  }
+  & > html-chunk[data-slide-overflow]::before {
+    content: "overflows";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 4px 20px;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #fff;
+    background: rgba(196, 70, 58, 0.92);
+    text-align: right;
+    pointer-events: none;
+  }
+`;
+
 const Preview = styled.div`
   background-color: var(--panel-bg);
   padding: 20px;
@@ -765,6 +847,8 @@ const Preview = styled.div`
   scrollbar-width: thin;
 
   ${MdStyles}
+
+  ${(props) => props.mode === "Slides" && SlideStyles}
 
   @media print {
     & {

@@ -107,6 +107,22 @@ These shortcuts apply only while the cursor is inside a code-cell editor, and th
 
 ---
 
+## `slides` — the slide view and the slide export
+
+One section for both, deliberately: the view, the fullscreen presentation and the export read the same settings and the same cut, so that what is rehearsed is what is projected.
+
+| Key | Default | Meaning |
+|---|-------|---|
+| `slides.width` | `1280` | Nominal width of a slide, in pixels. |
+| `slides.height` | `720` | Nominal height. `1280×720` is 16:9; set `1024×768` for 4:3. |
+| `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
+| `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |
+| `slides.transition` | `"slide"` | How one slide gives way to the next: `"none"`, `"fade"` or `"slide"`. |
+
+A slide is laid out at its nominal size and then optically reduced to fit whatever panel it is shown in. That is the reason the size is a setting rather than the panel's width: a preview that reflowed to the panel would show text wrapping differently from the projector, and would report an overflow where there is none, or miss one — which is worse than having no preview.
+
+---
+
 ## `export` — export menu (Tauri only)
 
 This section drives the 📦 menu, which shells out to `myst` and therefore exists only in the desktop build.

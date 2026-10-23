@@ -162,6 +162,34 @@ export const DEFAULT_CONFIG = {
     },
   },
 
+  // Slides: the view, the presentation and the export read the same settings,
+  // because a deck rehearsed in the editor has to be the deck that is
+  // projected. They are posted here as a set rather than added one at a time.
+  slides: {
+    // Nominal size of a slide, in pixels. The slide is laid out at this size
+    // and then optically reduced to fit the panel, so what fits fits at any
+    // panel width -- a preview that reflowed to the panel would say a slide
+    // overflows when it does not, or the reverse, which is worse than having
+    // no preview at all. 1280x720 is 16:9; 1024x768 is 4:3.
+    width: 1280,
+    height: 720,
+    // How big the text of a slide is, in pixels *of the nominal slide*. It is
+    // the one setting of this section one actually fiddles with, so it is a
+    // plain number rather than a stylesheet to override: a slide is read from
+    // the back of a room, and 16px -- a document's size -- is far too small.
+    // Everything on a slide is sized in em, so this one value scales headings,
+    // lists, maths and code together. It is nominal, so it does not depend on
+    // the width of the pane: 28 looks the same in a half-width panel and on
+    // the projector. Roughly 15 lines of body text fit at 28, 11 at 36.
+    fontSize: 28,
+    // Also start a slide at every heading of this level or above, which makes
+    // a document that was never written as a deck presentable without touching
+    // it. 0 means only the explicit `---` markers cut.
+    cutAtHeading: 0,
+    // How one slide gives way to the next: "none", "fade" or "slide".
+    transition: "slide",
+  },
+
   // Tauri-only export menu (myst build / myst start).
   export: {
     // Command used to invoke mystmd. It is run through a login shell, so the

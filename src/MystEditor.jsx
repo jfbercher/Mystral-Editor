@@ -17,6 +17,7 @@ import ErrorModal from "./components/ErrorModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createLogger, Logger } from "./logger";
 import { setupPreviewPopups, invalidatePreviewMapCache } from "./utils/previewPopup";
+import { attachSlideView } from "./markdown/slidesView";
 
 
 
@@ -45,6 +46,11 @@ const EditorParent = styled.div`
         return "#preview-wrapper { display: none }";
       case "Site":
         return "#preview-wrapper { display: none }";
+      // The slides are the preview, re-cut: both panes stay, and the source
+      // stays beside them, which is the point -- one edits while watching
+      // where the cuts fall.
+      case "Slides":
+        return "#resolved-wrapper { display: none }";
       default:
         return ``;
     }
@@ -151,6 +157,15 @@ const MystEditor = () => {
   useEffect(() => {
     if (options.parent) setupPreviewPopups(options.parent, text);
   }, []);
+
+  // The slide view measures and labels; it never restructures. Attached only
+  // while the mode is on, and it undoes everything it set when it leaves.
+  useSignalEffect(() => {
+    if (options.mode.value !== "Slides") return;
+    const el = text.preview.value;
+    if (!el) return;
+    return attachSlideView(el);
+  });
 
   useEffect(() => {
   return () => {

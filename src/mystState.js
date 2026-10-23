@@ -212,7 +212,7 @@ const defaults = {
   id: "",
   title: "",
   subtitle: "",
-  /** @type {"Both" | "Preview" | "Source" | "Diff" | "Resolved" | "Outline" | "Inline" | "Site"} */
+  /** @type {"Both" | "Preview" | "Source" | "Diff" | "Resolved" | "Outline" | "Inline" | "Site" | "Slides"} */
   mode: "Both",
   /**
    * The page of the running MyST site that shows the current document, or "".

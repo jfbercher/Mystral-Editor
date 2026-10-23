@@ -38,6 +38,7 @@ project:
         - file: include.md   
         - file: directives-and-roles.md  
         - file: executable-content.md
+        - file: slides.md
         - file: project-frontmatter-extends.md
         - file: customisation-reference.md  
         - file: myst-editor-css-variables.md
