@@ -130,8 +130,33 @@ export function splitTextForSlides(text, { cutAtHeading = 0 } = {}) {
     : /(?=\n-{3}[ \t]*(?:\n|$))/g;
 
   const parts = rest.split(re);
-  if (head) parts[0] = head + (parts[0] ?? "");
-  return parts.length ? parts : [src];
+
+  // A marker and a heading can fall in the same place -- `---` followed by
+  // `## Topic` while the deck also cuts at headings -- and the text between
+  // the two cuts is then the marker and nothing else. Left alone that is a
+  // slide: empty, numbered, and baffling. Such a piece is folded into the one
+  // it opens, so the two cuts count as the one the author made, and the
+  // pieces still concatenate back to the original text.
+  const bare = (piece) => /^\n?-{3}[ \t]*\n*$/.test(piece);
+  const out = [];
+  let pending = "";
+  for (const part of parts) {
+    if (bare(part)) {
+      pending += part;
+      continue;
+    }
+    out.push(pending + part);
+    pending = "";
+  }
+  // A marker with nothing after it at all: it opens no slide, so it belongs
+  // to the end of the last one rather than to a slide of its own.
+  if (pending) {
+    if (out.length) out[out.length - 1] += pending;
+    else out.push(pending);
+  }
+
+  if (head) out[0] = head + (out[0] ?? "");
+  return out.length ? out : [src];
 }
 
 /** A positive number, or null. */
@@ -204,4 +229,130 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
     transition: fm.transition ?? defaults.transition ?? "slide",
   };
+}
+
+/**
+ * Settings that belong to one slide, written as commented YAML under its
+ * marker.
+ *
+ *     ---
+ *     % fontSize: 44
+ *     % verticalAlign: center
+ *     % header: ""
+ *
+ *     # One big idea
+ *
+ * Why `%` rather than something on the marker itself: `---` has to stay a
+ * horizontal rule as far as markdown-it is concerned -- that is what makes
+ * the cut readable from the rendered DOM, and what keeps the slide and
+ * fragment markers apart. Text after it would stop being a rule and would
+ * need a block rule of our own, which means touching the cut. A `%` line is
+ * already a MyST comment, already invisible in the render, and costs nothing.
+ * (MyST does give `---` brace attributes of its own, which is a second reason
+ * to leave it alone.)
+ *
+ * Only the block at the very top of the slide counts, so a comment written
+ * further down stays a comment. "The top" means past whatever opened the
+ * slide -- its marker, the frontmatter on the first one, or, when the deck is
+ * cut at headings, the heading itself: a slide opened by `## Topic` has no
+ * marker to write under, and the block belongs under the title.
+ */
+export function slideOverrides(text) {
+  const src = String(text ?? "");
+  const lines = src.split("\n");
+  let i = 0;
+
+  // Past the marker that opens the slide, or past a frontmatter block on the
+  // first one.
+  if (lines[i]?.trim() === "") i += 1;
+  if (/^-{3,}\s*$/.test(lines[i] ?? "")) {
+    if (i === 0 && lines.slice(1).some((l) => /^-{3}\s*$/.test(l))) {
+      // A frontmatter block: skip to just past its closing marker.
+      const close = lines.findIndex((l, k) => k > 0 && /^-{3}\s*$/.test(l));
+      i = close + 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  const out = {};
+  let found = 0;
+  let skippedHeading = false;
+  for (; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.trim() === "") continue;
+    // The heading that opens a slide when the deck is cut at headings, or
+    // the title written under a marker. Stepped over once, and only before
+    // anything has been read, so that a heading further down still ends the
+    // block as any other content does.
+    if (!found && !skippedHeading && /^#{1,6}\s/.test(line)) {
+      skippedHeading = true;
+      continue;
+    }
+    const m = /^\s*%\s*([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(line);
+    if (!m) break;
+    found += 1;
+    const key = m[1];
+    let value = m[2].trim();
+    // One level of quoting, as YAML would: `header: ""` is how a slide says
+    // it wants no header, and that has to survive as an empty string rather
+    // than as nothing at all.
+    if (/^(".*"|'.*')$/.test(value)) value = value.slice(1, -1);
+    out[key] = value;
+  }
+  return out;
+}
+
+/** A CSS value tame enough to put in a style attribute. */
+const tameValue = (v) => {
+  const t = String(v ?? "").trim();
+  if (!t || t.length > 100) return null;
+  return /^[A-Za-z0-9 #%.,()\-_/]+$/.test(t) ? t : null;
+};
+
+/**
+ * The style attribute carrying a slide's own settings.
+ *
+ * Everything a slide can override is already a custom property the slide's
+ * own rules read, so overriding one on the slide is enough -- no new rule, no
+ * JavaScript at render time, and the inline style travels into the export and
+ * onto the printed page by itself.
+ *
+ * The values are whitelisted and filtered rather than trusted: this ends up
+ * in an attribute, and `"` or `;` in it would break out of the declaration.
+ */
+export function slideStyle(overrides) {
+  const o = overrides ?? {};
+  const decls = [];
+  const px = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? `${n}px` : tameValue(v);
+  };
+
+  const add = (prop, value) => {
+    if (value) decls.push(`${prop}: ${value}`);
+  };
+
+  if (o.fontSize !== undefined) add("--slide-font", px(o.fontSize));
+  if (o.cellFontSize !== undefined) add("--slide-code-font", px(o.cellFontSize));
+  if (o.background !== undefined) add("--slide-bg", tameValue(o.background));
+  if (o.padding !== undefined) add("--slide-padding", tameValue(o.padding));
+  if (o.verticalAlign !== undefined) {
+    const centred = ["center", "centre", "middle"].includes(String(o.verticalAlign).toLowerCase());
+    add("--slide-align", centred ? "center" : "flex-start");
+    // The same margin that carries the centring, so a slide that centres
+    // itself keeps its header and footer at their edges.
+    add("--slide-header-push", centred ? "auto" : "0.7em");
+  }
+  return decls.join("; ");
+}
+
+/** The header and footer a slide overrides, as data attributes. */
+export function slideFurnitureData(overrides) {
+  const o = overrides ?? {};
+  const data = {};
+  for (const key of ["header", "footer", "footerPage"]) {
+    if (o[key] !== undefined) data[key] = String(o[key]);
+  }
+  return data;
 }

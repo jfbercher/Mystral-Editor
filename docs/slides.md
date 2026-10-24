@@ -94,6 +94,41 @@ Both lines are part of the slide's column, so they reserve their own space and t
 
 The header and footer are **text**. They cannot hold MyST — a link, a date computed for you, a logo — because of how they are built, and widening that would be a different feature rather than a bigger string.
 
+### Settings for one slide  
+
+A slide can answer for itself, in a block of MyST comments written directly under its marker:
+
+```
+---
+% fontSize: 44
+% verticalAlign: center
+% header: ""
+% background: "#1d1f21"
+
+# One big idea
+```
+
+When the deck is cut at headings (`cutAtHeading`) there is no marker to write under, so the block goes under the heading instead:
+
+```
+## A denser topic
+
+% fontSize: 22
+% cellFontSize: 16
+
+...
+```
+
+Either way, only the block at the very top of a slide counts, so a `%` comment written further down stays a comment, and a second heading ends the block like any other content.
+
+Writing both — a `---` and then a heading, with `cutAtHeading` on — is one cut and not two. The marker and the heading that follows it belong to the same slide, so the block can go under either. The keys are `fontSize`, `cellFontSize`, `padding`, `background`, `verticalAlign`, `header`, `footer` and `footerPage`, each overriding the deck's own for that slide alone. An empty value is an answer and not an omission: `header: ""` is how a title slide asks for no header.
+
+The two cases this earns its place for are a title slide centred in the middle of a deck aligned to the top, and a dense slide that wants a smaller body than the rest.
+
+`%` rather than something on the marker: `---` has to stay a horizontal rule as far as the renderer is concerned — that is what lets the cut be read from the rendered page, and what keeps slide and fragment markers apart. Text after it would stop being a rule and would need a parsing rule of our own, which means touching the cut itself. MyST also gives `---` brace attributes of its own, which is a second reason to leave it alone. A `%` line is already a MyST comment and already invisible.
+
+What a slide declares is carried by the slide element itself, because everything it can override is a custom property the slide's own rules already read. Nothing is applied afterwards, and the exported deck and the printed page inherit it without a line of code. Values are filtered rather than trusted, so a stray quote or semicolon costs the setting and nothing else.
+
 ### Centring  
 
 `slides.verticalAlign: center` puts the content in the middle of the box instead of flush with the top. Centring suits a deck of short slides; a lecture whose slides are uneven usually reads better flush to the top, where the titles line up from one slide to the next instead of drifting up and down. It is per deck too, so it can live in the frontmatter.

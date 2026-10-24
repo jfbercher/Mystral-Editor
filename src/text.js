@@ -38,7 +38,7 @@ import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/
 import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
-import { splitTextForSlides, resolveSlideSettings } from "./markdown/slideCut";
+import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
 import { scanFootnotes, markdownItFootnoteRefs, markdownItFootnoteDefs, renderFootnotesSection } from "./markdown/markdownFootnotes";
@@ -187,6 +187,33 @@ export const lineAtOffset = (starts, offset) => {
 };
 
 /** This class stores the document text and renders the Markdown in the Preview */
+/** A slide's own settings, as attributes of the chunk that renders it. */
+function slideAttrs(chunk) {
+  const parts = [];
+  if (chunk.slideStyle) parts.push(` style="${chunk.slideStyle.replace(/"/g, "&quot;")}"`);
+  for (const [key, value] of Object.entries(chunk.slideData ?? {})) {
+    parts.push(` data-slide-${key.toLowerCase()}="${String(value).replace(/[<&"]/g, (c) => ({ "<": "&lt;", "&": "&amp;", '"': "&quot;" })[c])}"`);
+  }
+  return parts.join("");
+}
+
+/** The same, set on an element that already exists. */
+function applySlideAttrs(el, chunk) {
+  if (!el) return;
+  const style = chunk.slideStyle ?? "";
+  if ((el.getAttribute("style") ?? "") !== style) {
+    if (style) el.setAttribute("style", style);
+    else el.removeAttribute("style");
+  }
+  const data = chunk.slideData ?? {};
+  for (const key of ["header", "footer", "footerpage"]) {
+    const attr = `data-slide-${key}`;
+    const wanted = data[key] ?? data[key === "footerpage" ? "footerPage" : key];
+    if (wanted === undefined) el.removeAttribute(attr);
+    else if (el.getAttribute(attr) !== wanted) el.setAttribute(attr, wanted);
+  }
+}
+
 export class TextManager {
   /** @type {number} - pending requestAnimationFrame id, 0 when no render is scheduled */
   #renderFrame = 0;
@@ -411,7 +438,9 @@ export class TextManager {
       if (this.chunks.length != newChunks.length || chunkEls.some((el) => !el)) {
         const toRemove = [...this.preview.value.childNodes].filter((c) => !c.classList || !c.classList.contains("cm-previewFocus"));
         toRemove.forEach((c) => this.preview.value.removeChild(c));
-        this.preview.value.innerHTML += newChunks.map((c) => `<html-chunk id="html-chunk-${c.id}">${c.html}</html-chunk>`).join("");
+        this.preview.value.innerHTML += newChunks
+          .map((c) => `<html-chunk id="html-chunk-${c.id}"${slideAttrs(c)}>${c.html}</html-chunk>`)
+          .join("");
       } else {
         // Save scroll position before patching: removing tall elements (code-cell hosts) can cause
         // scrollTop to clamp to 0. We restore it via RAF, which fires after MutationObserver
@@ -422,6 +451,10 @@ export class TextManager {
         // Patch only chunks whose rendered html changed (covers transform output with unchanged source).
         newChunks.forEach((chunk, idx) => {
           if (chunk.html !== this.chunks[idx].html) chunkEls[idx].innerHTML = chunk.html;
+          // On this path the element is kept and only its contents are
+          // replaced, so a slide's own settings have to be restated: they
+          // live on the element, not in the html.
+          applySlideAttrs(chunkEls[idx], chunk);
         });
 
         requestAnimationFrame(() => { previewEl.scrollTop = savedScrollTop; });
@@ -887,7 +920,23 @@ export class TextManager {
             }),
           ); */
 
-        return { text, hash, id: chunkId, html, oldId: chunkLookup[hash]?.oldId, startLine, endLine };
+        // A slide's own settings, read from the commented block under its
+        // marker. They are carried by the chunk element itself -- everything
+        // a slide can override is a custom property its own rules already
+        // read -- so there is nothing to apply afterwards, and the export and
+        // the printed page inherit them without a line of code.
+        const overrides = slideMode ? slideOverrides(text) : null;
+        return {
+          text,
+          hash,
+          id: chunkId,
+          html,
+          oldId: chunkLookup[hash]?.oldId,
+          startLine,
+          endLine,
+          slideStyle: overrides ? slideStyle(overrides) : "",
+          slideData: overrides ? slideFurnitureData(overrides) : {},
+        };
       });
 
       if (timing_debug) console.log(`chunks: ${realChunks.length}, hits: ${cacheHits}, render: ${renderMs.toFixed(0)}ms, sanitize: ${sanitizeMs.toFixed(0)}ms`);

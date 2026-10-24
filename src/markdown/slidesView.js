@@ -159,24 +159,33 @@ function fillTemplate(tpl, n, total) {
  * mutation observer triggers, and a pass that always wrote would wake itself.
  */
 function furnish(el, index, total, s) {
-  const wantHeader = !!s.header;
-  const pageText = s.footerPage ? fillTemplate(s.footerPage, index, total) : "";
-  const wantFooter = !!(s.footer || pageText);
+  // A slide may say otherwise for itself, in the commented block under its
+  // marker; the renderer put that on the element. An empty string is an
+  // answer -- it is how a title slide asks for no header -- so what counts is
+  // whether the attribute is there, not whether it has content.
+  const own = (key, fallback) => (el.dataset[key] === undefined ? fallback : el.dataset[key]);
+  const header = own("slideHeader", s.header);
+  const footerText = own("slideFooter", s.footer);
+  const footerTpl = own("slideFooterpage", s.footerPage);
 
-  let header = el.querySelector(":scope > .slide-header");
+  const wantHeader = !!header;
+  const pageText = footerTpl ? fillTemplate(footerTpl, index, total) : "";
+  const wantFooter = !!(footerText || pageText);
+
+  let headerEl = el.querySelector(":scope > .slide-header");
   if (wantHeader) {
-    if (!header) {
-      header = document.createElement("div");
-      header.className = "slide-header";
-      el.insertBefore(header, el.firstChild);
-    } else if (el.firstChild !== header) {
-      el.insertBefore(header, el.firstChild);
+    if (!headerEl) {
+      headerEl = document.createElement("div");
+      headerEl.className = "slide-header";
+      el.insertBefore(headerEl, el.firstChild);
+    } else if (el.firstChild !== headerEl) {
+      el.insertBefore(headerEl, el.firstChild);
     }
-    if (header.textContent !== s.header) header.textContent = s.header;
+    if (headerEl.textContent !== header) headerEl.textContent = header;
     const css = safeCss(s.headerStyle);
-    if (header.getAttribute("style") !== css) header.setAttribute("style", css);
-  } else if (header) {
-    header.remove();
+    if (headerEl.getAttribute("style") !== css) headerEl.setAttribute("style", css);
+  } else if (headerEl) {
+    headerEl.remove();
   }
 
   let footer = el.querySelector(":scope > .slide-footer");
@@ -191,7 +200,7 @@ function furnish(el, index, total, s) {
     }
     const left = footer.querySelector(".slide-footer-text");
     const right = footer.querySelector(".slide-footer-page");
-    if (left && left.textContent !== s.footer) left.textContent = s.footer;
+    if (left && left.textContent !== footerText) left.textContent = footerText;
     if (right && right.textContent !== pageText) right.textContent = pageText;
     const css = safeCss(s.footerStyle);
     if (footer.getAttribute("style") !== css) footer.setAttribute("style", css);
