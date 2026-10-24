@@ -143,7 +143,7 @@ A slide can of course overflow if a cell's output turns out longer than expected
 
 ## Exporting  
 
-While the slide view is open, the 📦 menu carries two more entries.
+While the slide view is open, the 📦 menu carries one more entry: 
 
 **Export slides (HTML)** writes one standalone file into `_build/exports` and opens it in your browser. It is also how you get a PDF — see below. It opens as a deck: one slide at a time, filling the window, with the same keys as the presentation — and `f` for fullscreen, since there is no editor around it to ask. The slide number is kept in the address, so a link can point at a slide.
 
@@ -153,7 +153,7 @@ The **code cells are frozen**: the code as text, the output as it last stood. Ne
 
 ### The PDF  
 
-There is no PDF command, and that is the design rather than a gap. Exporting the deck opens it in your browser; printing it from there — "Save as PDF" in the dialog — gives edge-to-edge pages at exactly the slide's dimensions, one slide per page, every fragment revealed, in the right orientation and with nothing to adjust. Two clicks, and they are the two you were already making.
+There is no PDF export command, and that is the design rather than a gap. Exporting the deck opens it in your browser; printing it from there — "Save as PDF" in the dialog — gives edge-to-edge pages at exactly the slide's dimensions, one slide per page, every fragment revealed, in the right orientation and with nothing to adjust. Two clicks, and they are the two you were already making.
 
 A PDF command inside the application was built and taken out again, which is worth recording so it is not rebuilt. A stylesheet can declare the size and orientation of a printed page — the `@page` rule — and WebKit, which the desktop application runs inside on macOS, ignores that declaration. From inside the application the deck could therefore only be fitted to whatever sheet the dialog handed it, with the orientation chosen by hand, and the result was never quite right. Browsers honour the declaration, so the exported file prints correctly without any of that.
 
