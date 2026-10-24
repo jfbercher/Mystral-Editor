@@ -190,6 +190,37 @@ export const DEFAULT_CONFIG = {
     // the width of the pane: 28 looks the same in a half-width panel and on
     // the projector. Roughly 15 lines of body text fit at 28, 11 at 36.
     fontSize: 28,
+    // The margin inside a slide, as a CSS padding shorthand: one value for
+    // all four sides, two for vertical and horizontal, four for top, right,
+    // bottom, left. "32px 56px" keeps the sides and gives back a third of the
+    // height, which is where a dense slide runs out first -- and it is the
+    // space above the header and below the footer as much as around the body,
+    // since both sit inside it.
+    padding: "48px 56px",
+    // A line across the top of every slide, and one across the foot. Empty
+    // means none, and an empty header costs no space.
+    //
+    // The footer is in two parts, so that a page number can sit at the right
+    // while something else sits at the left: `footer` is the left, and
+    // `footerPage` a template for the right, where `{n}` and `{total}` are
+    // replaced -- "Slide {n}/{total}", or just "{n}". Defining a footerPage
+    // puts the number in the footer and takes away the small one in the
+    // corner, so it cannot appear twice.
+    //
+    // These are per deck far more often than per installation: a lecture
+    // title belongs in the document, not in the application. The frontmatter
+    // takes the same keys.
+    header: "",
+    footer: "",
+    footerPage: "",
+    // CSS declarations, applied to the header and footer as they stand --
+    // "font-size: 18px; color: #888; border-bottom: 1px solid #ddd". The
+    // browser parses them and drops what it does not understand, and they
+    // cannot reach anything but the element they are given to.
+    headerStyle: "",
+    footerStyle: "",
+    // The slide's own background, as any CSS colour. Empty follows the theme.
+    background: "",
     // Where the content of a slide sits in its box: "top" or "center".
     // Centring suits a deck of short slides; a lecture whose slides are uneven
     // reads better flush to the top, where the titles line up from one slide

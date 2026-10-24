@@ -117,6 +117,13 @@ One section for both, deliberately: the view, the fullscreen presentation and th
 | `slides.width` | `1280` | Nominal width of a slide, in pixels. |
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9; set `1024×768` for 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
+| `slides.padding` | `"48px 56px"` | The margin inside a slide, as a CSS padding shorthand. It is the space above the header and below the footer as much as around the body, since both sit inside it. |
+| `slides.header` | `""` | A line across the top of every slide. Empty means none, and costs no space. |
+| `slides.footer` | `""` | The left-hand part of a line across the foot of every slide. |
+| `slides.footerPage` | `""` | The right-hand part of the footer, as a template: `{n}` and `{total}` are replaced — `"Slide {n}/{total}"`, or just `"{n}"`. Setting it moves the slide number into the footer and removes the badge in the corner. |
+| `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
+| `slides.footerStyle` | `""` | The same, for the footer. |
+| `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |

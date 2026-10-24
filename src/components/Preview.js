@@ -820,13 +820,13 @@ const SlideStyles = css`
     box-sizing: border-box;
     width: var(--slide-w, 1280px);
     height: var(--slide-h, 720px);
-    padding: 48px 56px;
+    padding: var(--slide-padding, 48px 56px);
     overflow: hidden;
     /* Headings, lists, maths and code are all sized in em, so this one
        declaration sets the scale of the whole slide. 16px is a document; a
        slide is read from the back of a room. slides.fontSize sets it. */
     font-size: var(--slide-font, 28px);
-    background: var(--panel-bg);
+    background: var(--slide-bg, var(--panel-bg));
     border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 2px 10px var(--box-shadow);
@@ -841,6 +841,45 @@ const SlideStyles = css`
   /* While the overflow is being measured: see slidesView.js. */
   &.measuring-slides > html-chunk {
     justify-content: flex-start;
+  }
+
+  /* The header and the footer, which are real elements put there by the
+     slide view: both pseudo-elements of a slide are already spoken for, and
+     the content property carries one string, so a footer with text at left and
+     a page number at the right cannot be written that way at all.
+
+     They take part in the column, so they reserve their own space and the
+     overflow check counts them -- which is what one wants: a slide that no
+     longer fits once it has a footer does not fit. */
+  & > html-chunk > .slide-header,
+  & > html-chunk > .slide-footer {
+    flex: none;
+    font-size: 0.6em;
+    line-height: 1.3;
+    opacity: 0.7;
+  }
+  & > html-chunk > .slide-header {
+    /* padding above the rule, margin below it. */
+    padding-bottom: 0.4em;
+    margin-bottom: var(--slide-header-push, 0.7em);
+  }
+  & > html-chunk > .slide-footer {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1em;
+    /* Pinned to the foot whatever the content above it does. */
+    margin-top: auto;
+    padding-top: 0.4em;
+  }
+  & > html-chunk > .slide-footer > .slide-footer-page {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The badge in the corner steps aside when the footer carries the number. */
+  & > html-chunk[data-footer-page]::after {
+    content: none;
   }
 
   /* Code cells, which cannot follow the prose on their own.
@@ -966,40 +1005,40 @@ const SlideStyles = css`
      the last break passed is made *invisible*, so the slide does not reflow
      under the audience as a list is uncovered. One rule per level; twelve
      fragments on a single slide is already more than anyone should write. */
-  & > html-chunk[data-fragment="0"] hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="0"] hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="1"] hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="1"] hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="2"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="2"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="3"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="3"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="4"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="4"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="5"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="5"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="6"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="6"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="7"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="7"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="8"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="8"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="9"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="9"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="10"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="10"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
-  & > html-chunk[data-fragment="11"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ * {
+  & > html-chunk[data-fragment="11"] hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ hr.fragment-break ~ *:not(.slide-header):not(.slide-footer) {
     visibility: hidden;
   }
 

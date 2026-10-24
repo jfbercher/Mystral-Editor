@@ -69,6 +69,31 @@ Then the capacity. What decides how much text a slide holds is not the type size
 
 They matter again later, and more literally: the standalone export and the printed PDF will use these as real dimensions.
 
+### A header, a footer, a background  
+
+```yaml
+---
+title: Fourier series
+slides:
+  header: Signal processing — M1
+  footer: J.-F. Bercher
+  footerPage: Slide {n}/{total}
+  background: "#f7f7f5"
+  padding: 28px 56px
+  headerStyle: "font-size: 18px; color: #888; border-bottom: 1px solid #ddd"
+---
+```
+
+The footer is in two parts so that a page number can sit at the right while something else sits at the left. `footerPage` is a template — `{n}` and `{total}` are replaced — and defining it moves the number into the footer and takes away the badge in the corner, so it cannot appear twice. Leave `footerPage` out and the badge stays as it was.
+
+`headerStyle` and `footerStyle` take CSS declarations as they stand. They are handed to the browser, which parses them, drops what it does not recognise, and keeps them inside the element they belong to — so a mistake costs that one line and never the stylesheet.
+
+Both lines are part of the slide's column, so they reserve their own space and the overflow check counts them. A slide that no longer fits once it has a footer does not fit, and the editing view says so, which is the honest answer.
+
+`slides.padding` sets the margin inside the slide — a CSS padding shorthand, `48px 56px` by default. It is the space above the header and below the footer as much as around the body, since both sit inside it, so `"28px 56px"` is the way to pull those two lines towards the edges without touching the sides. A value the browser does not accept is ignored rather than applied, so a typo costs the setting and not the layout.
+
+The header and footer are **text**. They cannot hold MyST — a link, a date computed for you, a logo — because of how they are built, and widening that would be a different feature rather than a bigger string.
+
 ### Centring  
 
 `slides.verticalAlign: center` puts the content in the middle of the box instead of flush with the top. Centring suits a deck of short slides; a lecture whose slides are uneven usually reads better flush to the top, where the titles line up from one slide to the next instead of drifting up and down. It is per deck too, so it can live in the frontmatter.
@@ -159,6 +184,13 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.width` | `1280` | Nominal width of a slide, in pixels. |
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9, `1024×768` is 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
+| `slides.padding` | `"48px 56px"` | The margin inside a slide, as a CSS padding shorthand. It is the space above the header and below the footer as much as around the body, since both sit inside it. |
+| `slides.header` | `""` | A line across the top of every slide. Empty means none, and costs no space. |
+| `slides.footer` | `""` | The left-hand part of a line across the foot of every slide. |
+| `slides.footerPage` | `""` | The right-hand part of the footer, as a template: `{n}` and `{total}` are replaced — `"Slide {n}/{total}"`, or just `"{n}"`. Setting it moves the slide number into the footer and removes the badge in the corner. |
+| `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
+| `slides.footerStyle` | `""` | The same, for the footer. |
+| `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also cut at every heading of this level or above. `0` means markers only. |

@@ -179,6 +179,13 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
   const cut = fm.cutAtHeading ?? fm.cutatheading ?? fm["cut-at-heading"] ?? defaults.cutAtHeading;
   const cutLevel = Number(cut);
 
+  // Text, taken as written. The empty string means "none", so a deck can turn
+  // off what its project sets.
+  const text = (...candidates) => {
+    for (const c of candidates) if (typeof c === "string" || typeof c === "number") return String(c);
+    return "";
+  };
+
   const align = String(fm.verticalAlign ?? fm.verticalalign ?? fm["vertical-align"] ?? defaults.verticalAlign ?? "top").toLowerCase();
 
   return {
@@ -187,6 +194,13 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     height: pick(fm.height, defaults.height) ?? 720,
     fontSize: pick(fontSize, defaults.fontSize) ?? 28,
     cellFontSize: pick(cellFontSize, defaults.cellFontSize) ?? 18,
+    padding: text(fm.padding, defaults.padding) || "48px 56px",
+    header: text(fm.header, defaults.header),
+    footer: text(fm.footer, defaults.footer),
+    footerPage: text(fm.footerPage, fm.footerpage, fm["footer-page"], defaults.footerPage),
+    headerStyle: text(fm.headerStyle, fm.headerstyle, fm["header-style"], defaults.headerStyle),
+    footerStyle: text(fm.footerStyle, fm.footerstyle, fm["footer-style"], defaults.footerStyle),
+    background: text(fm.background, defaults.background),
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
     transition: fm.transition ?? defaults.transition ?? "slide",
   };

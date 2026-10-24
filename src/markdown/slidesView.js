@@ -75,6 +75,15 @@ function writeZoom(z) {
 function slideSize(settings) {
   const s = settings ?? config.slides ?? {};
   return {
+    furniture: {
+      header: s.header ?? "",
+      footer: s.footer ?? "",
+      footerPage: s.footerPage ?? "",
+      headerStyle: s.headerStyle ?? "",
+      footerStyle: s.footerStyle ?? "",
+    },
+    background: s.background ?? "",
+    padding: s.padding ?? "",
     w: Number(s.width) || 1280,
     h: Number(s.height) || 720,
     // Nominal too, like the rest: the text is sized inside the 1280x720 box
@@ -89,6 +98,111 @@ function slideSize(settings) {
 /** The fragment breaks of a slide, which are its direct children. */
 function fragmentCount(el) {
   return el.querySelectorAll(":scope > hr.fragment-break").length;
+}
+
+/**
+ * CSS declarations, as the browser understands them.
+ *
+ * A round trip through a detached element's `style`: it parses the text,
+ * drops whatever it does not recognise, and -- the point of doing it this way
+ * -- cannot produce anything that escapes the element it is given to. A stray
+ * brace in a frontmatter would otherwise have been a stray brace in a
+ * stylesheet, which takes the rest of the stylesheet with it.
+ */
+function safeCss(decl) {
+  const probe = document.createElement("div");
+  try {
+    probe.style.cssText = String(decl ?? "");
+  } catch {
+    return "";
+  }
+  return probe.style.cssText;
+}
+
+/**
+ * One CSS value, if the browser agrees it is one.
+ *
+ * A custom property accepts any text, and the declaration that reads it only
+ * fails later, when the value turns out to be nonsense -- at which point the
+ * property falls back to its inherited value rather than to the fallback
+ * written in `var()`. So a typo in a padding would not give the default
+ * padding, it would give none at all. Asking the browser first avoids that.
+ */
+function cssValue(property, value) {
+  const probe = document.createElement("div");
+  try {
+    probe.style[property] = String(value ?? "");
+  } catch {
+    return "";
+  }
+  return probe.style[property] ?? "";
+}
+
+/** A footer template with its placeholders filled. */
+function fillTemplate(tpl, n, total) {
+  return String(tpl ?? "")
+    .replace(/\{n\}/g, String(n))
+    .replace(/\{total\}/g, String(total));
+}
+
+/**
+ * Give a slide its header and footer, or take them away.
+ *
+ * Real elements, not pseudo-elements, and not by choice: both pseudo-elements
+ * of a slide are already spoken for, and `content` carries a single string --
+ * so a footer with something on the left and a page number on the right
+ * cannot be written that way at all.
+ *
+ * Inserting rather than re-rendering is what makes this safe: the cells, the
+ * editors and their outputs are untouched. Everything here is idempotent and
+ * writes only when the value differs, because this runs inside the pass a
+ * mutation observer triggers, and a pass that always wrote would wake itself.
+ */
+function furnish(el, index, total, s) {
+  const wantHeader = !!s.header;
+  const pageText = s.footerPage ? fillTemplate(s.footerPage, index, total) : "";
+  const wantFooter = !!(s.footer || pageText);
+
+  let header = el.querySelector(":scope > .slide-header");
+  if (wantHeader) {
+    if (!header) {
+      header = document.createElement("div");
+      header.className = "slide-header";
+      el.insertBefore(header, el.firstChild);
+    } else if (el.firstChild !== header) {
+      el.insertBefore(header, el.firstChild);
+    }
+    if (header.textContent !== s.header) header.textContent = s.header;
+    const css = safeCss(s.headerStyle);
+    if (header.getAttribute("style") !== css) header.setAttribute("style", css);
+  } else if (header) {
+    header.remove();
+  }
+
+  let footer = el.querySelector(":scope > .slide-footer");
+  if (wantFooter) {
+    if (!footer) {
+      footer = document.createElement("div");
+      footer.className = "slide-footer";
+      footer.innerHTML = '<span class="slide-footer-text"></span><span class="slide-footer-page"></span>';
+      el.appendChild(footer);
+    } else if (el.lastChild !== footer) {
+      el.appendChild(footer);
+    }
+    const left = footer.querySelector(".slide-footer-text");
+    const right = footer.querySelector(".slide-footer-page");
+    if (left && left.textContent !== s.footer) left.textContent = s.footer;
+    if (right && right.textContent !== pageText) right.textContent = pageText;
+    const css = safeCss(s.footerStyle);
+    if (footer.getAttribute("style") !== css) footer.setAttribute("style", css);
+  } else if (footer) {
+    footer.remove();
+  }
+
+  // The badge in the corner steps aside when the footer carries the number,
+  // so it can never be shown twice.
+  if (pageText) el.dataset.footerPage = "1";
+  else delete el.dataset.footerPage;
 }
 
 /** True when the caret is inside a cell's editor, where the arrows must edit. */
@@ -144,7 +258,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const measure = () => {
     frame = 0;
-    const { w, h, font, codeFont, align } = slideSize(getSettings());
+    const { w, h, font, codeFont, align, furniture, background, padding } = slideSize(getSettings());
     const style = getComputedStyle(preview);
     const inner = preview.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
     // A scale of 0 would collapse every box and, worse, make the overflow test
@@ -157,6 +271,19 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.setProperty("--slide-font", `${font}px`);
     preview.style.setProperty("--slide-code-font", `${codeFont}px`);
     preview.style.setProperty("--slide-align", align);
+    // Centred, the free space is shared between the header's bottom margin and
+    // the footer's top one, so the content sits in the middle while the two
+    // stay at their edges -- and that margin is itself the gap under the
+    // header. Flush to the top there is no free space to share, so the gap
+    // has to be given: without it the first line of the slide sat directly
+    // against the header's rule.
+    preview.style.setProperty("--slide-header-push", align === "center" ? "auto" : "0.7em");
+    if (background) preview.style.setProperty("--slide-bg", background);
+    else preview.style.removeProperty("--slide-bg");
+
+    const pad = cssValue("padding", padding);
+    if (pad) preview.style.setProperty("--slide-padding", pad);
+    else preview.style.removeProperty("--slide-padding");
     if (presenting) {
       // Projecting: one slide, as large as the display allows. The zoom does
       // not apply -- there is nothing to zoom towards once the slide fills the
@@ -185,6 +312,7 @@ export function attachSlideView(preview, getSettings = () => null) {
     all.forEach((el, i) => {
       el.dataset.slideIndex = String(i + 1);
       el.dataset.slideTotal = String(all.length);
+      furnish(el, i + 1, all.length, furniture);
       // scrollHeight against clientHeight on the box itself: the box has a
       // fixed height and hides what spills, so the difference is exactly what
       // the audience would not see. Two pixels of tolerance, because a border
@@ -414,12 +542,18 @@ export function attachSlideView(preview, getSettings = () => null) {
       delete el.dataset.slideOverflow;
       delete el.dataset.slideCurrent;
       delete el.dataset.fragment;
+      delete el.dataset.footerPage;
+      el.querySelector(":scope > .slide-header")?.remove();
+      el.querySelector(":scope > .slide-footer")?.remove();
     }
     preview.style.removeProperty("--slide-w");
     preview.style.removeProperty("--slide-h");
     preview.style.removeProperty("--slide-font");
     preview.style.removeProperty("--slide-code-font");
     preview.style.removeProperty("--slide-align");
+    preview.style.removeProperty("--slide-header-push");
+    preview.style.removeProperty("--slide-bg");
+    preview.style.removeProperty("--slide-padding");
     preview.classList.remove("measuring-slides");
     preview.style.removeProperty("--slide-scale");
   };
