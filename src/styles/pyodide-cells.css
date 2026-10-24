@@ -26,6 +26,7 @@
 .pyodide-params-bar[hidden]{display:none}
 .pyodide-param{display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem}
 .pyodide-param-name{font-family:var(--mono-font,monospace);opacity:.85}
+.pyodide-param input[type=checkbox]{margin:0;vertical-align:middle}
 .pyodide-param input[type=range]{width:9rem;vertical-align:middle}
 .pyodide-param-value{font-family:var(--mono-font,monospace);min-width:3ch;text-align:right;opacity:.9}
 .pyodide-btn-apply{margin-left:auto;font-weight:600}

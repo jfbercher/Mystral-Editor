@@ -22,7 +22,7 @@ import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirro
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { pythonHighlightStyle as pythonHighlight } from "../extensions/pythonHighlightStyle";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { parseParams, readValue, writeValue, quantise, formatValue } from "./cellParams.js";
+import { parseParams, readValue, readFlag, writeValue, quantise, formatValue, formatFlag } from "./cellParams.js";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -1466,6 +1466,22 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       name.className = "pyodide-param-name";
       name.textContent = spec.name;
 
+      // The range -- or the mere fact of being a flag -- is declared in the
+      // directive; the value lives in the code. One source of truth, so
+      // reopening a document shows what it will actually run.
+      if (spec.type === "bool") {
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        // The code wins when it says anything; the declaration is only what
+        // to start from when it does not.
+        box.checked = readFlag(editorContainer.value, spec.name) ?? spec.initial ?? false;
+        field.title = `${spec.name} — True or False`;
+        field.append(box, name);
+        paramsBar.append(field);
+        controls.push({ spec, input: box });
+        continue;
+      }
+
       const slider = document.createElement("input");
       slider.type = "range";
       slider.min = String(spec.min);
@@ -1475,8 +1491,6 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       const readout = document.createElement("output");
       readout.className = "pyodide-param-value";
 
-      // The range is declared in the directive, the value lives in the code:
-      // one source of truth, so reopening a document shows what it will run.
       const found = readValue(editorContainer.value, spec.name);
       const start = quantise(spec, Math.min(spec.max, Math.max(spec.min, found ?? spec.min)));
       slider.value = String(start);
@@ -1490,15 +1504,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
       field.append(name, slider, readout);
       paramsBar.append(field);
-      controls.push({ spec, slider });
+      controls.push({ spec, input: slider });
     }
 
     const applyBtn = mkBtn("pyodide-btn-apply", "Apply");
     applyBtn.title = "Write these values into the cell's code and run it";
     applyBtn.addEventListener("click", () => {
       let next = editorContainer.value;
-      for (const { spec, slider } of controls) {
-        next = writeValue(next, spec.name, formatValue(spec, quantise(spec, Number(slider.value))));
+      for (const { spec, input } of controls) {
+        const written =
+          spec.type === "bool"
+            ? formatFlag(input.checked)
+            : formatValue(spec, quantise(spec, Number(input.value)));
+        next = writeValue(next, spec.name, written);
       }
       // Setting .value dispatches a CM change; _syncToEditor then moves the
       // cache entry and tells the source side, exactly as a typed edit would.

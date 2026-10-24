@@ -67,6 +67,23 @@ const niceStep = (span) => {
 export function parseParams(spec) {
   const out = [];
   for (const piece of String(spec ?? "").split(",")) {
+    // A flag. No range to give, so it is matched first and separately rather
+    // than squeezed into the interval form.
+    //
+    // `debug = bool` says only that it is one; `debug = true` says that and
+    // what it should start at, which is the more useful of the two -- a flag
+    // declared without a value starts false every time, and a cell that wants
+    // its option on by default has no way to say so. Compared without regard
+    // to case, so `True`, `TRUE` and `FAlsE` all read as what they obviously
+    // mean; only what is *written into the code* has to carry Python's
+    // capitals.
+    const flag = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(bool|boolean|flag|true|false)\s*$/i.exec(piece);
+    if (flag) {
+      const declared = flag[2].toLowerCase();
+      out.push({ name: flag[1], type: "bool", initial: declared === "true" });
+      continue;
+    }
+
     // Lazy on both bounds, because `0.1..5` has dots on either side of the
     // separator: anything greedier swallows the `..` itself.
     const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\S+?)\s*\.\.\s*(\S+?)(?:\s+step\s+(\S+))?\s*$/.exec(piece);
@@ -83,19 +100,40 @@ export function parseParams(spec) {
       10,
       Math.max(decimalsOf(lo), decimalsOf(hi), st ? decimalsOf(st) : 0, decimalsOf(String(step))),
     );
-    out.push({ name, min, max, step, decimals });
+    out.push({ name, type: "number", min, max, step, decimals });
   }
   return out;
 }
 
+const NUMBER = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?";
+const BOOL = "True|False";
+
 /** The line that assigns `name`, as a RegExp with the value as group 2. */
-const assignment = (name) =>
-  new RegExp(`^([ \\t]*${name}[ \\t]*=[ \\t]*)([-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?)[ \\t]*$`, "m");
+const assignment = (name, pattern = `${NUMBER}|${BOOL}`) =>
+  new RegExp(`^([ \\t]*${name}[ \\t]*=[ \\t]*)(${pattern})[ \\t]*$`, "m");
 
 /** The value the code currently gives `name`, or null when it gives none. */
 export function readValue(code, name) {
-  const m = assignment(name).exec(String(code ?? ""));
+  const m = assignment(name, NUMBER).exec(String(code ?? ""));
   return m ? num(m[2]) : null;
+}
+
+/** The flag the code currently gives `name`, or null when it gives none. */
+export function readFlag(code, name) {
+  const m = assignment(name, BOOL).exec(String(code ?? ""));
+  return m ? m[2] === "True" : null;
+}
+
+/**
+ * A flag as Python writes it.
+ *
+ * `True` and `False`, with their capitals. Writing `true` would leave a cell
+ * that raises `NameError` the first time the box is ticked -- which would
+ * read as the feature being broken rather than as a spelling, and is the one
+ * mistake worth guarding by hand.
+ */
+export function formatFlag(on) {
+  return on ? "True" : "False";
 }
 
 /**

@@ -148,7 +148,7 @@ const DIRECTIVE_OPTIONS = {
   "code-block": ["filename", "linenos", "lineno-start", "emphasize-lines"],
   // `align`, `caption` and `label` only matter to an export: they turn the
   // figure a cell produced into a figure of the document.
-  "code-cell": ["tags", "linenos", "packages", "figwidth", "align", "caption", "label"],
+  "code-cell": ["tags", "linenos", "packages", "params", "figwidth", "align", "caption", "label"],
   literalinclude: ["lines", "language", "linenos", "start-at", "end-at"],
   admonition: ADMONITION_OPTIONS,
   dropdown: ["open", "icon"],
@@ -234,7 +234,13 @@ const roleOptions = ROLES.map(({ name, detail }) =>
  * more useful than an empty field. Written as a snippet placeholder, so it is
  * selected on arrival: typing replaces it, Tab keeps it.
  */
-const OPTION_PLACEHOLDERS = { width: "100%" };
+const OPTION_PLACEHOLDERS = {
+  width: "100%",
+  // `:params:` has a syntax nobody guesses, so the completion shows one
+  // rather than offering an empty field and leaving the reader to find the
+  // documentation. Selected on arrival, so typing replaces it.
+  params: "n = 1..100 step 1",
+};
 
 /** Les options MyST se mettent juste après la ligne d'ouverture, une par ligne. */
 const optionLines = (opts, blankAfter = true) =>

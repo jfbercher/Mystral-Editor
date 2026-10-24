@@ -156,17 +156,20 @@ A cell can declare that one of its numbers is meant to be varied:
 
 ```
 :::{code-cell}
-:params: n = 1..100 step 1, amp = 0.1..5
+:params: n = 1..100 step 1, amp = 0.1..5, grid = true
 
 n = 12
 amp = 1.0
+grid = True
 import numpy as np, matplotlib.pyplot as plt
 x = np.linspace(0, 1, 400)
 plt.plot(x, amp * np.sin(2 * np.pi * n * x))
 :::
 ```
 
-A strip appears under the editor with a slider per declared name and a single **Apply**. Each declaration is `name = min..max`, optionally followed by `step s`, and declarations are separated by commas. One that does not parse costs its own control rather than the whole cell.
+A strip appears under the editor with a control per declared name and a single **Apply**. `:params:` is offered by the completion of a `{code-cell}`, with an example value already in place, since the syntax is not one anybody guesses. Each declaration is `name = min..max`, optionally followed by `step s`, and declarations are separated by commas. A declaration of the form `name = bool` gives a checkbox instead of a slider, and writes `True` or `False` — with Python's capitals, since anything else would leave a cell that raises `NameError` the first time the box is ticked. Writing `name = true` or `name = false` instead declares the same checkbox *and* what it starts at, which is usually what you want: a flag declared as `bool` alone starts unticked every time, so a cell whose option should be on by default has no way to say so. The declaration is read without regard to case, so `True`, `TRUE` and `FAlsE` all mean what they look like; only the value written into the code carries Python's capitals.
+
+Whatever the declaration says, the code wins when it says anything: the initial value matters only when the cell does not already assign the name. One that does not parse costs its own control rather than the whole cell.
 
 The range is declared in the option; the *value* is read from the code and written back to it. Pressing Apply rewrites the cell's assignment -- `n = 12` becomes `n = 37` -- and then runs the cell. Reopening the document therefore shows what it will actually run, and there is no second place to keep in step.
 
