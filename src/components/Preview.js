@@ -786,6 +786,28 @@ const SlideStyles = css`
     display: none;
   }
 
+  /* The fragment marker is a marker, not a rule -- and it was being drawn as
+     one, right across the slide. It went unnoticed because it is usually
+     pushed out of a box that already overflows: lower the type size until the
+     slide fits and the bar appears, which reads as a bug introduced by the
+     type size and is in fact the thing that was always there.
+
+     Kept visible while editing, because it says where the reveal happens, but
+     drawn as a faint dashed line nobody would take for the document's own
+     horizontal rule. Gone the moment the deck is projected, exported or
+     printed, where it would only be a line across the slide. */
+  hr.fragment-break {
+    height: 0;
+    border: 0;
+    border-top: 1px dashed var(--border);
+    opacity: 0.45;
+    margin: 0.3em 0;
+  }
+
+  &.presenting hr.fragment-break {
+    display: none;
+  }
+
   & > html-chunk {
     /* A column, so slides.verticalAlign can place the content in the box.
        Children keep their own widths, and margins no longer collapse between

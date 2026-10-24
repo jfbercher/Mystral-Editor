@@ -2569,7 +2569,7 @@ function slidesPrintCss(w, h) {
     // page. Asking for the break where it is wanted leaves no room for a
     // second one.
     `  html-chunk + html-chunk { break-before: page; }`,
-    `  hr.slide-break { display: none !important; }`,
+    `  hr.slide-break, hr.fragment-break { display: none !important; }`,
     // Everything is on the page at once: a reveal that survived into print
     // would hand out slides carrying their first third only.
     `  hr.fragment-break ~ * { visibility: visible !important; }`,
