@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ipywidgets on bare Pyodide</title>
+    <style>
+      body { font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 48rem; }
+      h1 { font-size: 1.3rem; }
+      #status { padding: .5rem .75rem; border-radius: 6px; background: #eef; }
+      #status.bad { background: #fdecea; }
+      #status.good { background: #e9f7ee; }
+      #widget { margin: 1.5rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; min-height: 3rem; }
+      #log { font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; background: #fafafa;
+             border: 1px solid #eee; border-radius: 6px; padding: .75rem; max-height: 18rem; overflow: auto; }
+      button { font: inherit; padding: .35rem .8rem; }
+    </style>
+  </head>
+  <body>
+    <h1>ipywidgets on bare Pyodide</h1>
+    <p>
+      One question, nothing else: can a widget live on the editor's own Pyodide — no Jupyter kernel,
+      no worker — with a comm written by hand and the standard widget manager on the JavaScript side?
+      The answer is two-way or it is no: the slider must follow Python, and Python must follow the slider.
+    </p>
+    <p id="status" class="bad">main.js has not run — look at the browser console.</p>
+    <div id="widget"></div>
+    <p>
+      <button id="set3" disabled>Python: slider.value = 3</button>
+      <button id="read" disabled>Python: read slider.value</button>
+    </p>
+    <div id="log"></div>
+    <!--
+      html-manager is published compiled for webpack, and its bundle assigns
+      `__webpack_public_path__`. Inside an ES module that is strict-mode code,
+      where assigning to an undeclared name is a ReferenceError rather than an
+      implicit global -- so the import failed before a single line of ours
+      ran. Declaring it on `window` first makes the bare name resolve. Nothing
+      in a browser reads it; it only has to exist.
+
+      It is a shim, and it is worth noticing as one: it says this package
+      expects a bundler we do not use, which is a cost to count if the
+      experiment succeeds and the thing moves into the editor.
+    -->
+    <script>
+      window.__webpack_public_path__ = "";
+    </script>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
