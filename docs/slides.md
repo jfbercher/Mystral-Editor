@@ -81,7 +81,7 @@ That is deliberately not the same control as the type size, and the distinction 
 
 So: if the slides look too small to read comfortably while editing, zoom. If they look too small *projected*, raise `fontSize` — and expect some slides to start overflowing, which is the view telling you something true.
 
-A slide whose content does not fit its box is marked, with a red border and a band across its foot. That is the question the view exists to answer: a slide is a fixed box and a document does not know it is one, so the overflow is found here, before the lecture, rather than on the screen during it.
+A slide whose content does not fit its box is marked, with a red border and a band across its foot — in the editing view only. Projecting, exporting and printing drop the warning: it is addressed to the author, before the lecture, and by then there is nothing to be done about it anyway. That is the question the view exists to answer: a slide is a fixed box and a document does not know it is one, so the overflow is found here, before the lecture, rather than on the screen during it.
 
 Everything stays alive in this view: the Pyodide kernel, the cell editors, the outputs. A cell can be edited and run while the deck is being written — and, later, during the lecture itself.
 

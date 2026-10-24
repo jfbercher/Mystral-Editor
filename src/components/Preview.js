@@ -948,6 +948,20 @@ const SlideStyles = css`
     display: none;
   }
 
+  /* The overflow warning is for the author, not for the room. It is the
+     editing view's job to say, beforehand, which slides do not fit; once the
+     deck is being projected the audience is looking at the slide and the
+     warning would only be a red band across it -- and there is nothing to be
+     done about it at that point anyway. The border goes with it, for the same
+     reason. This also covers the exported deck and its printout, which carry
+     the same class. */
+  &.presenting > html-chunk[data-slide-overflow] {
+    border: 0;
+  }
+  &.presenting > html-chunk[data-slide-overflow]::before {
+    display: none;
+  }
+
   /* Cumulative reveal, without moving or removing anything: what lies past
      the last break passed is made *invisible*, so the slide does not reflow
      under the audience as a list is uncovered. One rule per level; twelve
