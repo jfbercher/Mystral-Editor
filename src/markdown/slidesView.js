@@ -81,6 +81,7 @@ function slideSize(settings) {
     // and reduced with it, so the setting means the same thing in a half-width
     // panel and on the projector.
     font: Number(s.fontSize) || 28,
+    codeFont: Number(s.cellFontSize) || 18,
     align: s.verticalAlign === "center" ? "center" : "flex-start",
   };
 }
@@ -143,7 +144,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const measure = () => {
     frame = 0;
-    const { w, h, font, align } = slideSize(getSettings());
+    const { w, h, font, codeFont, align } = slideSize(getSettings());
     const style = getComputedStyle(preview);
     const inner = preview.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
     // A scale of 0 would collapse every box and, worse, make the overflow test
@@ -154,6 +155,7 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.setProperty("--slide-w", `${w}px`);
     preview.style.setProperty("--slide-h", `${h}px`);
     preview.style.setProperty("--slide-font", `${font}px`);
+    preview.style.setProperty("--slide-code-font", `${codeFont}px`);
     preview.style.setProperty("--slide-align", align);
     if (presenting) {
       // Projecting: one slide, as large as the display allows. The zoom does
@@ -416,6 +418,7 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.removeProperty("--slide-w");
     preview.style.removeProperty("--slide-h");
     preview.style.removeProperty("--slide-font");
+    preview.style.removeProperty("--slide-code-font");
     preview.style.removeProperty("--slide-align");
     preview.classList.remove("measuring-slides");
     preview.style.removeProperty("--slide-scale");

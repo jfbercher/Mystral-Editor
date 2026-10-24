@@ -32,11 +32,13 @@ A document written before any of this can be cut without touching it: `slides.cu
 
 ## The view
 
-The **Slides** button puts the cut document in the preview pane, beside the source. The slides follow one another vertically and scroll like a document, so the rhythm of the deck is visible at a glance, the source stays under the author's eyes, and scroll synchronisation keeps working.
+The **Slides** button — or `Mod-Shift-m`, which `shortcuts.modeSlides` can change — puts the cut document in the preview pane, beside the source. The slides follow one another vertically and scroll like a document, so the rhythm of the deck is visible at a glance, the source stays under the author's eyes, and scroll synchronisation keeps working.
 
 Each slide is drawn at its **nominal size** — 1280×720 by default, `slides.width` and `slides.height` in `config.json` — and then optically reduced to the width of the pane. This matters more than it sounds. A preview that let the text reflow to the width of the panel would wrap it differently from the projector, and would report an overflow where there is none or miss one that is there; it would lie, which is worse than having no preview. Reduced optically, what fits fits, at any panel width — so a half-width pane is not "too narrow", and the question of how wide to make it stops mattering.
 
 The text is bigger than a document's, as it must be: `slides.fontSize` sets it, 28 pixels by default, and everything on a slide — headings, lists, maths, code, cell outputs — is sized in em, so that one number scales the whole slide together. The size is nominal, measured inside the 1280×720 box and reduced with it, so it means the same thing in a half-width panel and on the projector. As a rule of thumb, about fifteen lines of body text fit at 28 and eleven at 36; raising it is the quickest way to find out which slides are carrying too much.
+
+**Code cells have their own size**, `slides.cellFontSize`, 18 by default. They need one: a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so raising `fontSize` leaves every cell exactly as small as it is in an ordinary preview — and code is the one thing on a slide that has to be legible from the back of the room. It is smaller than the prose by default, because a line of code carries more characters and because code shown in a lecture is usually being pointed at rather than read through.
 
 ### Per deck, in the frontmatter  
 
@@ -47,6 +49,7 @@ What a deck looks like usually belongs to the deck and not to the machine it is 
 title: Fourier series
 slides:
   fontSize: 40
+  cellFontSize: 28
   width: 1024
   height: 768
   verticalAlign: center
@@ -157,6 +160,7 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9, `1024×768` is 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
+| `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also cut at every heading of this level or above. `0` means markers only. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next in the presentation: `"none"`, `"fade"` or `"slide"`. |
 

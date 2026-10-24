@@ -48,7 +48,7 @@ function matchesShortcut(ev, spec) {
  * answers to. Set on the active tab's editor and persisted exactly as the
  * toolbar buttons do it (Topbar.jsx), so the two routes cannot drift apart.
  */
-const MODE_SHORTCUTS = { modeDual: "Both", modePreview: "Preview", modeInline: "Inline" };
+const MODE_SHORTCUTS = { modeDual: "Both", modePreview: "Preview", modeInline: "Inline", modeSlides: "Slides" };
 
 function setEditorMode(editorId, mode) {
   const options = window.myst_editor?.[editorId]?.state?.options;

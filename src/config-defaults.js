@@ -123,6 +123,14 @@ export const DEFAULT_CONFIG = {
     modeDual:    "Mod-Shift-d",
     modePreview: "Mod-Shift-p",
     modeInline:  "Mod-Shift-l",
+    // `m` for want of anything better: the initials that would be mnemonic
+    // here are all spoken for. Worth knowing if this one ever seems dead: in
+    // a browser tab, Firefox keeps Mod-Shift-M for its responsive design view
+    // and Chrome for switching profile, so the editor never sees it there.
+    // The desktop build has no such claim on it. Mod-Shift-F is the roomiest
+    // alternative, being a shortcut of neither; Mod-Shift-J is not, it opens
+    // the console in both. This is a setting precisely because that varies.
+    modeSlides:  "Mod-Shift-m",
   },
 
   pyodide: {
@@ -187,6 +195,17 @@ export const DEFAULT_CONFIG = {
     // reads better flush to the top, where the titles line up from one slide
     // to the next instead of drifting up and down.
     verticalAlign: "top",
+    // How big the code of a cell is on a slide, in pixels of the nominal
+    // slide, like fontSize.
+    //
+    // A separate setting because code cells cannot follow the prose: their
+    // stylesheet is written in rem, which is rooted at the document and not
+    // at the slide, so raising fontSize left them exactly as small as they
+    // are in an ordinary preview -- and code is the one thing on a slide that
+    // has to be readable from the back of the room. Smaller than the prose by
+    // default, because a cell carries more characters per line and because
+    // code read aloud is usually being pointed at rather than read.
+    cellFontSize: 18,
     // Also start a slide at every heading of this level or above, which makes
     // a document that was never written as a deck presentable without touching
     // it. 0 means only the explicit `---` markers cut.

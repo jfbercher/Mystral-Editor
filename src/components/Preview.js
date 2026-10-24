@@ -843,6 +843,42 @@ const SlideStyles = css`
     justify-content: flex-start;
   }
 
+  /* Code cells, which cannot follow the prose on their own.
+     Their stylesheet is written in rem -- rooted at the document, not at the
+     slide -- so raising slides.fontSize left every cell exactly as small as
+     it is in an ordinary preview, code and furniture alike. The variable the
+     cell sizes itself from is redefined here, and the pieces that carry their
+     own rem value are re-expressed in em so that they follow it. */
+  & > html-chunk .pyodide-wrapper {
+    --pyodide-cell-font-size: var(--slide-code-font, 18px);
+  }
+  & > html-chunk .pyodide-btn,
+  & > html-chunk .pyodide-param,
+  & > html-chunk .pyodide-param-value,
+  & > html-chunk .mw-label,
+  & > html-chunk .mw-input,
+  & > html-chunk .mw-select,
+  & > html-chunk .mw-checkbox,
+  & > html-chunk .mw-btn {
+    font-size: 0.8em;
+  }
+  & > html-chunk .pyodide-status-text {
+    font-size: 0.78em;
+  }
+  & > html-chunk .pyodide-lang-badge {
+    font-size: 0.72em;
+  }
+  & > html-chunk .pyodide-timing,
+  & > html-chunk .pyodide-ran-at,
+  & > html-chunk .pyodide-space-tag {
+    font-size: 0.68em;
+  }
+  & > html-chunk .mw-html,
+  & > html-chunk .mw-htmlmath,
+  & > html-chunk .mw-markdown {
+    font-size: 0.9em;
+  }
+
   & > html-chunk::after {
     content: attr(data-slide-index) " / " attr(data-slide-total);
     position: absolute;

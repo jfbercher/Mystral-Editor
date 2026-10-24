@@ -65,6 +65,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
 | `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
 | `shortcuts.modeInline` | `"Mod-Shift-l"` | Switch to the inline preview |
+| `shortcuts.modeSlides` | `"Mod-Shift-m"` | Switch to the slide view. `m` because "slides" has no free initial left; in a browser tab Firefox and Chrome both claim this one, so it only works in the desktop build unless you change it. |
 
 `Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Modifiers are combined with `-`, for instance `"Mod-Alt-p"`.
 
@@ -117,6 +118,7 @@ One section for both, deliberately: the view, the fullscreen presentation and th
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9; set `1024×768` for 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
+| `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next: `"none"`, `"fade"` or `"slide"`. |
 

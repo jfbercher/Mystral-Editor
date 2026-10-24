@@ -175,6 +175,7 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
   // Accept the three spellings a YAML writer reaches for, rather than
   // silently ignoring two of them.
   const fontSize = fm.fontSize ?? fm.fontsize ?? fm["font-size"];
+  const cellFontSize = fm.cellFontSize ?? fm.cellfontsize ?? fm["cell-font-size"];
   const cut = fm.cutAtHeading ?? fm.cutatheading ?? fm["cut-at-heading"] ?? defaults.cutAtHeading;
   const cutLevel = Number(cut);
 
@@ -185,6 +186,7 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     width: pick(fm.width, defaults.width) ?? 1280,
     height: pick(fm.height, defaults.height) ?? 720,
     fontSize: pick(fontSize, defaults.fontSize) ?? 28,
+    cellFontSize: pick(cellFontSize, defaults.cellFontSize) ?? 18,
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
     transition: fm.transition ?? defaults.transition ?? "slide",
   };
