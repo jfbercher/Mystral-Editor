@@ -461,21 +461,26 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const onKey = (ev) => {
     if (!presenting) return;
-    // Already dealt with by whoever had the focus -- a cell's editor calls
-    // preventDefault on every key it uses. A second guard, independent of the
-    // first: knowing *that* a key was consumed needs nothing of where the
-    // caret is, so it holds even where asking the focus would mislead. The
-    // tab manager's own global shortcuts are written the same way.
-    if (ev.defaultPrevented || ev.repeat) return;
-
-    const inCell = inCellEditor();
+    if (ev.repeat) return;
 
     // PageUp and PageDown first, and unconditionally: that is what every
     // presenter remote sends, and a remote has to keep working while the
     // caret sits in a cell -- which is the whole point of being able to type
-    // Python in front of the room.
+    // Python in front of the room. Before the guard below, too: a cell's
+    // editor binds those keys for paging and would otherwise swallow the
+    // remote.
     if (ev.key === "PageDown") return void (ev.preventDefault(), go(1));
     if (ev.key === "PageUp") return void (ev.preventDefault(), go(-1));
+
+    // Already dealt with by whoever had the focus, or by whatever was on top:
+    // a cell's editor and the figure viewer both call preventDefault on the
+    // keys they use. A second guard, resting on a different fact than the
+    // first -- knowing *that* a key was consumed needs nothing of where the
+    // caret is, so it holds where asking the focus would mislead. The tab
+    // manager's own global shortcuts are written the same way.
+    if (ev.defaultPrevented) return;
+
+    const inCell = inCellEditor();
 
     if (ev.key === "Escape" && !inCell) return void (ev.preventDefault(), stopPresenting());
 

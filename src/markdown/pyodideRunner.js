@@ -1160,11 +1160,26 @@ function openFigureViewer(src, alt = "") {
   const apply = () => { img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
 
   const close = () => {
-    document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keydown", onKey, true);
     overlay.remove();
   };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
-  document.addEventListener("keydown", onKey);
+  // The viewer is the topmost thing on screen, so the key is *its* key -- and
+  // it has to take it in the capture phase to have it at all.
+  //
+  // Both this and the presentation listen on `document`, and the deck
+  // registered first, when the presentation started, long before any figure
+  // was opened. On the way up it therefore ran first, and an Escape meant to
+  // close a figure closed the presentation with it: saying "this key is mine"
+  // after the fact stops nothing that has already run. Capture runs on the
+  // way down, before every bubbling listener whatever the order of
+  // registration, which is what makes topmost mean topmost.
+  const onKey = (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    close();
+  };
+  document.addEventListener("keydown", onKey, true);
 
   // Clicking the backdrop leaves; clicking the figure itself must not.
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });

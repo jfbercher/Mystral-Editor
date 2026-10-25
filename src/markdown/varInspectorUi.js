@@ -67,12 +67,25 @@ export async function showVarInspector(space = "shared", spaceLabel = "shared") 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  const onKey = (ev) => { if (ev.key === "Escape") close(); };
+  // Escape belongs to this window while it is open, and it has to be taken in
+  // the capture phase to be taken at all. The slide presentation listens for
+  // the same key on `document` and registered first -- when the presentation
+  // started, long before this window existed -- so on the way up it would run
+  // first, and closing the inspector would close the presentation with it.
+  // Capture runs on the way down, ahead of every bubbling listener whatever
+  // the order of registration. The same is done in the figure viewer, for the
+  // same reason.
+  const onKey = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    close();
+  };
   function close() {
-    document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keydown", onKey, true);
     overlay.remove();
   }
-  document.addEventListener("keydown", onKey);
+  document.addEventListener("keydown", onKey, true);
 
   const body = box.querySelector(".vars-body");
   const total = box.querySelector(".vars-total");
