@@ -8,7 +8,7 @@ The **view**, the **presentation** and the **exports** are in place: the documen
 
 ## Cutting a document into slides
 
-Two markers, both of them horizontal rules, told apart by how they are written:
+Two markers, each in two spellings:
 
 ```
 First slide.
@@ -24,9 +24,40 @@ Revealed after it.
 
 `---` ends a slide. `----` ends a *fragment*: the part after it belongs to the same slide and is revealed separately during the presentation. Fragments are cumulative — what has been revealed stays on screen, which is what one wants when uncovering a list point by point.
 
-`***` and `___` are left alone, so a plain horizontal rule inside a slide is still available.
+`+++` and `++++` mean the same two things:
 
-One rule to learn, and it is markdown's own, not ours: **a blank line before the marker**. `----` written directly under a line of text is a level‑2 heading in setext syntax, not a rule — exactly as `---` directly under text is. The same mistake, and the same remedy, for both markers.
+```
+First slide.
+
++++
+
+Second slide.
+
+++++
+
+Revealed after it.
+```
+
+Both spellings work in the same document, and nothing distinguishes them once the deck is cut. Which to use is a matter of where the document comes from and what else you want to write in it.
+
+`---` is what Marp, reveal.js and remark use, so it is what you already write if you have made slides elsewhere. `+++` is MyST's own structural division — the thing that separates the cells of a notebook — so it is already in any document converted from one, and it is the spelling to prefer when a page is both a deck and a notebook.
+
+### Choosing one  
+
+By default both spellings cut, which is convenient and leaves neither free. `slides.marker` picks one instead, and what it buys is what the other spelling goes back to meaning:
+
+```yaml
+slides:
+  marker: plus
+```
+
+With `plus`, only `+++` cuts and `---` is a horizontal rule again — the line you asked for, drawn where you asked for it. With `dash`, only `---` cuts, which is what a document converted from a notebook usually wants: its `+++` lines are cell boundaries, and nobody asked for them to become sixty slides. With `both`, the default, either cuts and neither is free.
+
+It governs **slide cuts only**. `----` and `++++` are fragment markers under every setting: a four-dash rule is an odd thing to write on purpose, where a three-dash one is not. And `***` and `___` are horizontal rules whatever you choose — they have always been the way out, and remain the shortest one.
+
+`+++` can also carry metadata, the way MyST does it — `+++ {"fontSize": 44}` — and that is read. The comment block described under *Settings for one slide* still wins over it, and is the better place: strict JSON with its quotes is a poor thing to ask of someone writing a lecture.
+
+One rule to learn, and it is markdown's own, not ours: **a blank line before the marker**. `----` written directly under a line of text is a level‑2 heading in setext syntax, not a rule — exactly as `---` directly under text is. The same mistake, and the same remedy, for every one of these markers.
 
 A document written before any of this can be cut without touching it: `slides.cutAtHeading: 2` in `config.json` also starts a slide at every `h1` and `h2`. Explicit markers always cut, whatever that setting says.
 
@@ -109,7 +140,7 @@ A slide can answer for itself, in a block of MyST comments written directly unde
 # One big idea
 ```
 
-When the deck is cut at headings (`cutAtHeading`) there is no marker to write under, so the block goes under the heading instead:
+It goes under either spelling of the marker. When the deck is cut at headings (`cutAtHeading`) there is no marker to write under, so the block goes under the heading instead:
 
 ```
 ## A denser topic
@@ -244,6 +275,7 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
 | `slides.footerStyle` | `""` | The same, for the footer. |
 | `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
+| `slides.marker` | `"both"` | Which spelling cuts a slide: `"both"`, `"plus"` (only `+++`) or `"dash"` (only `---`). Slide cuts only — `----` and `++++` are always fragments. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next while presenting: `"none"`, `"fade"`, `"slide"`, `"slideUp"` or `"zoom"`, optionally followed by a duration on the same line — `"fade 700ms"`, `"slideUp 1.2s"`, or a bare number read as milliseconds. 450ms without one, clamped to 3s. An unknown name falls back to `"slide"`. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |

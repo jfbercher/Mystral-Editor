@@ -249,6 +249,19 @@ export const DEFAULT_CONFIG = {
     //   slideUp    the same, vertically
     //   zoom       it grows the last few per cent into place
     //
+    // Which spelling cuts a slide: "both", "plus" or "dash".
+    //
+    // The point of choosing is what it leaves free. Under "plus" only `+++`
+    // cuts, so `---` goes back to being the horizontal rule it looks like.
+    // Under "dash" only `---` cuts, which is what a document converted from a
+    // notebook wants -- its `+++` lines are cell boundaries nobody asked to
+    // see as sixty slides. "both" accepts either, and is the default because
+    // it is what was there before this setting existed.
+    //
+    // It governs slide cuts only. `----` and `++++` are always fragments: a
+    // four-dash rule is an odd thing to write on purpose, where a three-dash
+    // one is not. `***` and `___` are horizontal rules under every setting.
+    marker: "both",
     // A duration may follow on the same line -- "fade 700ms", "slideUp 1.2s",
     // or a bare number read as milliseconds -- because it is not a separate
     // decision: one does not choose a transition and then, elsewhere, how

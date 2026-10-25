@@ -310,7 +310,20 @@ export function stripMystComments(src) {
     }
     if (fence) continue;
     if (/^[ \t]*%/.test(line)) lines[i] = "";
-    if (/^[ \t]*\+{3}/.test(line)) lines[i] = ''; //'<hr style="height: 0 !important; border: none !important; border-top: 0.5px solid #ccc !important; padding: 0; margin: 1em 0;">'; // remove the display of cells separations (ipynb conversion)
+    // A fragment marker, written the MyST way. It is turned into the dash
+    // spelling rather than given a path of its own: everything downstream --
+    // the class on the rule, the cumulative reveal, the print override --
+    // already works on that one, and two spellings of a marker should not
+    // mean two mechanisms.
+    //
+    // Checked before the three-plus case, which would otherwise match it.
+    if (/^[ \t]*\+{4,}[ \t]*$/.test(line)) lines[i] = "----";
+    // Cell separations from an ipynb conversion, and -- in slide mode -- the
+    // marker that opens a slide. Erased rather than rendered: the cut is read
+    // from the source, so nothing is needed here, and a visible rule across
+    // the top of every slide would have to be hidden again in CSS, which is
+    // what the dash spelling costs us.
+    else if (/^[ \t]*\+{3}/.test(line)) lines[i] = "";
   }
   return lines.join("\n");
 }

@@ -118,7 +118,35 @@ export function stepCount(slides) {
  * split. A `---` inside a fenced block is not one either, and needs no care
  * here: the caller merges a chunk whose fences are unbalanced into the next.
  */
-export function splitTextForSlides(text, { cutAtHeading = 0 } = {}) {
+/**
+ * A line that opens a slide, as a pattern fragment.
+ *
+ * Two spellings, and both are wanted. `---` is what Marp, reveal and remark
+ * use, so it is what someone arriving from elsewhere writes. `+++` is MyST's
+ * own structural division -- the thing that separates the cells of a
+ * notebook -- so it is what a document converted from one already contains,
+ * and it carries metadata on its own line.
+ *
+ * Writing `+++` also leaves `---` free to be what it looks like: a horizontal
+ * rule inside a slide.
+ *
+ * Exactly three pluses: a fourth makes it a fragment marker, the way a fourth
+ * dash does.
+ */
+const DASH_MARKER = "-{3}[ \\t]*";
+const PLUS_MARKER = "\\+{3}(?!\\+)[^\\n]*";
+
+/** The spellings that cut, for a given `slides.marker`. */
+export const MARKERS = ["both", "plus", "dash"];
+
+function markerPattern(marker) {
+  if (marker === "plus") return `(?:${PLUS_MARKER})`;
+  if (marker === "dash") return `(?:${DASH_MARKER})`;
+  return `(?:${DASH_MARKER}|${PLUS_MARKER})`;
+}
+
+export function splitTextForSlides(text, { cutAtHeading = 0, marker = "both" } = {}) {
+  const MARKER = markerPattern(marker);
   const src = String(text ?? "");
   const fm = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?=\r?\n|$)/.exec(src);
   const head = fm ? fm[0] : "";
@@ -126,8 +154,8 @@ export function splitTextForSlides(text, { cutAtHeading = 0 } = {}) {
 
   const level = Math.max(0, Math.min(6, Number(cutAtHeading) || 0));
   const re = level
-    ? new RegExp(`(?=\\n-{3}[ \\t]*(?:\\n|$))|(?=\\n#{1,${level}} )`, "g")
-    : /(?=\n-{3}[ \t]*(?:\n|$))/g;
+    ? new RegExp(`(?=\\n${MARKER}(?:\\n|$))|(?=\\n#{1,${level}} )`, "g")
+    : new RegExp(`(?=\\n${MARKER}(?:\\n|$))`, "g");
 
   const parts = rest.split(re);
 
@@ -137,7 +165,7 @@ export function splitTextForSlides(text, { cutAtHeading = 0 } = {}) {
   // slide: empty, numbered, and baffling. Such a piece is folded into the one
   // it opens, so the two cuts count as the one the author made, and the
   // pieces still concatenate back to the original text.
-  const bare = (piece) => /^\n?-{3}[ \t]*\n*$/.test(piece);
+  const bare = (piece) => new RegExp(`^\\n?${MARKER}\\n*$`).test(piece);
   const out = [];
   let pending = "";
   for (const part of parts) {
@@ -259,6 +287,7 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     footerStyle: text(fm.footerStyle, fm.footerstyle, fm["footer-style"], defaults.footerStyle),
     background: text(fm.background, defaults.background),
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
+    marker: MARKERS.includes(String(fm.marker ?? defaults.marker ?? "")) ? String(fm.marker ?? defaults.marker) : "both",
     ...(() => {
       const t = parseTransition(fm.transition ?? defaults.transition);
       return { transition: t.name, transitionMs: t.ms };
@@ -299,8 +328,29 @@ export function slideOverrides(text) {
 
   // Past the marker that opens the slide, or past a frontmatter block on the
   // first one.
+  const out = {};
+
   if (lines[i]?.trim() === "") i += 1;
-  if (/^-{3,}\s*$/.test(lines[i] ?? "")) {
+
+  // `+++ {"fontSize": 44}` -- MyST puts metadata on the marker, so it is read
+  // here too. The comment block below it still wins, being both the later
+  // word and the easier one to write: strict JSON with its quotes is a poor
+  // thing to ask of someone writing a lecture.
+  const block = /^[ \t]*\+{3}(?!\+)[ \t]*(.*)$/.exec(lines[i] ?? "");
+  if (block) {
+    i += 1;
+    const meta = block[1].trim();
+    if (meta.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(meta);
+        if (parsed && typeof parsed === "object") {
+          for (const [k, v] of Object.entries(parsed)) out[k] = typeof v === "string" ? v : String(v);
+        }
+      } catch {
+        // Malformed metadata costs its own settings and not the slide.
+      }
+    }
+  } else if (/^-{3,}\s*$/.test(lines[i] ?? "")) {
     if (i === 0 && lines.slice(1).some((l) => /^-{3}\s*$/.test(l))) {
       // A frontmatter block: skip to just past its closing marker.
       const close = lines.findIndex((l, k) => k > 0 && /^-{3}\s*$/.test(l));
@@ -310,7 +360,6 @@ export function slideOverrides(text) {
     }
   }
 
-  const out = {};
   let found = 0;
   let skippedHeading = false;
   for (; i < lines.length; i += 1) {

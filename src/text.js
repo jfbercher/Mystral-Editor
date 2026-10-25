@@ -819,7 +819,10 @@ export class TextManager {
     // own geometry and type size, and the cut must use the same ones.
     this.slideSettings = resolveSlideSettings(fm, appConfig.slides);
     const realChunks = (slideMode
-      ? splitTextForSlides(this.text.value, { cutAtHeading: this.slideSettings.cutAtHeading })
+      ? splitTextForSlides(this.text.value, {
+          cutAtHeading: this.slideSettings.cutAtHeading,
+          marker: this.slideSettings.marker,
+        })
       : this.text.value.split(/(?=\n#{1,3} )/g))
       .reduce((chunks, textChunk) => {
         const lastChunkIdx = chunks.length - 1;
@@ -889,7 +892,11 @@ export class TextManager {
                       numberingEnabled,
                       refDefs,
                       pythonSpace,
-                      pythonSpaceLabel, });
+                      pythonSpaceLabel,
+                      // Which spelling cuts: the renderer needs it too, or a
+                      // `---` left free by the setting would still be marked
+                      // as a cut and hidden by the slide stylesheet.
+                      slideMarker: slideMode ? this.slideSettings.marker : "both", });
           if (timing_debug) {const _r1 = performance.now();}
           html = sanitize(rendered);
           if (timing_debug) {

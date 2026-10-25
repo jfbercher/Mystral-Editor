@@ -24,7 +24,13 @@ export function markdownSlideBreaks(/** @type {markdownIt} */ md) {
     // The class is added to the token rather than written out as HTML, so the
     // `data-line-id` the source map put there survives: a break that knows its
     // line is what lets moving the cursor change slide.
-    const cls = /^-{4,}$/.test(markup) ? "fragment-break" : /^-{3}$/.test(markup) ? "slide-break" : null;
+    // `slides.marker` may have left the dashes free, in which case a three-dash
+    // rule is a rule and nothing more -- it must not be marked as a cut, or
+    // the slide stylesheet would hide the very line the author asked for.
+    // Four dashes stay a fragment under every setting: a four-dash rule is an
+    // odd thing to write on purpose, where a three-dash one is not.
+    const dashesCut = (env?.slideMarker ?? "both") !== "plus";
+    const cls = /^-{4,}$/.test(markup) ? "fragment-break" : /^-{3}$/.test(markup) && dashesCut ? "slide-break" : null;
     if (cls && !String(token.attrGet("class") ?? "").split(/\s+/).includes(cls)) token.attrJoin("class", cls);
     return self.renderToken(tokens, idx, options);
   };
