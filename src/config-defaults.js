@@ -167,6 +167,7 @@ export const DEFAULT_CONFIG = {
       restart:     "",                  // restart the kernel (clears variables)
       deleteCell:  "",                  // delete this cell
       editSource:  "",                  // inline preview: edit this cell's source
+      toggleInput: "",                  // fold this cell's code away, or back
     },
   },
 

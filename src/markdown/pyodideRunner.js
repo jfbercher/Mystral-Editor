@@ -1350,6 +1350,23 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     b.textContent = label;
     return b;
   };
+  /**
+   * Fold the code away, leaving the cell's output and its toolbar.
+   *
+   * On a slide this is often the point: the output is the thing being shown
+   * and twelve lines of Python above it are what makes the slide overflow.
+   * While writing, it is simply a way to get a long cell out of the way
+   * without deleting anything.
+   *
+   * A view control and not a document edit, deliberately. What the document
+   * declares is `:tags: hide-input`, which sets the state a cell opens in;
+   * the button moves it from there and that choice lives as long as the cell
+   * widget does. Writing the tag back on every click would mean editing a
+   * directive option rather than the cell's body -- a different machinery
+   * from the one the editor has -- and would make a glance at a long cell a
+   * modification of the file.
+   */
+  const foldBtn    = mkBtn("pyodide-btn-fold",    "⌄");
   const runBtn     = mkBtn("pyodide-btn-run",     "▶ Run");
   const clearBtn   = mkBtn("pyodide-btn-clear",   "Clear");
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
@@ -1406,7 +1423,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     attributeFilter: ["data-python-space-label"],
   });
 
-  controls.append(runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
+  const setFolded = (folded) => {
+    wrapper.classList.toggle("pyodide-folded", folded);
+    foldBtn.textContent = folded ? "›" : "⌄";
+    foldBtn.title = folded ? "Show this cell's code" : "Hide this cell's code";
+    foldBtn.setAttribute("aria-expanded", String(!folded));
+    // Kept on the host rather than in a variable: the host is what survives a
+    // re-render, so the cell reopens folded if that is how it was left.
+    if (folded) el.dataset.folded = "1";
+    else delete el.dataset.folded;
+  };
+  foldBtn.addEventListener("click", () => setFolded(!wrapper.classList.contains("pyodide-folded")));
+
+  controls.append(foldBtn, runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -1602,6 +1631,13 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   if (cacheKey) cellCache.set(cacheKey, el);
 
+  // How the cell opens: what it was left at if it has been seen before,
+  // otherwise what the document asked for with `:tags: hide-input`.
+  const tags = String(el.dataset.tags ?? "")
+    .split(/[\s,]+/)
+    .filter(Boolean);
+  setFolded(el.dataset.folded === "1" || tags.includes("hide-input"));
+
   // ── État de synchronisation ───────────────────────────────────────────────
   let _currentCode    = code;
   let _currentCacheKey = cacheKey;
@@ -1649,6 +1685,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     restart:     () => { restartBtn.click(); },
     deleteCell:  (view) => { _syncToEditor(view); deleteBtn.click(); },
     editSource:  (view) => { _syncToEditor(view); sourceBtn.click(); },
+    toggleInput: () => { foldBtn.click(); },
   };
 
   // ── Extensions CM6 ───────────────────────────────────────────────────────

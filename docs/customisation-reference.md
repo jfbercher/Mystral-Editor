@@ -93,6 +93,7 @@ Some keys are still taken by the system, the browser or another application befo
 | `pyodide.keys.restart` | `""` | Restart the kernel, clearing all variables. |
 | `pyodide.keys.deleteCell` | `""` | Delete the current cell. |
 | `pyodide.keys.editSource` | `""` | Inline preview only: show this cell as its markdown source (Escape comes back). |
+| `pyodide.keys.toggleInput` | `""` | Fold this cell's code away, or back |
 
 :::
 

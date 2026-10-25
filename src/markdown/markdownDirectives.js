@@ -1095,6 +1095,7 @@ class CodeCellDirective extends Directive {
       `data-packages='${JSON.stringify(packages)}' ` +
       `data-figwidth="${escapeHtml(String(data.options?.figwidth ?? "").trim())}" ` +
       `data-params="${escapeHtml(String(data.options?.params ?? "").trim())}" ` +
+      `data-tags="${escapeHtml(String(data.options?.tags ?? "").trim())}" ` +
       `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
       `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
       `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +

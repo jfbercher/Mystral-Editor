@@ -220,6 +220,7 @@ function ensureObserver(parent, owner = "") {
         // Same reason again, and one more: the strip of controls is built from
         // this attribute, so the reused widget has to be told to rebuild it.
         evictedHost.dataset.params = el.dataset.params ?? "";
+        evictedHost.dataset.tags = el.dataset.tags ?? "";
         evictedHost._syncParams?.();
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";

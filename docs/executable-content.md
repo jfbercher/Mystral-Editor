@@ -61,7 +61,7 @@ The options understood are:
 
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
-- `:tags: hide-input` carries cell metadata. It is stored and round-tripped but not otherwise interpreted at present.  
+- `:tags: hide-input` opens the cell with its code folded away, showing the toolbar and the output alone. Other tags are stored and round-tripped but not otherwise interpreted.  
 - `:params: n = 1..100 step 1` puts a control under the cell. See *Parameters*, below.
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
@@ -143,6 +143,12 @@ showing the raw fence instead would only take away execution, highlighting and
 completion — so this button is the way in for whoever edits in inline mode and
 needs to touch the fence itself, its `:label:` or its options. The cell renders
 again as soon as the cursor leaves it, or on `Escape`.  
+
+### Folding the code away  
+
+The chevron at the left of the toolbar hides a cell's code, leaving its output and its buttons. On a slide that is often the point — the output is what is being shown, and a dozen lines of Python above it are what makes the slide overflow. While writing, it is a way to get a long cell out of the way without deleting anything.
+
+`:tags: hide-input` sets the state a cell **opens** in; the button moves it from there, and that choice lasts as long as the cell does, re-renders included. The two are deliberately not the same thing: the document declares, the hand adjusts. Clicking does not write the tag back, so glancing at a long cell is not a modification of the file — and `pyodide.keys.toggleInput` gives the button a shortcut if you use it often.
 
 ### The status bar  
 
