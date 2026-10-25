@@ -213,6 +213,28 @@ Two keys are fixed.
 
 Completion is provided by `jedi`, installed at start-up. If that installation fails (no network, typically) then `Tab` falls back to inserting four spaces and a message says so in the console. Completion reads the cell's text rather than the running interpreter, so it is the same in every namespace.  
 
+## `%load`: a file into a cell  
+
+```
+%load demo.py
+```
+
+Run the cell and the magic line is replaced by the contents of `demo.py`, commented out as it goes:
+
+```
+# %load demo.py
+def f(x):
+    return x ** 2
+```
+
+The path is relative to the document's folder, which is also where `open()` looks, so a file a cell already reads is a file a cell can load. Subfolders work; `..`, `~` and absolute paths are refused, and refused the same way on every platform. That last point is the reason for the rule: in a browser a `..` throws, while the desktop build would most likely resolve it — so a document could load on one and fail on the other, which is harder to diagnose than being told no.
+
+It is a **gesture, not a link**. A cell permanently backed by a file raises a question nobody can answer on the author's behalf — which of the two is authoritative, and what saving means — and gets it wrong once in a way that loses work. Loading once has no such question. It also keeps the document whole: after a load the code is in the page, so `myst build` can render it, where a cell backed by a file would have left it an empty body.
+
+The magic line is commented out for a reason worth knowing, since IPython does the same: left alone, the next run would reload the file and silently discard whatever was typed in between, and the cell would behave like a text box that empties itself.
+
+Loading needs a working folder, which means the document must have been saved somewhere; until then the cell says so instead of failing quietly. Nothing is written back — `%load` only reads. To get code from a cell into a file, copy it out.
+
 ## What Python can do here  
 
 The interpreter is [Pyodide](https://pyodide.org): CPython compiled to WebAssembly, running in the page. `numpy`, `matplotlib` and `micropip` are loaded at start-up. Anything else is installed at run time:  

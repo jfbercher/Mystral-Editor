@@ -520,25 +520,38 @@ function resolveWorkingDir() {
   return workingDirectory.value || null;
 }
 
+/**
+ * A file of the working folder, as bytes.
+ *
+ * The two halves the rest of this module already lives with: the Tauri
+ * filesystem when there is one, the File System Access handles when the
+ * editor runs in a browser. Pulled out of copyFileToMemfs so that reading a
+ * file and handing it to the interpreter stop being the same act -- `%load`
+ * wants the first without the second.
+ */
+async function readWorkspaceBytes(relPath) {
+  const wd = resolveWorkingDir();
+  if (!wd) return null;
+  if (isTauri()) {
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    return await readFile(`${String(wd).replace(/\/$/, "")}/${relPath}`);
+  }
+  const parts = relPath.replace(/\\/g, "/").split("/").filter(Boolean);
+  const fileName = parts.pop();
+  let dir = wd;
+  for (const part of parts) dir = await dir.getDirectoryHandle(part);
+  const fh = await dir.getFileHandle(fileName);
+  return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+}
+
 async function copyFileToMemfs(pyodide, relPath) {
   const wd = resolveWorkingDir();
   if (!wd) return false;
 
   let bytes;
   try {
-    if (isTauri()) {
-      const { readFile } = await import("@tauri-apps/plugin-fs");
-      const absPath = `${String(wd).replace(/\/$/, "")}/${relPath}`;
-      bytes = await readFile(absPath);
-    } else {
-      const parts = relPath.replace(/\\/g, "/").split("/").filter(Boolean);
-      const fileName = parts.pop();
-      let dir = wd;
-      for (const part of parts) dir = await dir.getDirectoryHandle(part);
-      const fh = await dir.getFileHandle(fileName);
-      const file = await fh.getFile();
-      bytes = new Uint8Array(await file.arrayBuffer());
-    }
+    bytes = await readWorkspaceBytes(relPath);
+    if (!bytes) return null;
 
     const dirs = relPath.split("/").slice(0, -1);
     let cur = "/local";
@@ -711,6 +724,60 @@ export function expandMystralMagics(code) {
       return `${indent}_mystral_${name}(${all}, globals())`;
     },
   );
+}
+
+/**
+ * `%load demo.py` -- the file's text, put into the cell.
+ *
+ * A gesture rather than a link. A cell permanently backed by a file raises a
+ * question nobody can answer for the author -- which of the two is
+ * authoritative, and what a save means -- and gets it wrong once in a way
+ * that loses work. Loading once has no such question: after it, the code is
+ * in the document, which is also why mystmd can still build the page. A cell
+ * backed by a file would have left `myst build` reading an empty body.
+ *
+ * As in IPython, the magic line is commented out as it is replaced. Without
+ * that the next run reloads the file and silently discards whatever was
+ * typed in between -- the cell would behave like a text box that empties
+ * itself.
+ */
+const LOAD_MAGIC = /^([ \t]*)%load[ \t]+(.+?)[ \t]*$/m;
+
+/** The path a cell asks to load, or null. */
+export function loadMagicPath(code) {
+  const m = LOAD_MAGIC.exec(String(code ?? ""));
+  return m ? m[2].replace(/^['"]|['"]$/g, "").trim() || null : null;
+}
+
+/**
+ * True when a path stays under the document's folder.
+ *
+ * Refused on both platforms rather than left to each one's filesystem,
+ * because the two disagree in the worst possible way: in a browser a `..`
+ * throws, while in the desktop build the system would likely resolve it --
+ * so a document could load here and fail for a reader, which is harder to
+ * diagnose than a refusal. An absolute path is worse still on the desktop
+ * side: joined behind the working folder it yields nonsense rather than an
+ * error that says anything.
+ */
+export function isUnderWorkingDir(relPath) {
+  const path = String(relPath ?? "").replace(/\\/g, "/").trim();
+  if (!path) return false;
+  if (path.startsWith("/") || path.startsWith("~") || /^[A-Za-z]:/.test(path)) return false;
+  return !path.split("/").includes("..");
+}
+
+/** The cell's code with the magic line replaced by the file it names. */
+export function applyLoadMagic(code, text) {
+  const body = String(text ?? "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+  // A function replacement, not a string: a `$&` or `$1` occurring in
+  // somebody's Python would otherwise be read as a backreference and quietly
+  // rewrite their code.
+  return String(code).replace(LOAD_MAGIC, (_m, indent, path) => {
+    const rel = path.replace(/^['"]|['"]$/g, "").trim();
+    const lines = body.split("\n").map((l) => (l ? indent + l : l));
+    return `${indent}# %load ${rel}\n${lines.join("\n")}`;
+  });
 }
 
 /**
@@ -1832,6 +1899,40 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     // A message left by something else -- a restart, an earlier error -- has
     // nothing to say about this run, and would end up glued to its timing.
     setStatus(statusText, "");
+
+    // `%load` before anything else, since it decides what is about to run.
+    // It happens whether or not the interpreter has started: loading a file
+    // into a cell has nothing to do with Python, and failing it should not
+    // cost the reader a Pyodide download.
+    const wanted = loadMagicPath(editorContainer.value);
+    if (wanted) {
+      if (!isUnderWorkingDir(wanted)) {
+        setStatus(statusText, `%load reads under the document's folder; "${wanted}" is outside it`, "error");
+        wrapper.classList.remove("pyodide-running");
+        runBtn.disabled = false;
+        return;
+      }
+      try {
+        const bytes = await readWorkspaceBytes(wanted);
+        if (!bytes) throw new Error("no working folder");
+        const text = new TextDecoder().decode(bytes);
+        editorContainer.value = applyLoadMagic(editorContainer.value, text);
+        // Through the same door a typed edit uses, so the document is
+        // updated, the cache entry follows the new code, and the source pane
+        // shows what the cell now holds.
+        _syncToEditor(view);
+        setStatus(statusText, `Loaded ${wanted}`, "success");
+      } catch (err) {
+        const why = resolveWorkingDir()
+          ? `could not read ${wanted}`
+          : "%load needs a working folder: save the document first";
+        setStatus(statusText, why, "error");
+        console.warn("[cells] %load failed:", err);
+        wrapper.classList.remove("pyodide-running");
+        runBtn.disabled = false;
+        return;
+      }
+    }
 
     // Let the browser paint the running state before the interpreter seizes
     // the thread. Pyodide runs here, on the main thread, so from the first
