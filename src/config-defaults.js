@@ -241,7 +241,22 @@ export const DEFAULT_CONFIG = {
     // a document that was never written as a deck presentable without touching
     // it. 0 means only the explicit `---` markers cut.
     cutAtHeading: 0,
-    // How one slide gives way to the next: "none", "fade" or "slide".
+    // How one slide gives way to the next, while presenting:
+    //
+    //   none       the next slide is simply there
+    //   fade       it appears
+    //   slide      it comes in from the side the deck is moving towards
+    //   slideUp    the same, vertically
+    //   zoom       it grows the last few per cent into place
+    //
+    // A duration may follow on the same line -- "fade 700ms", "slideUp 1.2s",
+    // or a bare number read as milliseconds -- because it is not a separate
+    // decision: one does not choose a transition and then, elsewhere, how
+    // long it lasts. Without one, 450ms.
+    //
+    // Deliberately few: a transition is there to say "that was a slide, here
+    // is another", and past that it becomes a thing the room watches instead
+    // of listening to you.
     transition: "slide",
   },
 

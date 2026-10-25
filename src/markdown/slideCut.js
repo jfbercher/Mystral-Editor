@@ -159,6 +159,38 @@ export function splitTextForSlides(text, { cutAtHeading = 0 } = {}) {
   return out.length ? out : [src];
 }
 
+/** The transitions a deck may ask for; anything else falls back to `slide`. */
+export const TRANSITIONS = ["none", "fade", "slide", "slideUp", "zoom"];
+
+const DEFAULT_TRANSITION_MS = 450;
+
+/**
+ * A transition and how long it takes, from one declaration.
+ *
+ *     transition: fade
+ *     transition: fade 700ms
+ *     transition: slideUp 1.2s
+ *
+ * The duration sits on the same line because it is not a separate decision:
+ * one does not choose a transition and then, elsewhere, how long it lasts.
+ * A bare number is read as milliseconds, since that is what anyone writing
+ * one means.
+ */
+export function parseTransition(value, fallback = "slide") {
+  const text = String(value ?? "").trim();
+  const m = /^([A-Za-z]+)(?:[ \t]+(\d+(?:\.\d+)?)\s*(ms|s)?)?$/.exec(text);
+  const name = m && TRANSITIONS.includes(m[1]) ? m[1] : TRANSITIONS.includes(String(fallback)) ? String(fallback) : "slide";
+
+  let ms = DEFAULT_TRANSITION_MS;
+  if (m && m[2]) {
+    const n = Number(m[2]);
+    if (Number.isFinite(n)) ms = m[3] === "s" ? n * 1000 : n;
+  }
+  // Nothing below a frame, nothing above a few seconds: a transition one has
+  // time to grow bored of is not a transition.
+  return { name, ms: Math.max(0, Math.min(3000, Math.round(ms))) };
+}
+
 /** A positive number, or null. */
 const positive = (v) => {
   const n = Number(v);
@@ -227,7 +259,10 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     footerStyle: text(fm.footerStyle, fm.footerstyle, fm["footer-style"], defaults.footerStyle),
     background: text(fm.background, defaults.background),
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
-    transition: fm.transition ?? defaults.transition ?? "slide",
+    ...(() => {
+      const t = parseTransition(fm.transition ?? defaults.transition);
+      return { transition: t.name, transitionMs: t.ms };
+    })(),
   };
 }
 

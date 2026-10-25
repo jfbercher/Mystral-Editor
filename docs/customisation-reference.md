@@ -127,7 +127,7 @@ One section for both, deliberately: the view, the fullscreen presentation and th
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |
-| `slides.transition` | `"slide"` | How one slide gives way to the next: `"none"`, `"fade"` or `"slide"`. |
+| `slides.transition` | `"slide"` | How one slide gives way to the next while presenting: `"none"`, `"fade"`, `"slide"`, `"slideUp"` or `"zoom"`, optionally followed by a duration on the same line — `"fade 700ms"`, `"slideUp 1.2s"`, or a bare number read as milliseconds. 450ms without one, clamped to 3s. An unknown name falls back to `"slide"`. |
 
 A document can override any of these for itself with a `slides:` block in its frontmatter — geometry and type size usually belong to the deck rather than to the installation. How large the slides are *drawn in the pane* is neither: that is `Ctrl`/`Cmd` and the wheel, remembered across sessions, and it is kept separate on purpose, since enlarging the text would change what fits on a slide and the view would stop agreeing with the projector. See [slides](slides.md).
 

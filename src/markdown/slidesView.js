@@ -84,6 +84,8 @@ function slideSize(settings) {
     },
     background: s.background ?? "",
     padding: s.padding ?? "",
+    transition: s.transition ?? "slide",
+    transitionMs: Number(s.transitionMs) || 450,
     w: Number(s.width) || 1280,
     h: Number(s.height) || 720,
     // Nominal too, like the rest: the text is sized inside the 1280x720 box
@@ -267,7 +269,10 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const measure = () => {
     frame = 0;
-    const { w, h, font, codeFont, align, furniture, background, padding } = slideSize(getSettings());
+    const { w, h, font, codeFont, align, furniture, background, padding, transition, transitionMs } =
+      slideSize(getSettings());
+    if (preview.dataset.slideTransition !== transition) preview.dataset.slideTransition = transition;
+    preview.style.setProperty("--slide-anim-time", `${transitionMs}ms`);
     const style = getComputedStyle(preview);
     const inner = preview.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
     // A scale of 0 would collapse every box and, worse, make the overflow test
@@ -340,7 +345,11 @@ export function attachSlideView(preview, getSettings = () => null) {
     // layout does not shift under the audience as a list is uncovered.
     all.forEach((el, i) => {
       if (presenting && i === slide) {
-        el.dataset.slideCurrent = "1";
+        // Written only when it changes. Re-stamping it would restart the
+        // entrance animation on every pass -- including the one a fragment
+        // reveal triggers, which would replay the whole slide each time a
+        // line is uncovered.
+        if (el.dataset.slideCurrent !== "1") el.dataset.slideCurrent = "1";
         el.dataset.fragment = String(fragment);
       } else {
         delete el.dataset.slideCurrent;
@@ -386,6 +395,9 @@ export function attachSlideView(preview, getSettings = () => null) {
   const go = (dir) => {
     const all = slides();
     if (!all.length) return;
+    // Which way the deck is moving, so a slide comes in from the side one is
+    // going towards and goes back the way it came.
+    preview.dataset.slideDir = dir > 0 ? "next" : "prev";
     if (dir > 0) {
       if (fragment < fragmentCount(all[slide])) fragment += 1;
       else if (slide < all.length - 1) {
@@ -407,6 +419,7 @@ export function attachSlideView(preview, getSettings = () => null) {
     presenting = true;
     slide = Math.max(0, Math.min(from, slideCount() - 1));
     fragment = 0;
+    preview.dataset.slideDir = "next";
     preview.classList.add("presenting");
     // Asked for, not relied on. The class above already makes the pane cover
     // the window, so a browser that refuses the request -- or a gesture it
@@ -563,6 +576,9 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.removeProperty("--slide-header-push");
     preview.style.removeProperty("--slide-bg");
     preview.style.removeProperty("--slide-padding");
+    preview.style.removeProperty("--slide-anim-time");
+    delete preview.dataset.slideTransition;
+    delete preview.dataset.slideDir;
     preview.classList.remove("measuring-slides");
     preview.style.removeProperty("--slide-scale");
   };

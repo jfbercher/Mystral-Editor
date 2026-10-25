@@ -982,6 +982,83 @@ const SlideStyles = css`
   }
   &.presenting > html-chunk[data-slide-current] {
     display: flex;
+    animation-duration: var(--slide-anim-time, 450ms);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+    /* backwards, not both: forwards would freeze the final frame's computed
+       transform, and that transform contains the scale -- so resizing the
+       window mid-deck would leave the slide at the size it had when it
+       arrived. */
+    animation-fill-mode: backwards;
+  }
+
+  /* The transitions, and there are deliberately few. A transition says "that
+     was a slide, here is another"; anything longer is a thing the room
+     watches instead of listening to you.
+
+     Each keyframe carries the scale, because the slide is already scaled by a
+     transform and an animation on transform replaces it rather than adding to
+     it. Written as a variable, so the entrance is correct at any pane size. */
+  @keyframes myst-slide-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes myst-slide-from-right {
+    from {
+      opacity: 0.3;
+      transform: translateX(7%) scale(var(--slide-scale, 1));
+    }
+  }
+  @keyframes myst-slide-from-left {
+    from {
+      opacity: 0.3;
+      transform: translateX(-7%) scale(var(--slide-scale, 1));
+    }
+  }
+  @keyframes myst-slide-from-below {
+    from {
+      opacity: 0.3;
+      transform: translateY(7%) scale(var(--slide-scale, 1));
+    }
+  }
+  @keyframes myst-slide-from-above {
+    from {
+      opacity: 0.3;
+      transform: translateY(-7%) scale(var(--slide-scale, 1));
+    }
+  }
+  @keyframes myst-slide-zoom {
+    from {
+      opacity: 0.3;
+      transform: scale(calc(var(--slide-scale, 1) * 0.94));
+    }
+  }
+
+  &[data-slide-transition="fade"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-fade;
+  }
+  &[data-slide-transition="zoom"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-zoom;
+  }
+  &[data-slide-transition="slide"][data-slide-dir="next"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-from-right;
+  }
+  &[data-slide-transition="slide"][data-slide-dir="prev"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-from-left;
+  }
+  &[data-slide-transition="slideUp"][data-slide-dir="next"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-from-below;
+  }
+  &[data-slide-transition="slideUp"][data-slide-dir="prev"].presenting > html-chunk[data-slide-current] {
+    animation-name: myst-slide-from-above;
+  }
+
+  /* Someone who asked their system for less movement gets none, whatever the
+     deck declares. */
+  @media (prefers-reduced-motion: reduce) {
+    &.presenting > html-chunk[data-slide-current] {
+      animation-name: none;
+    }
   }
   &.presenting .slide-present-btn {
     display: none;

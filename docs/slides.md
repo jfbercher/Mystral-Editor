@@ -80,6 +80,7 @@ slides:
   footerPage: Slide {n}/{total}
   background: "#f7f7f5"
   padding: 28px 56px
+  transition: fade 700ms
   headerStyle: "font-size: 18px; color: #888; border-bottom: 1px solid #ddd"
 ---
 ```
@@ -152,6 +153,23 @@ The round **▶** at the top right of the pane starts the presentation, from the
 The pane then covers the window and asks the browser for real fullscreen. It asks rather than depends: a browser that refuses the request still gives a clean projection, because covering the window is done by the editor itself. `Escape` leaves.
 
 One slide at a time, centred, as large as the display allows — both dimensions fit, which is why a 4:3 deck on a 16:9 screen gets bars rather than a crop.
+
+### Transitions  
+
+`slides.transition` says how one slide gives way to the next: `none`, `fade`, `slide`, `slideUp`, `zoom`. `slide` and `slideUp` follow the direction of travel, so a slide arrives from the side you are going towards and comes back the way it left.
+
+A duration may follow on the same line, because it is not a separate decision — one does not choose a transition and then, elsewhere, how long it lasts:
+
+```yaml
+slides:
+  transition: fade 700ms
+```
+
+`700ms`, `1.2s` and a bare `700` all work; without one, 450ms, and nothing above three seconds.
+
+There are five and there will not be many more. A transition is there to say *that was a slide, here is another*; past that it becomes a thing the room watches instead of listening to you. Anyone whose system asks for reduced motion gets none of them, whatever the deck declares.
+
+They apply while presenting — the stacked editing view scrolls, so there is nothing to transition — and the exported deck carries them, since it is the same stylesheet and the same navigation.
 
 ### Moving through the deck  
 
@@ -226,9 +244,9 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
 | `slides.footerStyle` | `""` | The same, for the footer. |
 | `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
+| `slides.transition` | `"slide"` | How one slide gives way to the next while presenting: `"none"`, `"fade"`, `"slide"`, `"slideUp"` or `"zoom"`, optionally followed by a duration on the same line — `"fade 700ms"`, `"slideUp 1.2s"`, or a bare number read as milliseconds. 450ms without one, clamped to 3s. An unknown name falls back to `"slide"`. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also cut at every heading of this level or above. `0` means markers only. |
-| `slides.transition` | `"slide"` | How one slide gives way to the next in the presentation: `"none"`, `"fade"` or `"slide"`. |
 
 See [customisation-reference](customisation-reference.md) for where `config.json` lives.

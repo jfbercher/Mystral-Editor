@@ -2384,7 +2384,9 @@ const SLIDES_EXPORT_JS = `
   function show() {
     for (var k = 0; k < slides.length; k++) {
       if (k === i) {
-        slides[k].dataset.slideCurrent = "1";
+        // Set only when it changes, or the entrance animation would replay
+        // on every fragment revealed.
+        if (slides[k].dataset.slideCurrent !== "1") slides[k].dataset.slideCurrent = "1";
         slides[k].dataset.fragment = String(f);
       } else {
         delete slides[k].dataset.slideCurrent;
@@ -2395,6 +2397,8 @@ const SLIDES_EXPORT_JS = `
   }
 
   function go(d) {
+    // Which way the deck is moving: the transition reads it.
+    pane.dataset.slideDir = d > 0 ? "next" : "prev";
     if (d > 0) {
       if (f < frags(slides[i])) f++;
       else if (i < slides.length - 1) { i++; f = 0; }
@@ -2420,6 +2424,7 @@ const SLIDES_EXPORT_JS = `
   });
 
   window.addEventListener("resize", fit);
+  pane.dataset.slideDir = "next";
   var start = parseInt((location.hash || "").slice(1), 10);
   if (start >= 1 && start <= slides.length) i = start - 1;
   fit();
