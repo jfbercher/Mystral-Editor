@@ -38,20 +38,40 @@
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
 /* The disclosure control. Narrow and quiet: it is used often and should not
    weigh as much as Run. */
-.pyodide-btn-fold{padding:.35rem .4rem;min-width:1.6rem;font-size:.95rem;line-height:1;opacity:.7}
+.pyodide-btn-fold{padding:.2rem .4rem;min-width:1.7rem;line-height:1;opacity:.7}
 .pyodide-btn-fold:hover{opacity:1}
 .pyodide-wrapper.pyodide-folded .pyodide-editor-row{display:none}
-.pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15);font-weight:600}
+.pyodide-btn-font{padding:.2rem .4rem;min-width:1.6rem;line-height:1;opacity:.6}
+.pyodide-btn-font:hover{opacity:1}
+/* Signs, not words: the bar wrapped onto a second line in a narrow pane, and
+   a cell is often in one. Every one of them keeps a title, which is where the
+   word went. */
+/* The weight these buttons used to carry (600) was emphasis for the words
+   they held -- "Restart", "+ Cell". On a glyph it only thickens the stroke,
+   which reads as a heavier button rather than a bolder label, so it is taken
+   out of the rules that set it rather than overridden here: a counter-rule
+   written earlier in the file loses to them at equal specificity, which is
+   exactly what happened on the first attempt. The colours stay; they say what
+   the button does.
+
+   A sign also needs more height than a word to stay legible: 0.8rem reads fine as
+   "Clear" and not at all as an arrow. Sized in em rather than rem so the
+   glyphs follow the cell -- the per-cell minus and plus, and the deck's own
+   code size on a slide. */
+.pyodide-btn-run,.pyodide-btn-clear,.pyodide-btn-restart,.pyodide-btn-insert,.pyodide-btn-source,.pyodide-btn-delete{font-size:1.35em;line-height:1;padding:.2rem .45rem;min-width:1.9rem;justify-content:center}
+.pyodide-btn-vars{font-family:var(--mono-font,ui-monospace,monospace);font-size:.85em;padding:.35rem .5rem;min-width:1.9rem;justify-content:center}
+.pyodide-btn-fold,.pyodide-btn-font{font-size:1.2em}
+.pyodide-btn-run,.pyodide-btn-runall{background:#1a7f37;color:#fff;border-color:rgba(31,35,40,.15)}
 .pyodide-btn-runall{background:#0969da}
 .pyodide-btn-clearall{font-weight:600}
 .pyodide-btn-vars{font-weight:600}
-.pyodide-btn-restart{color:#cf222e;font-weight:600}
-.pyodide-btn-insert{color:#6639ba;font-weight:600}
-.pyodide-btn-delete{color:#cf222e;font-weight:600;margin-left:.25rem}
+.pyodide-btn-restart{color:#cf222e}
+.pyodide-btn-insert{color:#6639ba}
+.pyodide-btn-delete{color:#cf222e;margin-left:.25rem}
 /* Turns the cell into its markdown source. Meaningless outside the inline
    preview, where it is the only way in: the caret leaves a code cell rendered
    on purpose, and there is no source panel beside it. */
-.pyodide-btn-source{display:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;color:#6639ba}
+.pyodide-btn-source{display:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#6639ba}
 .cm-inline-rendered-md .pyodide-btn-source{display:inline-flex}
 /* The side panel of the completion popup carries .pyodide-completion-doc, but
    its size and wrapping are set inline in pyodideRunner.js: it is rendered in

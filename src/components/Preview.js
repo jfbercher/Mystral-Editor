@@ -891,7 +891,9 @@ const SlideStyles = css`
   & > html-chunk .pyodide-wrapper {
     --pyodide-cell-font-size: var(--slide-code-font, 18px);
   }
-  & > html-chunk .pyodide-btn,
+  /* The glyph buttons keep their own em sizing, set against the cell's font
+     in pyodide-cells.css; listing .pyodide-btn here would flatten them back
+     to the size of a word. */
   & > html-chunk .pyodide-param,
   & > html-chunk .pyodide-param-value,
   & > html-chunk .mw-label,

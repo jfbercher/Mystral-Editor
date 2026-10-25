@@ -118,25 +118,23 @@ A document that has never been saved has no file to be keyed by, so `python: iso
 
 ## The toolbar  
 
-Each cell carries the same buttons, acting on that cell or on the whole document.  
+Each cell carries the same buttons, acting on that cell or on the whole document. They are signs rather than words, and every one of them has a tooltip, which is where the word went: a cell is often in a narrow pane, and a bar of labelled buttons wrapped onto a second line.  
 
-**Run** executes the cell; its background warms to a light red for as long as it runs, which is what tells a cell still working apart from one merely selected. 
+**▶** executes the cell; its background warms to a light red for as long as it runs, which is what tells a cell still working apart from one merely selected. **⌥/Alt-click** runs every cell of the document in order, waiting for each to finish.  
 
-**Clear** empties its output without touching the interpreter. 
+**⌫** empties its output without touching the interpreter. **⌥/Alt-click** empties every output.  
 
-**Run All** runs every cell of the document in order, waiting for each to finish. 
+Those two alt-clicks replace the Run All and Clear All buttons that used to sit beside them. It is the grammar this toolbar already used — alt-click resets the size buttons, and alt-click on Restart reloads the whole runtime — and it is two fewer buttons in a bar that had twelve.  
 
-**Clear All** empties every output.  
+**x=** opens the variable inspector, described below. It shows the document's own namespace.  
 
-**Vars** opens the variable inspector, described below. It shows the document's own namespace.  
+**↻** clears the namespace *of this document*: its user variables go, open figures are closed, the working directory returns to `/local`. A document running on its own therefore no longer wipes its neighbours' work. It keeps the interpreter itself, so it is instantaneous and works offline. What it deliberately does not do is unload modules — an `import` after a restart does not re-execute the module, and a library's internal state survives. When that matters, **⌥/Alt-click** on Restart instead: that reloads the whole Pyodide runtime, which takes several seconds, needs the network, and affects every document, since there is one runtime for all of them. It is the only true clean slate.  
 
-**Restart** clears the namespace *of this document*: its user variables go, open figures are closed, the working directory returns to `/local`. A document running on its own therefore no longer wipes its neighbours' work. It keeps the interpreter itself, so it is instantaneous and works offline. What it deliberately does not do is unload modules — an `import` after a restart does not re-execute the module, and a library's internal state survives. When that matters, **⌥/Alt-click** on Restart instead: that reloads the whole Pyodide runtime, which takes several seconds, needs the network, and affects every document, since there is one runtime for all of them. It is the only true clean slate.  
-
-**+ Cell** inserts an empty cell just below. 
+**⊕** inserts an empty cell just below. 
 
 **✕** deletes the cell, after an inline confirmation.  
 
-**`</>`** appears in the inline preview only, and turns the cell into its markdown
+**✎** appears in the inline preview only, and turns the cell into its markdown
 source right there in the document. A code cell is the one block the inline
 preview never unfolds when the cursor reaches it — it is already an editor, and
 showing the raw fence instead would only take away execution, highlighting and
@@ -149,6 +147,12 @@ again as soon as the cursor leaves it, or on `Escape`.
 The chevron at the left of the toolbar hides a cell's code, leaving its output and its buttons. On a slide that is often the point — the output is what is being shown, and a dozen lines of Python above it are what makes the slide overflow. While writing, it is a way to get a long cell out of the way without deleting anything.
 
 `:tags: hide-input` sets the state a cell **opens** in; the button moves it from there, and that choice lasts as long as the cell does, re-renders included. The two are deliberately not the same thing: the document declares, the hand adjusts. Clicking does not write the tag back, so glancing at a long cell is not a modification of the file — and `pyodide.keys.toggleInput` gives the button a shortcut if you use it often.
+
+### The size of the code  
+
+`−` and `+` beside the chevron make this cell's code a little smaller or a little larger. Alt-click either one to give the cell back to whatever the document and the view say it should be.
+
+The step is taken from the size the cell is **currently rendered at**, not from a stored number, so one press does the expected thing whether the cell sits in an ordinary preview or on a slide, where the deck's own `cellFontSize` applies. Like the chevron, it is a view control: it lasts as long as the cell does and writes nothing into the document.
 
 ### The status bar  
 

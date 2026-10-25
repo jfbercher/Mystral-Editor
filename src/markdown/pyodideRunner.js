@@ -1367,12 +1367,30 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
    * modification of the file.
    */
   const foldBtn    = mkBtn("pyodide-btn-fold",    "⌄");
-  const runBtn     = mkBtn("pyodide-btn-run",     "▶ Run");
-  const clearBtn   = mkBtn("pyodide-btn-clear",   "Clear");
+  /**
+   * The code of this cell, a little smaller or a little larger.
+   *
+   * A view control, like the chevron beside it, and for the same reasons: it
+   * is adjusted while reading and it writes nothing into the document. The
+   * step is taken from the size the cell is *currently rendered at* rather
+   * than from a stored number, so one press does the expected thing whether
+   * the cell sits in an ordinary preview or on a slide, where the deck's own
+   * code size applies.
+   */
+  const smallerBtn = mkBtn("pyodide-btn-font pyodide-btn-smaller", "−");
+  const largerBtn  = mkBtn("pyodide-btn-font pyodide-btn-larger",  "+");
+  const runBtn     = mkBtn("pyodide-btn-run",     "▶");
+  const clearBtn   = mkBtn("pyodide-btn-clear",   "⌫");
+  // Built, wired and never shown. Run All and Clear All are reached by
+  // alt-clicking Run and Clear -- the grammar this toolbar already uses for
+  // Restart, which reloads the whole runtime on an alt-click, and for the
+  // size buttons, which reset on one. Two fewer buttons in a bar that was
+  // wrapping onto a second line in a narrow pane, and the actions keep their
+  // own handlers rather than being duplicated into their neighbours'.
   const runAllBtn  = mkBtn("pyodide-btn-runall",  "Run All");
   const clearAllBtn = mkBtn("pyodide-btn-clearall", "Clear All");
-  const varsBtn     = mkBtn("pyodide-btn-vars",     "Vars");
-  varsBtn.title = "List the variables currently defined (\u2325V) \u2014 or run %whos in a cell";
+  const varsBtn     = mkBtn("pyodide-btn-vars",     "x=");
+  varsBtn.title = "Variables currently defined (\u2325V) \u2014 or run %whos in a cell";
   // Read at each use rather than captured: a re-render restamps the host, and
   // the frontmatter may have changed `python:` in between.
   const _space = () => el.dataset.pythonSpace || SHARED_SPACE;
@@ -1386,14 +1404,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     await showVarInspector(_space(), _spaceLabel());
   };
   varsBtn.addEventListener("click", openVarInspector);
-  const restartBtn = mkBtn("pyodide-btn-restart", "Restart");
-  const insertBtn  = mkBtn("pyodide-btn-insert",  "+ Cell");
+  const restartBtn = mkBtn("pyodide-btn-restart", "↻");
+  const insertBtn  = mkBtn("pyodide-btn-insert",  "⊕");
   insertBtn.title = "Insert an empty code-cell below (⌘⇧↵ / Ctrl+Shift+Enter)";
   // Only useful in the inline preview, where a code cell is never turned into
   // its source by the caret (it is a full editor already, so replacing it would
   // remove execution and completion). CSS shows it there and hides it elsewhere,
   // where the source panel is one click away anyway.
-  const sourceBtn = mkBtn("pyodide-btn-source", "</>");
+  const sourceBtn = mkBtn("pyodide-btn-source", "✎");
   sourceBtn.title = "Edit this cell's markdown source in the document (Esc to come back)";
   const deleteBtn  = mkBtn("pyodide-btn-delete",  "✕");
   deleteBtn.title = "Delete this cell";
@@ -1435,7 +1453,34 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   };
   foldBtn.addEventListener("click", () => setFolded(!wrapper.classList.contains("pyodide-folded")));
 
-  controls.append(foldBtn, runBtn, clearBtn, runAllBtn, clearAllBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
+  const MIN_CELL_FONT = 8;
+  const MAX_CELL_FONT = 48;
+
+  const setCellFont = (px) => {
+    if (px === null) {
+      delete el.dataset.cellFont;
+      wrapper.style.removeProperty("--pyodide-cell-font-size");
+      return;
+    }
+    const size = Math.round(Math.min(MAX_CELL_FONT, Math.max(MIN_CELL_FONT, px)));
+    el.dataset.cellFont = String(size);
+    wrapper.style.setProperty("--pyodide-cell-font-size", `${size}px`);
+  };
+
+  const stepCellFont = (by) => (ev) => {
+    // Alt-click gives the cell back to whatever the document and the view
+    // say it should be -- a way out that costs no third button.
+    if (ev.altKey) return setCellFont(null);
+    const current = Number(el.dataset.cellFont) || parseFloat(getComputedStyle(wrapper).fontSize) || 13;
+    setCellFont(current + by);
+  };
+
+  smallerBtn.title = "Smaller code in this cell (⌥/Alt-click to reset)";
+  largerBtn.title = "Larger code in this cell (⌥/Alt-click to reset)";
+  smallerBtn.addEventListener("click", stepCellFont(-1));
+  largerBtn.addEventListener("click", stepCellFont(1));
+
+  controls.append(foldBtn, smallerBtn, largerBtn, runBtn, clearBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -1637,6 +1682,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     .split(/[\s,]+/)
     .filter(Boolean);
   setFolded(el.dataset.folded === "1" || tags.includes("hide-input"));
+  if (el.dataset.cellFont) setCellFont(Number(el.dataset.cellFont));
 
   // ── État de synchronisation ───────────────────────────────────────────────
   let _currentCode    = code;
@@ -1809,7 +1855,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   // ── Événements des boutons ────────────────────────────────────────────────
 
-  clearBtn.addEventListener("click", () => {
+  clearBtn.title = "Clear this cell's output — ⌥/Alt-click to clear every cell";
+  clearBtn.addEventListener("click", (ev) => {
+    if (ev?.altKey) return void clearAllBtn.click();
     widgetOutputArea.innerHTML = "";
     textOutputArea.innerHTML = "";
     outputArea.hidden = true;
@@ -1819,7 +1867,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   });
 
   restartBtn.title =
-    "Restart the kernel: clears the variables of this document's namespace " +
+    "Restart the kernel \u21bb: clears the variables of this document's namespace " +
     "(⌥/Alt-click to reload the whole Pyodide runtime, which affects every document)";
   restartBtn.addEventListener("click", async (ev) => {
     const hard = ev.altKey;
@@ -1925,7 +1973,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     });
   });
 
-  runBtn.addEventListener("click", async () => {
+  runBtn.title = "Run this cell (⇧↵) — ⌥/Alt-click to run every cell of the document";
+  runBtn.addEventListener("click", async (ev) => {
+    if (ev?.altKey) return void runAllBtn.click();
     runBtn.disabled = true;
     wrapper.classList.add("pyodide-running");
     outputArea.hidden = true;
