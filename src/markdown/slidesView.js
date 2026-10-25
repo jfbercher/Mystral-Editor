@@ -216,9 +216,29 @@ function furnish(el, index, total, s) {
   else delete el.dataset.footerPage;
 }
 
-/** True when the caret is inside a cell's editor, where the arrows must edit. */
+/**
+ * The element that really has the focus.
+ *
+ * `document.activeElement` stops at a shadow root and returns its host, and
+ * this editor lives in one -- so asking the document directly says "the
+ * editor" and never "the cell inside it". Each root has to be asked in turn.
+ */
+function deepActiveElement() {
+  let el = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
+/**
+ * True when the caret is inside a cell's editor, where the keys must edit.
+ *
+ * This answered "no" always, for the reason above, and the cost was not what
+ * it looked like: Backspace moving to the previous slide is what one notices,
+ * but the same fault handed the arrows and -- worst of all -- the space bar
+ * to the deck while Python was being typed in front of the room.
+ */
 function inCellEditor() {
-  const el = document.activeElement;
+  const el = deepActiveElement();
   return !!(el && el.closest && el.closest(".pyodide-wrapper"));
 }
 
@@ -441,6 +461,13 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const onKey = (ev) => {
     if (!presenting) return;
+    // Already dealt with by whoever had the focus -- a cell's editor calls
+    // preventDefault on every key it uses. A second guard, independent of the
+    // first: knowing *that* a key was consumed needs nothing of where the
+    // caret is, so it holds even where asking the focus would mislead. The
+    // tab manager's own global shortcuts are written the same way.
+    if (ev.defaultPrevented || ev.repeat) return;
+
     const inCell = inCellEditor();
 
     // PageUp and PageDown first, and unconditionally: that is what every
