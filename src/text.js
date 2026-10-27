@@ -240,6 +240,8 @@ export class TextManager {
     this.chunks = [];
     this.editorView = editorView;
     this.preview = signal(null);
+    /** The document's declared language, for the spell checker. */
+    this.language = signal("");
     this.options = options;
     this.userSettings = userSettings;
     this.md = computed(() => {
@@ -599,6 +601,11 @@ export class TextManager {
     // Effective: the project's myst.yml with this document's own frontmatter on
     // top. A document with no block of its own still belongs to its project.
     const fm = effectiveFrontmatter(this.text.value);
+    // The document's own language, for the spell checker. A signal rather
+    // than a plain field: the editor has to hear about it, and it changes
+    // when the frontmatter does -- including by inheritance from the project.
+    const declaredLanguage = String(fm?.language ?? "").trim();
+    if (this.language.value !== declaredLanguage) this.language.value = declaredLanguage;
     updateMathMacros(this.options.id.value, fm);
     const macrosSignature = getMacrosSignature(this.options.id.value);
     if (timing_debug) console.log("frontmatter+macros:", (performance.now() - _t0).toFixed(2), "ms");

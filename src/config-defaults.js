@@ -133,6 +133,18 @@ export const DEFAULT_CONFIG = {
     modeSlides:  "Mod-Shift-m",
   },
 
+  // Spell checking. The language a document declares in its frontmatter wins;
+  // this is what applies when it declares none.
+  //
+  // The name is the dictionary's: `fr` is accepted and looked up as `fr_FR`,
+  // which is what the folder is called. en_US ships with the application;
+  // any other language is a folder <name>/<name>.aff + <name>.dic placed in
+  // the configuration directory, beside config.json -- which also lets a
+  // bundled language be replaced by a better dictionary.
+  spellcheck: {
+    language: "en_US",
+  },
+
   pyodide: {
     // false = notebook behaviour: CWD persists across cells (option B)
     // true  = resets os.chdir("/local") before each cell  (option A)

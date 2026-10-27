@@ -11,6 +11,7 @@ Mystral Editor reads two optional files at startup. Neither is required: without
 | `config.json` | Runtime settings: intervals, shortcuts, Pyodide behaviour, export commands, directive registry |
 | `custom.css` | Stylesheet overrides, injected after the application stylesheet |
 
+(Where-they-live)=
 ### Where they live
 
 | Build | Location |
@@ -72,6 +73,38 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 These defaults are the same on the three platforms, which is why the inline preview is on `l` rather than the `i` of its name: `Ctrl-Shift-i` opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works everywhere keeps `config.json` portable from one machine to the next.
 
 Some keys are still taken by the system, the browser or another application before the editor sees them, and that varies from one setup to the next. If one of these collides with something on yours, change it in `config.json`, which the `Settings` menu at the top left of the editor opens. Two directions worth trying: a letter that nothing claims, or `Alt` in place of `Mod`, which is free more often on Windows. In Firefox, note that `Ctrl-Shift-p` opens a private window.
+
+---
+
+## `spellcheck` — the language of the spell checker
+
+| Key | Default | Meaning |
+|---|-------|---|
+| `spellcheck.language` | `"en_US"` | The dictionary used when a document declares no language of its own. |
+
+A document's frontmatter wins over this:
+
+```yaml
+---
+title: Transformée de Fourier
+language: fr
+---
+```
+
+The value is the dictionary's name. `fr` is accepted and looked up as `fr_FR`, which is what the folder is called, so you rarely need the long form. The language is also inherited from the project, being read from the effective frontmatter.
+
+**Adding a language.** `en_US` ships with the application. Any other is a folder in the configuration directory, see [](#Where-they-live), beside `config.json` and holding the two files of a hunspell dictionary:
+
+```
+dictionaries/fr_FR/fr_FR.aff
+dictionaries/fr_FR/fr_FR.dic
+```
+
+A site collecting dictionnaries is [https://github.com/wooorm/dictionaries/](https://github.com/wooorm/dictionaries/). 
+
+The configuration folder is looked at first, so a bundled language can also be replaced by a dictionary you prefer. Hunspell dictionaries are what LibreOffice and Firefox use, and are packaged for every language of any size.
+
+A document declaring a language nobody has installed keeps the checking it had rather than losing it, and the browser console says which dictionary was missing. Note that the configuration folder is read by the desktop build only; in a browser, the dictionaries served with the application are all there is.
 
 ---
 

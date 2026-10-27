@@ -532,7 +532,13 @@ export function mountEditor(mnt_options) {
       customDirectives: editorOptions.customDirectives ?? [],
       includeButtons: makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab),
       openFileInTab: openFileHandleInTab,
-      spellcheckOpts: { dict: "en_US", dictionaryPath: `${window.location.pathname}dictionaries` },
+      // `dict` is only the fallback now: a document's own frontmatter
+      // `language:` wins, and config.json sets what applies when it declares
+      // none. See extensions/spellchecker.js.
+      spellcheckOpts: {
+        dict: config.spellcheck?.language || "en_US",
+        dictionaryPath: `${window.location.pathname}dictionaries`,
+      },
       syncScroll: true,
     },
     container,

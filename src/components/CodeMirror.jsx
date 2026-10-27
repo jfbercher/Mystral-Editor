@@ -11,6 +11,7 @@ import { useSignalEffect } from "@preact/signals";
 import { FoldChevron, MdStyles } from "./Preview";
 import { Logger } from "../logger";
 import { foldFrontmatter, shouldFoldFrontmatter } from "../extensions/frontmatterFold.js";
+import { useSpellcheckLanguage } from "../extensions/spellchecker.js";
 
 let timing_debug = false;
 
@@ -357,6 +358,22 @@ const CodeMirror = () => {
   const focusScroll = useRef(null);
   const lastTyped = useRef(null);
   const renderTimer = useRef(null);
+
+  // The spell checker follows the document. The dictionary is held in a
+  // compartment, so changing language reconfigures the editor in place rather
+  // than rebuilding it -- and a document that declares none falls back to the
+  // configured default. Asked for again on every change, which is cheap: a
+  // dictionary is loaded once and kept.
+  useSignalEffect(() => {
+    const view = editorView.value;
+    const opts = options.spellcheckOpts.value;
+    const declared = text.language.value;
+    if (!view || !opts) return;
+    // The declared language first, the configured default behind it: a
+    // document asking for a dictionary nobody installed is still checked,
+    // rather than silently checked in nothing.
+    useSpellcheckLanguage(view, [declared, opts.dict], opts.dictionaryPath);
+  });
 
   useSignalEffect(() => {
     if (!options.collaboration.value.enabled || (collab.value.ready.value && !collab.value.lockMsg.value && !error.value)) return;
