@@ -3,6 +3,7 @@ import { Directive, directivePlugin, Role, rolePlugin, rolesDefault } from "mark
 import { escapeRE } from "markdown-it/lib/common/utils";
 import { Cite } from "../markdown/bibliography"
 import { EvalRole } from "../markdown/markdownPyodide"
+import { IndexRole } from "./markdownIndex.js"
 
 /**
  * @typedef {{
@@ -219,7 +220,7 @@ const useCustomRoles = (transforms, cache) => (markdownIt) => {
       roles[name] = role;
       return roles;
     }, {});
-  customRoles = { ...customRoles, ...{ cite: Cite, eval: EvalRole, sc: SmallCaps, u: Underline, del: Deleted } };
+  customRoles = { ...customRoles, ...{ cite: Cite, eval: EvalRole, sc: SmallCaps, u: Underline, del: Deleted, index: IndexRole } };
   // The proof family's own reference role, under both of mystmd's spellings.
   // It is an alias of {numref} there -- only the kind "ref" substitutes the
   // target's title, every other kind goes through the numbered template -- so

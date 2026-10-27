@@ -1160,6 +1160,8 @@ export const rawDirectives = {
   raw: RawDirective,
 };
 
+export { indexDirectives } from "./markdownIndex.js";
+
 export const codeDirectives = {
   "code-cell": CodeCellDirective,
 };

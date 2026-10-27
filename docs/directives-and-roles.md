@@ -132,8 +132,35 @@ Two directives are added that address or enhance the documents stucture. The `to
 | --- | --- | --- |
 | `toc`, and the aliases `table-of-contents`, `tableofcontents`, `contents`, `toctree` | This work | Table of contents built from the document's headings, with `:depth:`, `:context:`, `:dropdown:` — see [toc](toc.md) |
 | `include`, `literalinclude` | This work | Inserts another file, parsed as MyST or shown as a code block — see [include](include.md) |
+| `show-index` | This work | Prints the document's index: everything marked with the `{index}` role, in alphabetical order, each term linking back to its occurrences — see *Index*, below |
 | `raw` | This work, for the preview only | A block handed verbatim to one output format, named as the argument or in `:format:`. mystmd handles it; what is added here is the preview, which used to show the grey « unknown directive » frame and so reported an error where there is none. It is shown as the literal text it is, labelled with the format it is written for |
 :::
+
+### Index  
+
+A term is marked where it is used, and the index is printed where you want it:
+
+```
+The {index}`Fourier transform` turns convolution into a product.
+
+:::{show-index}
+:::
+```
+
+The role shows its text and nothing else — an index entry should not announce itself in the sentence — and `{show-index}` lists every marked term alphabetically, each one linking back to its occurrences, numbered in document order. There are no page numbers to give: the page is the whole document.
+
+Four forms are understood, the ones MyST documents:
+
+| Written | Shown | Filed under |
+| --- | --- | --- |
+| `` {index}`Fourier transform` `` | Fourier transform | *Fourier transform* |
+| `` {index}`the transform <Fourier transform>` `` | the transform | *Fourier transform* |
+| `` {index}`pair: transform; Fourier` `` | transform, Fourier | *transform* → Fourier, and *Fourier* → transform |
+| `` {index}`see: FFT; Fourier transform` `` | FFT | *FFT*, pointing at Fourier transform |
+
+`single:` is the default and may be written out; `triple:` and `seealso:` work the same way as `pair:` and `see:`. A term marked inside a code block is left alone, as code should be.
+
+Two deliberate limits. A `triple: a; b; c` is filed three ways — each term with the other two — where Sphinx files it six; three is enough to find a term from any of the three, which is what an index is for. And the index is a document's, not a project's: `{show-index}` collects what this file marks, included files included, and knows nothing of its neighbours.
 
 (Roles)=
 ## Roles
@@ -153,6 +180,7 @@ Two directives are added that address or enhance the documents stucture. The `to
 | `raw` | Library | |
 | `cite` | This work | A bibliography citation; `[@key]` is the usual spelling |
 | `eval` | This work | Evaluates a Python expression and inserts its value in the text flow |
+| `index` | This work | Marks a term for the index, showing it and nothing more. `single`, `pair`, `triple`, `see` and `seealso` prefixes, and the `text <term>` form — see *Index*, above |
 
 :::
 

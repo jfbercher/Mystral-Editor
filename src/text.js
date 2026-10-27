@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives, rawDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives, rawDirectives, indexDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
@@ -13,6 +13,15 @@ import { readTextRelative, getEditorFileKey, setEditorPythonSpace } from "./util
 import { spaceKey, spaceLabel } from "./markdown/pyodideRunner";
 
 /** A chunk containing one of these renders the document's whole heading tree. */
+/**
+ * A chunk holding one of these renders the whole document's index, so it has
+ * to be re-rendered whenever a term is marked anywhere -- exactly the case
+ * the table of contents already answers for below. Making every chunk depend
+ * on the index would re-render the document on each keystroke inside a marked
+ * word, which is what the chunking exists to avoid.
+ */
+const INDEX_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{show-index\}/;
+
 const TOC_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{(?:toc|table-of-contents|tableofcontents|contents|toctree)\}/;
 import { showToast } from "./utils/utils_ui";
 import markdownSourceMap, { getLineById } from "./markdown/markdownSourceMap";
@@ -38,6 +47,7 @@ import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/
 import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
+import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdownIndex";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
@@ -250,7 +260,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...rawDirectives, ...includeDirectives, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...rawDirectives, ...indexDirectives, ...includeDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
@@ -260,6 +270,7 @@ export class TextManager {
         .use(markdownItMath, this.options.id.value)
         .use(markdownSourceMap)
         .use(markdownSlideBreaks)
+        .use(markdownIndexRole)
         .use(markdownItHeadings)
         .use(markdownItFootnoteDefs)
         .use(markdownItFootnoteRefs)
@@ -790,6 +801,11 @@ export class TextManager {
     const numberedSignature = getNumberedSignature(byLabel);
 
     if (timing_debug) {const _t5 = performance.now();}
+    // Read from the expanded text, like the other scanners: a term marked in
+    // an included file belongs in the index of the document that includes it.
+    const index = scanIndex(scanText);
+    const indexSig = indexSignature(index);
+
     const { footnoteMap } = scanFootnotes(scanText);
     const footnotesSignature = [...footnoteMap.entries()].map(([l, i]) => `${l}:${i.number}:${i.content}`).join("|");
     if (timing_debug) console.log("scanFootnotes:", (performance.now() - _t5).toFixed(2), "ms");
@@ -854,10 +870,11 @@ export class TextManager {
       .map(({ text, startLine, endLine }, chunkId) => {
         const headingSignature = numberingSectionsActive ? "on" : "off";
         const tocSignature = TOC_DIRECTIVE_RE.test(text) ? headingTreeSignature : "";
+        const indexDirSignature = INDEX_DIRECTIVE_RE.test(text) ? indexSig : "";
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}\0${indexDirSignature}`,
         42,
         ).result();
         
@@ -896,7 +913,11 @@ export class TextManager {
                       // Which spelling cuts: the renderer needs it too, or a
                       // `---` left free by the setting would still be marked
                       // as a cut and hidden by the slide stylesheet.
-                      slideMarker: slideMode ? this.slideSettings.marker : "both", });
+                      slideMarker: slideMode ? this.slideSettings.marker : "both",
+                      // The index itself for {show-index}, and the anchors
+                      // the {index} roles take in turn.
+                      index,
+                      indexIds: index.ids, });
           if (timing_debug) {const _r1 = performance.now();}
           html = sanitize(rendered);
           if (timing_debug) {

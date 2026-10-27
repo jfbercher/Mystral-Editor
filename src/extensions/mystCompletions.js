@@ -38,6 +38,7 @@ const ROLES = [
   { name: "sub", detail: "Subscript" },
   { name: "sup", detail: "Superscript" },
   //{ name: "term", detail: "Glossary term" },
+  { name: "index", detail: "Index term" },
   { name: "u", detail: "Underlined text" },
 ];
 
@@ -125,10 +126,12 @@ const DIRECTIVES = [
   // The path is required: an {include} without one is an error, so the snippet
   // puts the cursor on it. Its options are all optional, and most documents use
   // none, so none are pre-written.
+  { name: "raw", group: "Document", arg: "html" },
   { name: "include", group: "Document", arg: "path/to/file.md", noBody: true },
   // Table of contents
   { name: "toc", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
   { name: "table-of-contents", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
+  { name: "show-index", group: "Document" },
 ];
 
 

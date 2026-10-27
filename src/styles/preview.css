@@ -167,3 +167,48 @@ details.toc .toc-number {
   opacity: .75;
   margin-bottom: .2rem;
 }
+
+/* ── Index ──────────────────────────────────────────────────────────────────
+   A marked term is not supposed to announce itself: the dotted underline is
+   there for the author, who needs to see what has been filed, and is quiet
+   enough that a reader passes over it. */
+.index-entry {
+  border-bottom: 1px dotted var(--border, #c4d4e6);
+}
+
+.myst-index {
+  margin: 1em 0;
+}
+.myst-index-empty {
+  opacity: 0.6;
+  font-style: italic;
+}
+.myst-index .index-terms,
+.myst-index .index-subs {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+.myst-index .index-subs {
+  padding-left: 1.4em;
+}
+.myst-index .index-term {
+  margin: 0.15em 0;
+}
+.myst-index .index-term-name {
+  font-weight: 600;
+}
+.myst-index .index-see {
+  font-style: italic;
+  opacity: 0.8;
+}
+.myst-index .index-refs {
+  font-variant-numeric: tabular-nums;
+}
+.myst-index .index-ref {
+  padding: 0 0.15em;
+  text-decoration: none;
+}
+.myst-index .index-ref:hover {
+  text-decoration: underline;
+}
