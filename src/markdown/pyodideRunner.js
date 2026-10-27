@@ -577,7 +577,7 @@ function scanFilePaths(code) {
   }
   // Also match variable assignments with known data-file extensions:
   //   QUIZFILE = "intro-ds-tp.yaml"  or  CLIENT = "client_web.json"
-  const reAssign = /=\s*['"]([^'"\n]+\.(?:yaml|yml|json|csv|tsv|txt|xlsx|xls|parquet))['"]/gi;
+  const reAssign = /=\s*['"]([^'"\n]+\.(?:yaml|yml|json|csv|tsv|txt|xlsx|xls|parquet|py))['"]/gi;
   for (const m of code.matchAll(reAssign)) {
     const p = m[1].replace(/\\/g, "/");
     if (!p.startsWith("/") && !/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(p)) paths.add(p);
