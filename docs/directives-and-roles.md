@@ -136,6 +136,30 @@ Two directives are added that address or enhance the documents stucture. The `to
 | `raw` | This work, for the preview only | A block handed verbatim to one output format, named as the argument or in `:format:`. mystmd handles it; what is added here is the preview, which used to show the grey « unknown directive » frame and so reported an error where there is none. It is shown as the literal text it is, labelled with the format it is written for |
 :::
 
+### Abbreviations  
+
+The `{abbr}` role carries its own definition, as MyST specifies:
+
+```
+{abbr}`FFT (Fast Fourier Transform)`
+```
+
+A document — or its project — can instead declare them once in the frontmatter, after which **every occurrence in ordinary prose** carries its definition, with nothing written at the point of use:
+
+```yaml
+---
+abbreviations:
+  MyST: Markedly Structured Text
+  FFT: Fast Fourier Transform
+---
+```
+
+It is worth being clear that this is not a table the role consults; the shape invites that reading and it is wrong. The role already knows its definition. What the frontmatter asks for is something the role cannot do — that words nobody marked become abbreviations — so it is a pass over the rendered text.
+
+Only prose is touched. A term inside inline code or a code block is left alone, and so is anything the `{abbr}` role has already wrapped. A term is recognised standing on its own: `FFTW` is not an `FFT` followed by a stray letter. The longest declared term wins where two overlap.
+
+The definitions are inherited from the project, since they are read from the effective frontmatter: declared once in `myst.yml`, recognised in every document of the project.
+
 ### Index  
 
 A term is marked where it is used, and the index is printed where you want it:
@@ -180,6 +204,7 @@ Two deliberate limits. A `triple: a; b; c` is filed three ways — each term wit
 | `raw` | Library | |
 | `cite` | This work | A bibliography citation; `[@key]` is the usual spelling |
 | `eval` | This work | Evaluates a Python expression and inserts its value in the text flow |
+| `abbr`, `abbreviation` | markdown-it-docutils | An abbreviation and its definition: `` {abbr}`FFT (Fast Fourier Transform)` ``. Terms declared in the frontmatter are recognised in prose without it — see *Abbreviations*, above |
 | `index` | This work | Marks a term for the index, showing it and nothing more. `single`, `pair`, `triple`, `see` and `seealso` prefixes, and the `text <term>` form — see *Index*, above |
 
 :::

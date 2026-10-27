@@ -48,6 +48,7 @@ import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
 import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdownIndex";
+import { readAbbreviations, abbreviationsSignature, markdownAbbreviations } from "./markdown/markdownAbbreviations";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
@@ -271,6 +272,7 @@ export class TextManager {
         .use(markdownSourceMap)
         .use(markdownSlideBreaks)
         .use(markdownIndexRole)
+        .use(markdownAbbreviations)
         .use(markdownItHeadings)
         .use(markdownItFootnoteDefs)
         .use(markdownItFootnoteRefs)
@@ -801,6 +803,13 @@ export class TextManager {
     const numberedSignature = getNumberedSignature(byLabel);
 
     if (timing_debug) {const _t5 = performance.now();}
+    // Declared once in the frontmatter, recognised in every chunk -- so
+    // unlike the index, whose signature only the chunk holding {show-index}
+    // needs, this one belongs in every chunk's hash: changing a definition
+    // changes every page that uses the term.
+    const abbreviations = readAbbreviations(fm);
+    const abbreviationsSig = abbreviationsSignature(abbreviations);
+
     // Read from the expanded text, like the other scanners: a term marked in
     // an included file belongs in the index of the document that includes it.
     const index = scanIndex(scanText);
@@ -874,7 +883,7 @@ export class TextManager {
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}\0${indexDirSignature}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}\0${indexDirSignature}\0${abbreviationsSig}`,
         42,
         ).result();
         
@@ -917,7 +926,8 @@ export class TextManager {
                       // The index itself for {show-index}, and the anchors
                       // the {index} roles take in turn.
                       index,
-                      indexIds: index.ids, });
+                      indexIds: index.ids,
+                      abbreviations, });
           if (timing_debug) {const _r1 = performance.now();}
           html = sanitize(rendered);
           if (timing_debug) {
