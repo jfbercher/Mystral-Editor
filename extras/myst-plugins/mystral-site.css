@@ -1,0 +1,124 @@
+/*
+ * What the editor's floated figures and tables need on a MyST site.
+ *
+ * `:class: float-left` / `float-right` already reaches the site: mystmd keeps
+ * a directive's classes on the node and the theme renders them, which is why
+ * the same word works in the editor, in LaTeX and here. What the site has no
+ * idea about is what the word should mean, so these are its rules -- the same
+ * ones the editor's preview uses, written once more because the two render in
+ * different places and share no stylesheet.
+ *
+ * Declared in myst.yml as the site's style sheet:
+ *
+ *   site:
+ *     options:
+ *       style: myst-plugins/mystral-site.css
+ *
+ * Only one such file can be declared, so the editor writes this key only when
+ * the project has none; a project with its own style sheet keeps it, and the
+ * two lines to add are reported instead.
+ */
+
+/* The element, then the class: the themes are built with Tailwind and a
+   figure already carries utilities of its own. An element plus a class beats
+   a utility class, so these win without `!important`. The bare class is kept
+   beside it in case a theme renders the container as something other than a
+   <figure>. */
+figure.float-left,
+figure.float-right,
+table.float-left,
+table.float-right,
+.float-left,
+.float-right {
+  width: var(--float-width, 45%);
+  max-width: 100%;
+  margin-top: 0.2em;
+}
+figure.float-left,
+table.float-left,
+.float-left {
+  float: left;
+  margin-right: 1.5em;
+  margin-bottom: 0.8em;
+}
+figure.float-right,
+table.float-right,
+.float-right {
+  float: right;
+  margin-left: 1.5em;
+  margin-bottom: 0.8em;
+}
+/* Not a float, and named one only so the three live together. */
+figure.float-center,
+table.float-center,
+.float-center {
+  float: none;
+  width: var(--float-width, 60%);
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The image fills the figure, since it is the figure that has left the flow.
+   mystmd writes the author's `:figwidth:` as an inline width on the image,
+   which is why this one has to shout. */
+figure.float-left img,
+figure.float-right img,
+figure.float-center img,
+.float-left img,
+.float-right img,
+.float-center img {
+  width: 100% !important;
+  max-width: 100%;
+}
+
+/* The width the author asked for.
+   `:figwidth:` is read by mystmd into the image, not the figure, so the
+   plugin turns it into one of these classes -- rounded to five points, which
+   is finer than anyone chooses a figure width. Without one the float keeps
+   the default above. */
+.float-w20 { --float-width: 20%; }
+.float-w25 { --float-width: 25%; }
+.float-w30 { --float-width: 30%; }
+.float-w35 { --float-width: 35%; }
+.float-w40 { --float-width: 40%; }
+.float-w45 { --float-width: 45%; }
+.float-w50 { --float-width: 50%; }
+.float-w55 { --float-width: 55%; }
+.float-w60 { --float-width: 60%; }
+.float-w65 { --float-width: 65%; }
+.float-w70 { --float-width: 70%; }
+
+/* Line the float up with the first line of the text beside it.
+   The theme spaces its paragraphs with a bottom margin, except the one that
+   follows the figure inside the group, which gets a top margin of its own and
+   so started some twenty pixels below the figure. Both are brought back to
+   the top of the group; what separates the group from what precedes it is the
+   previous block's bottom margin, which is untouched. */
+.float-group > figure[class*="float-"],
+.float-group > table[class*="float-"],
+.float-group > figure[class*="float-"] + *,
+.float-group > table[class*="float-"] + * {
+  margin-top: 0;
+}
+
+/* The block a float shares with its text.
+   The plugin wraps the two together, because an article is a CSS grid and a
+   grid item's float means nothing to its siblings. `flow-root` then keeps the
+   float inside the group, so a figure taller than its text cannot spill into
+   what follows. */
+.float-group {
+  display: flow-root;
+}
+
+/* Stop the wrapping at the next section.
+   The site has no chunking to contain a float, so a figure taller than the
+   text beside it would carry the wrap into the following sections -- the same
+   defect `\wrapstuffclear` answers in LaTeX. `clear` does nothing where no
+   float is active, so this costs nothing on every other page. */
+h1,
+h2,
+h3,
+h4 {
+  clear: both;
+}

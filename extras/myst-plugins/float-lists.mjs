@@ -231,9 +231,31 @@ function floatWidth(container) {
   return found;
 }
 
+/**
+ * The author's width, as one of the classes the site stylesheet knows.
+ *
+ * mystmd reads `:figwidth:` into the image, not into the figure, so on a site
+ * the image would be 45 % of a figure that still spans the column -- and a
+ * full-width figure floats around nothing. The width has to reach the figure,
+ * and a class is the only thing that travels there reliably: a theme renders
+ * a node's classes, where an inline style of our own invention may or may not
+ * survive. Rounded to five points, which is finer than anyone chooses a
+ * figure width, and clamped to the range the stylesheet defines.
+ */
+function widthClass(container) {
+  const fraction = floatWidth(container);
+  if (!fraction) return null;
+  const percent = Math.round((Number(fraction) * 100) / 5) * 5;
+  return percent >= 20 && percent <= 70 ? `float-w${percent}` : null;
+}
+
 function markFloat(container) {
   const m = FLOAT_CLASS.exec(String(container.class ?? ""));
   if (!m) return false;
+
+  // For the HTML site, which reads the classes and nothing else of ours.
+  const width = widthClass(container);
+  if (width && !String(container.class).includes(width)) container.class = `${container.class} ${width}`;
   const side = m[1] === "left" ? "l" : "r";
   // At the head of the figure rather than inside its caption, where the short
   // caption's marker already sits: the two would then have to be read in
@@ -243,6 +265,50 @@ function markFloat(container) {
   return true;
 }
 
+/**
+ * Group a float with the text that should run beside it.
+ *
+ * A MyST site lays an article out as a CSS grid, one row per top-level
+ * block. A grid item's `float` changes nothing for its siblings -- each keeps
+ * its own row -- so a floated figure came out narrow and left-aligned with
+ * the text obediently below it, which is not what floating means.
+ *
+ * Nothing in a stylesheet can fix that: the float and the text have to share
+ * a block, and only the tree can give them one. So the figure and what
+ * follows it, up to the next heading, are wrapped in a `div` -- the same
+ * grouping the editor's preview gets for free from its chunks, which is why
+ * the preview was right from the start.
+ *
+ * The wrapper is free elsewhere: the LaTeX writer walks a `div` and emits its
+ * children, so the `.tex` is unchanged, and the grouping happens at project
+ * stage, after enumeration, so no figure is renumbered by it.
+ */
+const GROUP_CLASS = "float-group";
+
+const isFloated = (node) => node?.type === "container" && FLOAT_CLASS.test(String(node.class ?? ""));
+
+function groupFloats(parent) {
+  const kids = parent.children ?? [];
+  if (!kids.some(isFloated)) return;
+
+  const out = [];
+  for (let i = 0; i < kids.length; i++) {
+    if (!isFloated(kids[i])) {
+      out.push(kids[i]);
+      continue;
+    }
+    // Up to the next heading -- where the wrapping should stop, and where a
+    // new grid row starts anyway -- or the next float, which would collide
+    // with this one rather than share its text.
+    const group = [kids[i]];
+    let j = i + 1;
+    while (j < kids.length && kids[j].type !== "heading" && !isFloated(kids[j])) group.push(kids[j++]);
+    out.push({ type: "div", class: GROUP_CLASS, children: group });
+    i = j - 1;
+  }
+  parent.children = out;
+}
+
 const floatMarkers = {
   name: "Floated figures and tables",
   stage: "project",
@@ -250,6 +316,10 @@ const floatMarkers = {
     const walk = (node) => {
       for (const child of node.children ?? []) walk(child);
       if (node.type === "container") markFloat(node);
+      // Only where the article's grid actually bites: the top level, and the
+      // blocks a `+++` makes of it. Deeper, the float already sits in an
+      // ordinary block and wraps as it should.
+      if (node.type === "root" || node.type === "block") groupFloats(node);
     };
     walk(tree);
     return tree;

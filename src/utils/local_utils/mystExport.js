@@ -35,6 +35,7 @@ import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 import exerciseAdmonitionSource from "../../../extras/myst-plugins/exercise-admonition.mjs?raw";
 import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.mjs?raw";
 import floatListsSource from "../../../extras/myst-plugins/float-lists.mjs?raw";
+import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
 
 /**
  * Environment handed to every myst command.
@@ -1017,6 +1018,55 @@ const PROJECT_PLUGINS = [
   ["float-lists.mjs", floatListsSource],
 ];
 
+/** The site's style sheet, kept in the same folder as the plugins. */
+const SITE_STYLE = "mystral-site.css";
+const SITE_STYLE_PATH = `${PLUGIN_DIR}/${SITE_STYLE}`;
+
+/**
+ * Declare our style sheet as the site's, if the site has none.
+ *
+ * `site.options.style` takes a single file, so a project that already names
+ * one cannot be given ours without losing theirs -- the key is then left
+ * alone and the caller says what to add. Written by hand into the lines, like
+ * the plugins above and for the same reason: the file is the user's, with
+ * their comments and their order, and a round trip through a YAML parser
+ * would hand it back rearranged and stripped.
+ *
+ * Returns the new text, or null when there is nothing to do or nothing safe
+ * to do.
+ */
+export function declareSiteStyle(yml, path = SITE_STYLE_PATH) {
+  const lines = yml.split("\n");
+  const siteAt = lines.findIndex((l) => /^site:\s*$/.test(l));
+  if (siteAt === -1) return { yml: null, reason: "no-site" };
+
+  // The end of the `site:` block: the next line that starts in column one.
+  let end = lines.length;
+  for (let i = siteAt + 1; i < lines.length; i++) {
+    if (/^\S/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const block = lines.slice(siteAt + 1, end);
+  if (block.some((l) => /^\s+style:\s*\S/.test(l))) return { yml: null, reason: "has-style" };
+
+  // `myst init --site` writes `options:` as a comment, so a commented one is
+  // not one: the key has to be real to be written into.
+  const optionsAt = block.findIndex((l) => /^\s+options:\s*$/.test(l));
+  if (optionsAt === -1) {
+    // At the end of what is there rather than straight under `site:`, so the
+    // block still reads in the order its author wrote it. Trailing blank
+    // lines belong to no key and are stepped over.
+    let last = block.length;
+    while (last > 0 && block[last - 1].trim() === "") last -= 1;
+    lines.splice(siteAt + 1 + last, 0, "  options:", `    style: ${path}`);
+  } else {
+    lines.splice(siteAt + 1 + optionsAt + 1, 0, `    style: ${path}`);
+  }
+  return { yml: lines.join("\n"), reason: "added" };
+}
+
 /**
  * Give a project the plugins its documents need, and declare them.
  *
@@ -1041,7 +1091,7 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     // our plugins is not to be given them behind its author's back.
     if (!declare && !(await exists(`${dir}/${PLUGIN_DIR}`))) return false;
     await mkdir(`${dir}/${PLUGIN_DIR}`, { recursive: true }).catch(() => {});
-    for (const [name, source] of PROJECT_PLUGINS) {
+    for (const [name, source] of [...PROJECT_PLUGINS, [SITE_STYLE, siteStyleSource]]) {
       const file = `${dir}/${PLUGIN_DIR}/${name}`;
       // Rewritten when it differs: the plugin travels with the application, so
       // an update to the editor has to reach the projects it has set up.
@@ -1050,14 +1100,41 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
       if (current !== source) await writeTextFile(file, source);
     }
 
-    if (!declare) return false;
-
     const ymlPath = `${dir}/myst.yml`;
     if (!(await exists(ymlPath))) return false;
     const yml = await readTextFile(ymlPath);
+
+    // Without `declare` nothing is added to myst.yml -- except the site's
+    // style sheet, and only in a project that already names our plugins.
+    //
+    // The reservation behind `declare` is about a project that has never had
+    // any of this and should not be given it behind its author's back. One
+    // that already declares the plugins has said yes; the style sheet is a
+    // file of the same set, which arrived later, and nothing else will ever
+    // add it -- every path but a brand-new project calls this without
+    // `declare`, so a floated figure simply never floated on the site. It is
+    // reported rather than done quietly.
+    if (!declare) {
+      if (!yml.includes(PLUGIN_DIR) || yml.includes(SITE_STYLE_PATH)) return false;
+      const late = declareSiteStyle(yml);
+      if (!late.yml) return false;
+      await writeTextFile(ymlPath, late.yml);
+      showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      return true;
+    }
+
     const wanted = PROJECT_PLUGINS.map(([name]) => `${PLUGIN_DIR}/${name}`);
     const missing = wanted.filter((entry) => !yml.includes(entry));
-    if (!missing.length && yml.includes(PYODIDE_OUTPUT_DIR) && /^\s*jupyter:/m.test(yml)) return false;
+    if (!missing.length && yml.includes(PYODIDE_OUTPUT_DIR) && /^\s*jupyter:/m.test(yml)) {
+      // Everything else is already declared, but a project set up before the
+      // stylesheet existed still has no site style: offer it on its own.
+      if (yml.includes(SITE_STYLE_PATH)) return false;
+      const only = declareSiteStyle(yml);
+      if (!only.yml) return false;
+      await writeTextFile(ymlPath, only.yml);
+      showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      return true;
+    }
 
     // Inserted under `project:` rather than parsed and rewritten: the file is
     // the user's, with their comments and their order, and a round trip
@@ -1081,8 +1158,21 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     // document still decides for itself by carrying a `kernelspec` or not.
     if (!/^\s*jupyter:/m.test(yml)) block.push("  jupyter:", "    lite: true");
     lines.splice(at + 1, 0, ...block);
-    await writeTextFile(ymlPath, lines.join("\n"));
+
+    // The site's own stylesheet, which is what makes a floated figure float
+    // on the site: the class travels there by itself, the meaning of the word
+    // does not.
+    const styled = declareSiteStyle(lines.join("\n"));
+    await writeTextFile(ymlPath, styled.yml ?? lines.join("\n"));
     showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs, exercises and lists of figures need it to reach the exports.`, "success", 8000);
+    if (styled.reason === "has-style") {
+      showToast(
+        `myst.yml already names a site stylesheet, so it was left alone. For floated figures on the site, ` +
+          `add the contents of ${SITE_STYLE_PATH} to it.`,
+        "warning",
+        10000,
+      );
+    }
     return true;
   } catch (err) {
     console.warn("[export] the project plugins could not be installed:", err);
