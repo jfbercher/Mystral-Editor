@@ -106,9 +106,8 @@ They matter again later, and more literally: the standalone export and the print
 ---
 title: Fourier series
 slides:
-  header: Signal processing — M1
-  footer: J.-F. Bercher
-  footerPage: Slide {n}/{total}
+  header: "Signal processing — M1 | {section} |"
+  footer: "J.-F. Bercher | | Slide {n}/{total}"
   background: "#f7f7f5"
   padding: 28px 56px
   transition: fade 700ms
@@ -116,7 +115,33 @@ slides:
 ---
 ```
 
-The footer is in two parts so that a page number can sit at the right while something else sits at the left. `footerPage` is a template — `{n}` and `{total}` are replaced — and defining it moves the number into the footer and takes away the badge in the corner, so it cannot appear twice. Leave `footerPage` out and the badge stays as it was.
+The header and the footer are the same thing: one line, three parts separated by `|` — left, middle, right. An empty part takes no room, so `Course | | {n}` puts the title at one end and the number at the other, and `| {section} |` leaves a section title alone in the middle. A literal pipe is written `\|`.
+
+The parts are positional, with no special case: two parts are the left and the middle. "Two parts mean the two ends" would have read better in the common case and been a rule to remember everywhere else; writing `| |` says where things go.
+
+Three placeholders are replaced in any of the four:
+
+| | |
+|---|---|
+| `{n}` | the slide's number |
+| `{total}` | how many slides there are |
+| `{section}` | the title of the section the slide belongs to |
+
+A section is the heading the deck is cut at — with `cutAtHeading: 2`, every `##` opens one, and the slides that follow belong to it until the next. A deck cut by markers alone declares no such level, and level 2 is then assumed: it is where a lecture's parts are usually written, and taking the `h1` instead would name the document on every slide, which says nothing.
+
+Writing `{n}` anywhere takes the number out of the badge in the corner, so it cannot be shown twice; leave it out and the badge stays as it was.
+
+A part that mentions `{section}` shows **nothing at all** on a slide that has no section yet — the title slide, usually. That is deliberate: `Fourier analysis — 3/12` is wanted and ` — 3/12` is not, and dropping the line is more predictable than guessing which punctuation to tidy away.
+
+```yaml
+slides:
+  header: "Signal processing — M1 | {section} |"
+  footer: "J.-F. Bercher | | {n}/{total}"
+```
+
+**Quote a value that begins with a placeholder.** `header: {section} | | {n}` is not a string to YAML but the beginning of a mapping, and the file will not parse. `header: "{section} | | {n}"` is fine, and so is anything starting with a word: `Section {section}`.
+
+The three columns are laid out with the outer two equal, so the middle one is the middle of the slide and not merely of the space the other parts leave.
 
 `headerStyle` and `footerStyle` take CSS declarations as they stand. They are handed to the browser, which parses them, drops what it does not recognise, and keeps them inside the element they belong to — so a mistake costs that one line and never the stylesheet.
 
@@ -153,7 +178,7 @@ It goes under either spelling of the marker. When the deck is cut at headings (`
 
 Either way, only the block at the very top of a slide counts, so a `%` comment written further down stays a comment, and a second heading ends the block like any other content.
 
-Writing both — a `---` and then a heading, with `cutAtHeading` on — is one cut and not two. The marker and the heading that follows it belong to the same slide, so the block can go under either. The keys are `fontSize`, `cellFontSize`, `padding`, `background`, `verticalAlign`, `header`, `footer` and `footerPage`, each overriding the deck's own for that slide alone. An empty value is an answer and not an omission: `header: ""` is how a title slide asks for no header.
+Writing both — a `---` and then a heading, with `cutAtHeading` on — is one cut and not two. The marker and the heading that follows it belong to the same slide, so the block can go under either. The keys are `fontSize`, `cellFontSize`, `padding`, `background`, `verticalAlign`, `header` and `footer`, each overriding the deck's own for that slide alone. An empty value is an answer and not an omission: `header: ""` is how a title slide asks for no header.
 
 The two cases this earns its place for are a title slide centred in the middle of a deck aligned to the top, and a dense slide that wants a smaller body than the rest.
 
@@ -269,9 +294,8 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.height` | `720` | Nominal height. `1280×720` is 16:9, `1024×768` is 4:3. |
 | `slides.fontSize` | `28` | Size of the text on a slide, in pixels **of the nominal slide** — so it means the same in a half-width panel and on the projector. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. Roughly 15 lines of body text fit at 28, 11 at 36. |
 | `slides.padding` | `"48px 56px"` | The margin inside a slide, as a CSS padding shorthand. It is the space above the header and below the footer as much as around the body, since both sit inside it. |
-| `slides.header` | `""` | A line across the top of every slide. Empty means none, and costs no space. |
-| `slides.footer` | `""` | The left-hand part of a line across the foot of every slide. |
-| `slides.footerPage` | `""` | The right-hand part of the footer, as a template: `{n}` and `{total}` are replaced — `"Slide {n}/{total}"`, or just `"{n}"`. Setting it moves the slide number into the footer and removes the badge in the corner. |
+| `slides.header` | `""` | A line across the top of every slide, in three parts separated by `\|`: left, middle, right. Empty means none, and costs no space. |
+| `slides.footer` | `""` | The same, across the foot. |
 | `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
 | `slides.footerStyle` | `""` | The same, for the footer. |
 | `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |

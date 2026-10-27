@@ -78,12 +78,12 @@ function slideSize(settings) {
     furniture: {
       header: s.header ?? "",
       footer: s.footer ?? "",
-      footerPage: s.footerPage ?? "",
       headerStyle: s.headerStyle ?? "",
       footerStyle: s.footerStyle ?? "",
     },
     background: s.background ?? "",
     padding: s.padding ?? "",
+    cutAtHeading: Number(s.cutAtHeading) || 0,
     transition: s.transition ?? "slide",
     transitionMs: Number(s.transitionMs) || 450,
     w: Number(s.width) || 1280,
@@ -141,10 +141,120 @@ function cssValue(property, value) {
 }
 
 /** A footer template with its placeholders filled. */
-function fillTemplate(tpl, n, total) {
-  return String(tpl ?? "")
+/**
+ * A header or footer template with its placeholders filled.
+ *
+ * `{n}`, `{total}` and `{section}`. A template that mentions `{section}` on a
+ * slide that has none renders *nothing at all*, rather than leaving the
+ * punctuation around it stranded -- "Fourier analysis — 3/12" is wanted, and
+ * " — 3/12" is not. The rule is coarse and it is predictable, which is worth
+ * more here than cleverness about dangling separators.
+ */
+function fillTemplate(tpl, n, total, section) {
+  const text = String(tpl ?? "");
+  if (!text) return "";
+  if (text.includes("{section}") && !section) return "";
+  return text
     .replace(/\{n\}/g, String(n))
-    .replace(/\{total\}/g, String(total));
+    .replace(/\{total\}/g, String(total))
+    .replace(/\{section\}/g, String(section ?? ""));
+}
+
+/**
+ * The section each slide belongs to, by its position in the deck.
+ *
+ * "Section" is the heading the slides are cut at -- so with
+ * `cutAtHeading: 2`, every `##` opens one and the slides that follow belong
+ * to it until the next. A deck cut by markers alone has no such level
+ * declared, and level 2 is then assumed: it is the level a lecture's parts
+ * are written at, and the alternative, taking the `h1`, would name the
+ * document on every slide, which says nothing.
+ *
+ * Read from the rendered slides rather than from the source, because that is
+ * where this pass already is -- and a heading pulled in by an `{include}`
+ * counts, as it should.
+ */
+function sectionsOf(slides, cutAtHeading) {
+  const level = Math.max(1, Math.min(6, Number(cutAtHeading) || 2));
+  const selector = Array.from({ length: level }, (_, i) => `h${i + 1}`).join(",");
+  const out = [];
+  let current = "";
+  for (const el of slides) {
+    // A heading inside the slide opens its section: the slide carrying the
+    // title belongs to the section it opens, not to the one before it.
+    const heading = el.querySelector(selector);
+    if (heading) current = headingLabel(heading);
+    out.push(current);
+  }
+  return out;
+}
+
+/**
+ * A heading as it reads, number included.
+ *
+ * `textContent` is not enough. A numbered heading carries its number in a
+ * span of its own and the separator between the two -- " - " -- is drawn by
+ * CSS, as `::after` content. Pseudo-elements are not text, so the plain
+ * reading gave "1Mon titre": the number and the title pushed together with
+ * the thing that held them apart missing.
+ *
+ * The separator is therefore asked of the stylesheet rather than written out
+ * here, so that a custom.css changing it changes this too, and so that there
+ * is one place where it is decided.
+ */
+function headingLabel(heading) {
+  const num = heading.querySelector(".custom-header-num");
+  if (!num) return heading.textContent.trim();
+
+  let separator = " ";
+  try {
+    const content = getComputedStyle(num, "::after").content;
+    if (content && content !== "none" && content !== "normal") separator = content.replace(/^["']|["']$/g, "");
+  } catch {
+    // No computed style to be had -- the default space is still right.
+  }
+
+  const number = num.textContent.trim();
+  const rest = heading.textContent.slice(num.textContent.length).trim();
+  return rest ? `${number}${separator}${rest}`.replace(/\s+/g, " ").trim() : number;
+}
+
+/**
+ * A header or footer line, cut into its three parts.
+ *
+ * `left | middle | right`, positionally and with no special case: two parts
+ * are the left and the middle, and an empty one takes no room -- so
+ * `Course | | {n}` is the title at one end and the number at the other, and
+ * `| {section} |` is a section title alone in the middle.
+ *
+ * Positional rather than clever. The alternative, "two parts mean the two
+ * ends", would read better in the common case and be a rule to remember in
+ * every other; writing `| |` says where things go.
+ */
+function lineParts(template, fill) {
+  const text = String(template ?? "");
+  if (!text.trim()) return null;
+  const parts = text
+    .split(/(?<!\\)\|/)
+    .slice(0, 3)
+    .map((part) => fill(part.replace(/\\\|/g, "|").trim()));
+  while (parts.length < 3) parts.push("");
+  return parts.some(Boolean) ? parts : null;
+}
+
+const LINE_HTML =
+  '<span class="slide-line-left"></span><span class="slide-line-middle"></span><span class="slide-line-right"></span>';
+
+/** Write the three parts into a line, touching only what changed. */
+function fillLine(el, parts) {
+  const spans = [
+    el.querySelector(".slide-line-left"),
+    el.querySelector(".slide-line-middle"),
+    el.querySelector(".slide-line-right"),
+  ];
+  spans.forEach((span, i) => {
+    if (span && span.textContent !== parts[i]) span.textContent = parts[i];
+  });
 }
 
 /**
@@ -160,30 +270,35 @@ function fillTemplate(tpl, n, total) {
  * writes only when the value differs, because this runs inside the pass a
  * mutation observer triggers, and a pass that always wrote would wake itself.
  */
-function furnish(el, index, total, s) {
+function furnish(el, index, total, s, section) {
   // A slide may say otherwise for itself, in the commented block under its
   // marker; the renderer put that on the element. An empty string is an
   // answer -- it is how a title slide asks for no header -- so what counts is
   // whether the attribute is there, not whether it has content.
   const own = (key, fallback) => (el.dataset[key] === undefined ? fallback : el.dataset[key]);
-  const header = own("slideHeader", s.header);
-  const footerText = own("slideFooter", s.footer);
-  const footerTpl = own("slideFooterpage", s.footerPage);
+  // Header and footer are the same thing: a line in two parts, the left one
+  // text and the right one a template. The page number may sit in either, and
+  // {section} in any of the four.
+  const fill = (tpl) => fillTemplate(tpl, index, total, section);
+  const headerTpl = own("slideHeader", s.header);
+  const footerTpl = own("slideFooter", s.footer);
+  const headerParts = lineParts(headerTpl, fill);
+  const footerParts = lineParts(footerTpl, fill);
 
-  const wantHeader = !!header;
-  const pageText = footerTpl ? fillTemplate(footerTpl, index, total) : "";
-  const wantFooter = !!(footerText || pageText);
+  const wantHeader = !!headerParts;
+  const wantFooter = !!footerParts;
 
   let headerEl = el.querySelector(":scope > .slide-header");
   if (wantHeader) {
     if (!headerEl) {
       headerEl = document.createElement("div");
       headerEl.className = "slide-header";
+      headerEl.innerHTML = LINE_HTML;
       el.insertBefore(headerEl, el.firstChild);
     } else if (el.firstChild !== headerEl) {
       el.insertBefore(headerEl, el.firstChild);
     }
-    if (headerEl.textContent !== header) headerEl.textContent = header;
+    fillLine(headerEl, headerParts);
     const css = safeCss(s.headerStyle);
     if (headerEl.getAttribute("style") !== css) headerEl.setAttribute("style", css);
   } else if (headerEl) {
@@ -195,15 +310,12 @@ function furnish(el, index, total, s) {
     if (!footer) {
       footer = document.createElement("div");
       footer.className = "slide-footer";
-      footer.innerHTML = '<span class="slide-footer-text"></span><span class="slide-footer-page"></span>';
+      footer.innerHTML = LINE_HTML;
       el.appendChild(footer);
     } else if (el.lastChild !== footer) {
       el.appendChild(footer);
     }
-    const left = footer.querySelector(".slide-footer-text");
-    const right = footer.querySelector(".slide-footer-page");
-    if (left && left.textContent !== footerText) left.textContent = footerText;
-    if (right && right.textContent !== pageText) right.textContent = pageText;
+    fillLine(footer, footerParts);
     const css = safeCss(s.footerStyle);
     if (footer.getAttribute("style") !== css) footer.setAttribute("style", css);
   } else if (footer) {
@@ -212,7 +324,10 @@ function furnish(el, index, total, s) {
 
   // The badge in the corner steps aside when the footer carries the number,
   // so it can never be shown twice.
-  if (pageText) el.dataset.footerPage = "1";
+  // The badge in the corner steps aside as soon as the number is shown
+  // somewhere else, whichever of the two lines carries it.
+  const showsNumber = /\{n\}/.test(String(headerTpl ?? "")) || /\{n\}/.test(String(footerTpl ?? ""));
+  if (showsNumber) el.dataset.footerPage = "1";
   else delete el.dataset.footerPage;
 }
 
@@ -289,7 +404,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const measure = () => {
     frame = 0;
-    const { w, h, font, codeFont, align, furniture, background, padding, transition, transitionMs } =
+    const { w, h, font, codeFont, align, furniture, background, padding, transition, transitionMs, cutAtHeading } =
       slideSize(getSettings());
     if (preview.dataset.slideTransition !== transition) preview.dataset.slideTransition = transition;
     preview.style.setProperty("--slide-anim-time", `${transitionMs}ms`);
@@ -343,10 +458,11 @@ export function attachSlideView(preview, getSettings = () => null) {
     if (centred) preview.classList.add("measuring-slides");
 
     const all = slides();
+    const sections = sectionsOf(all, cutAtHeading);
     all.forEach((el, i) => {
       el.dataset.slideIndex = String(i + 1);
       el.dataset.slideTotal = String(all.length);
-      furnish(el, i + 1, all.length, furniture);
+      furnish(el, i + 1, all.length, furniture, sections[i]);
       // scrollHeight against clientHeight on the box itself: the box has a
       // fixed height and hides what spills, so the difference is exactly what
       // the audience would not see. Two pixels of tolerance, because a border

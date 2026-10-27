@@ -282,7 +282,6 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     padding: text(fm.padding, defaults.padding) || "48px 56px",
     header: text(fm.header, defaults.header),
     footer: text(fm.footer, defaults.footer),
-    footerPage: text(fm.footerPage, fm.footerpage, fm["footer-page"], defaults.footerPage),
     headerStyle: text(fm.headerStyle, fm.headerstyle, fm["header-style"], defaults.headerStyle),
     footerStyle: text(fm.footerStyle, fm.footerstyle, fm["footer-style"], defaults.footerStyle),
     background: text(fm.background, defaults.background),
@@ -435,7 +434,7 @@ export function slideStyle(overrides) {
 export function slideFurnitureData(overrides) {
   const o = overrides ?? {};
   const data = {};
-  for (const key of ["header", "footer", "footerPage"]) {
+  for (const key of ["header", "footer"]) {
     if (o[key] !== undefined) data[key] = String(o[key]);
   }
   return data;

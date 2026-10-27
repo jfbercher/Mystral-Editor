@@ -858,23 +858,42 @@ const SlideStyles = css`
     line-height: 1.3;
     opacity: 0.7;
   }
+  /* Three columns rather than two ends, which is what lets the left-hand part
+     be centred *on the slide* and not merely in the space the template leaves
+     it. The outer columns are equal, so the middle one is the middle. */
+  & > html-chunk > .slide-header,
+  & > html-chunk > .slide-footer {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: baseline;
+    column-gap: 1em;
+  }
+  & > html-chunk > .slide-header > .slide-line-left,
+  & > html-chunk > .slide-footer > .slide-line-left {
+    grid-column: 1;
+    justify-self: start;
+  }
+  & > html-chunk > .slide-header > .slide-line-middle,
+  & > html-chunk > .slide-footer > .slide-line-middle {
+    grid-column: 2;
+    justify-self: center;
+  }
+  & > html-chunk > .slide-header > .slide-line-right,
+  & > html-chunk > .slide-footer > .slide-line-right {
+    grid-column: 3;
+    justify-self: end;
+    font-variant-numeric: tabular-nums;
+  }
+
   & > html-chunk > .slide-header {
     /* padding above the rule, margin below it. */
     padding-bottom: 0.4em;
     margin-bottom: var(--slide-header-push, 0.7em);
   }
   & > html-chunk > .slide-footer {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1em;
     /* Pinned to the foot whatever the content above it does. */
     margin-top: auto;
     padding-top: 0.4em;
-  }
-  & > html-chunk > .slide-footer > .slide-footer-page {
-    flex: none;
-    font-variant-numeric: tabular-nums;
   }
 
   /* The badge in the corner steps aside when the footer carries the number. */

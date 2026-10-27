@@ -217,9 +217,9 @@ function applySlideAttrs(el, chunk) {
     else el.removeAttribute("style");
   }
   const data = chunk.slideData ?? {};
-  for (const key of ["header", "footer", "footerpage"]) {
+  for (const key of ["header", "footer"]) {
     const attr = `data-slide-${key}`;
-    const wanted = data[key] ?? data[key === "footerpage" ? "footerPage" : key];
+    const wanted = data[key];
     if (wanted === undefined) el.removeAttribute(attr);
     else if (el.getAttribute(attr) !== wanted) el.setAttribute(attr, wanted);
   }

@@ -210,22 +210,22 @@ export const DEFAULT_CONFIG = {
     // space above the header and below the footer as much as around the body,
     // since both sit inside it.
     padding: "48px 56px",
-    // A line across the top of every slide, and one across the foot. Empty
-    // means none, and an empty header costs no space.
+    // A line across the top of every slide, and one across the foot, each in
+    // three parts separated by `|`: left, middle, right. An empty part takes
+    // no room, so `Course | | {n}` puts the title at one end and the number
+    // at the other, and `| {section} |` centres a section title on its own.
     //
-    // The footer is in two parts, so that a page number can sit at the right
-    // while something else sits at the left: `footer` is the left, and
-    // `footerPage` a template for the right, where `{n}` and `{total}` are
-    // replaced -- "Slide {n}/{total}", or just "{n}". Defining a footerPage
-    // puts the number in the footer and takes away the small one in the
-    // corner, so it cannot appear twice.
+    // Three placeholders are replaced: `{n}`, `{total}` and `{section}`.
+    // A part that mentions `{section}` is left out entirely on a slide that
+    // has no section, rather than leaving its punctuation stranded. Writing
+    // `{n}` anywhere takes the number out of the badge in the corner, so it
+    // cannot be shown twice. A literal pipe is written `\\|`.
     //
     // These are per deck far more often than per installation: a lecture
     // title belongs in the document, not in the application. The frontmatter
     // takes the same keys.
     header: "",
     footer: "",
-    footerPage: "",
     // CSS declarations, applied to the header and footer as they stand --
     // "font-size: 18px; color: #888; border-bottom: 1px solid #ddd". The
     // browser parses them and drops what it does not understand, and they
