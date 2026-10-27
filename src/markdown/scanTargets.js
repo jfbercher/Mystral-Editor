@@ -71,6 +71,17 @@ const ENUMERATED = /^\s*:(?:enumerated|numbered):\s*(\S*)\s*$/i;
 const ANY_OPTION = /^\s*:[\w-]+:/;
 const TEX_LABEL = /\\label\{([^}]+)\}/;
 /**
+ * `% shortcaption: …` inside a figure or a table.
+ *
+ * A MyST comment rather than an option, and the reason is mystmd: an option
+ * it does not know draws an "unexpected option" warning on every build and is
+ * thrown away before any plugin can see it, while a comment passes in silence
+ * and arrives in the tree as a node the export plugin reads. It belongs
+ * *after* the caption -- a comment written before it is taken by mystmd for
+ * the caption itself.
+ */
+const SHORT_CAPTION = /^\s*%\s*shortcaption\s*:\s*(.+?)\s*$/i;
+/**
  * Le numéro d'équation de MyST : `$$ … $$ (mon-label)`.
  *
  * Deux exigences, et la seconde n'est pas cosmétique. Les `$$` doivent précéder
@@ -202,7 +213,10 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
 
     const entry = byLine.get(frame.line);
     const title = frame.caption.join(" ").trim();
-    if (entry) entry.title = title;
+    if (entry) {
+      entry.title = title;
+      if (frame.short) entry.short = frame.short;
+    }
 
     if (frame.label) {
       if (entry) entry.label = frame.label;
@@ -313,6 +327,17 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
           frame.label = tex[1];
           continue;
         }
+      }
+
+      // Read wherever it stands, and never taken for caption text: the
+      // export has its own rule about where it must go, and an editor that
+      // showed the comment as the legend would be unhelpful about it.
+      const short = SHORT_CAPTION.exec(line);
+      if (short) {
+        frame.short = short[1];
+        const entry = byLine.get(frame.line);
+        if (entry) entry.short = frame.short;
+        continue;
       }
 
       if (frame.wantsBody && !frame.captionDone) {

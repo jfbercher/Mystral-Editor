@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
 import newDirectives from "./markdown/markdownDirectives";
-import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives, rawDirectives, indexDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
+import { titledAdmonitions, numberedDirectives, tocDirectives, codeDirectives, rawDirectives, indexDirectives, floatListDirectives } from "./markdown/markdownDirectives"; // au lieu de l'ancien import figé
 // import titledAdmonitions from "./markdown/markdownTitledAdmonitions";
 import { markdownReplacer, useCustomDirectives, useCustomRoles, mystComments } from "./markdown/markdownReplacer";
 import markdownMermaid from "./markdown/markdownMermaid";
@@ -21,6 +21,13 @@ import { spaceKey, spaceLabel } from "./markdown/pyodideRunner";
  * word, which is what the chunking exists to avoid.
  */
 const INDEX_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{show-index\}/;
+
+/**
+ * Same bargain as the index above: a chunk holding a list of figures or of
+ * tables depends on every caption and every number of the document, and no
+ * other chunk does.
+ */
+const FLOAT_LIST_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{(?:list-of-figures|listoffigures|list-of-tables|listoftables)\}/;
 
 const TOC_DIRECTIVE_RE = /(?::{3,}|`{3,})\s*\{(?:toc|table-of-contents|tableofcontents|contents|toctree)\}/;
 import { showToast } from "./utils/utils_ui";
@@ -48,6 +55,7 @@ import { nestHeadings } from "./extensions/trackHeadings";
 import markdownItHeadings from "./markdown/markdownHeadings";
 import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
 import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdownIndex";
+import { collectFloatLists, floatListsSignature } from "./markdown/markdownFigureLists";
 import { readAbbreviations, abbreviationsSignature, markdownAbbreviations } from "./markdown/markdownAbbreviations";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
@@ -263,7 +271,7 @@ export class TextManager {
       })
         //.use(markdownitDocutils, { directives: { ...directivesDefault, ...newDirectives } })
         //.use(markdownitDocutils, { directives: finalDirectives })
-        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...rawDirectives, ...indexDirectives, ...includeDirectives, ...newDirectives } })
+        .use(markdownitDocutils, { directives: { ...directivesDefault, ...titledAdmonitions, ...numberedDirectives, ...tocDirectives, ...codeDirectives, ...rawDirectives, ...indexDirectives, ...floatListDirectives, ...includeDirectives, ...newDirectives } })
         .use(markdownReplacer(options.transforms.value, cache.transform))
         .use(mystComments)
         .use(useCustomRoles(options.customRoles.value, cache.transform))
@@ -822,6 +830,19 @@ export class TextManager {
     const index = scanIndex(scanText);
     const indexSig = indexSignature(index);
 
+    // Read from the scan's own map, before its lines are brought back to the
+    // document's numbering: the lists need the order and the captions, never
+    // a line number, and a figure coming from an included file belongs in the
+    // list of the document that includes it.
+    // The same key the export reads, resolved the same way: the document's
+    // frontmatter first, then the editor's setting. The list shown here is
+    // then the list that will be printed.
+    const floatLists = collectFloatLists(
+      scanned.byLine,
+      fm?.shortCaptions !== undefined ? fm.shortCaptions : appConfig.export?.shortCaptions,
+    );
+    const floatListsSig = floatListsSignature(floatLists);
+
     const { footnoteMap } = scanFootnotes(scanText);
     const footnotesSignature = [...footnoteMap.entries()].map(([l, i]) => `${l}:${i.number}:${i.content}`).join("|");
     if (timing_debug) console.log("scanFootnotes:", (performance.now() - _t5).toFixed(2), "ms");
@@ -887,10 +908,11 @@ export class TextManager {
         const headingSignature = numberingSectionsActive ? "on" : "off";
         const tocSignature = TOC_DIRECTIVE_RE.test(text) ? headingTreeSignature : "";
         const indexDirSignature = INDEX_DIRECTIVE_RE.test(text) ? indexSig : "";
+        const floatListSignature = FLOAT_LIST_DIRECTIVE_RE.test(text) ? floatListsSig : "";
 
         const hash = new IMurMurHash(
         //  `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingFrontmatter}`,
-         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}\0${indexDirSignature}\0${abbreviationsSig}`,
+         `${text}\0${chunkId}\0${startLine}\0${macrosSignature}\0${bibSignature}\0${headingSignature}\0${sectionLabelsSignature}\0${footnotesSignature}\0${citationsSignature}\0${numberingSignature}\0${numberedSignature}\0${refDefsSignature}\0${pythonSpace}\0${tocSignature}\0${indexDirSignature}\0${floatListSignature}\0${abbreviationsSig}`,
         42,
         ).result();
         
@@ -934,6 +956,9 @@ export class TextManager {
                       // the {index} roles take in turn.
                       index,
                       indexIds: index.ids,
+                      // The figures and tables of the document, for
+                      // {list-of-figures} and {list-of-tables}.
+                      floatLists,
                       abbreviations, });
           if (timing_debug) {const _r1 = performance.now();}
           html = sanitize(rendered);

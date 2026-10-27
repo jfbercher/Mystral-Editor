@@ -330,6 +330,19 @@ export const DEFAULT_CONFIG = {
     // matched beyond doubt; otherwise the file is left exactly as mystmd wrote
     // it and the reason is reported.
     postProcessTex: true,
+    // What goes into \listoffigures and \listoftables beside each number.
+    // mystmd writes every caption as \caption[]{…} -- an explicit *empty*
+    // short caption -- so the lists come out as a column of numbers; the
+    // export removes the empty brackets and LaTeX falls back on the full
+    // caption. A figure or a table can declare its own short form with a
+    // `% shortcaption: …` comment, which always wins. This key asks for one
+    // to be computed for the others: "sentence" keeps the first sentence, a
+    // number is a budget in characters (the first sentence if it fits,
+    // otherwise the last whole word before the budget and an ellipsis), and
+    // false -- the default -- prints the caption in full. A caption offering
+    // no safe place to cut is left whole whatever the setting: a short
+    // caption is a separate argument and must stand on its own.
+    shortCaptions: false,
     // Colour of each admonition kind in a LaTeX or PDF export, as an RRGGBB
     // hex string without the leading "#". mystmd draws every admonition as the
     // same grey box, losing the kind the author chose; the export rewrites

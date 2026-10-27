@@ -15,7 +15,7 @@
 import { config, saveConfigValue } from "../../config.js";
 import { showToast } from "../utils_ui.js";
 import { workingDirectory, currentFileDir, fileName, parentDir, isWindows, readTextRelative } from "./fs.js";
-import { documentFrontmatter, projectFrontmatter } from "../../markdown/frontmatterUtils.js";
+import { documentFrontmatter, projectFrontmatter, effectiveFrontmatter } from "../../markdown/frontmatterUtils.js";
 import { dump as yamlDump } from "js-yaml";
 import { cellCache, cellKey } from "../../markdown/pyodideRunner.js";
 import { includeCache } from "../../markdown/markdownInclude.js";
@@ -24,7 +24,8 @@ import { findProofLabels } from "../../markdown/scanProofLabels.js";
 import { scanAdmonitions } from "./scanAdmonitions.js";
 import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmonitions.js";
 import { repairProofLabels } from "./texProofLabels.js";
-import { separateEnvironments } from "./texTidy.js";
+import { separateEnvironments, restoreShortCaptions } from "./texTidy.js";
+import { readRule } from "../shortCaption.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
 // as files: `?raw` means they travel with the application, always of the same
@@ -32,6 +33,7 @@ import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // resolve differently on each platform.
 import exerciseAdmonitionSource from "../../../extras/myst-plugins/exercise-admonition.mjs?raw";
 import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.mjs?raw";
+import floatListsSource from "../../../extras/myst-plugins/float-lists.mjs?raw";
 
 /**
  * Environment handed to every myst command.
@@ -1011,6 +1013,7 @@ const PYODIDE_OUTPUT_DIR = "_build/pyodide";
 const PROJECT_PLUGINS = [
   ["exercise-admonition.mjs", exerciseAdmonitionSource],
   ["pyodide-outputs.mjs", pyodideOutputsSource],
+  ["float-lists.mjs", floatListsSource],
 ];
 
 /**
@@ -1078,7 +1081,7 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     if (!/^\s*jupyter:/m.test(yml)) block.push("  jupyter:", "    lite: true");
     lines.splice(at + 1, 0, ...block);
     await writeTextFile(ymlPath, lines.join("\n"));
-    showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs and exercises need it to reach the exports.`, "success", 8000);
+    showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs, exercises and lists of figures need it to reach the exports.`, "success", 8000);
     return true;
   } catch (err) {
     console.warn("[export] the project plugins could not be installed:", err);
@@ -1482,7 +1485,35 @@ async function postProcessTexFile(texPath, sourcePath) {
     console.debug(`[export] multi-file export: body in ${baseName(bodyPath)}, preamble in ${baseName(texPath)}`);
   }
 
-  const tex = split ? await readTextFile(bodyPath) : main;
+  const read = split ? await readTextFile(bodyPath) : main;
+
+  // Done first, and written as soon as it is done, so it survives every way
+  // out of this function: the admonition pass below can refuse and return the
+  // file as mystmd wrote it, and the captions would go with it. See
+  // `restoreShortCaptions` -- mystmd writes `\\caption[]{…}` for every figure
+  // and table, which is an explicit *empty* entry for `\\listoffigures`.
+  // How long a caption may be in the lists is a property of the document far
+  // more than of the installation -- one paper wants the first sentence where
+  // the next wants the caption in full -- so the frontmatter has the last
+  // word, as it does for the slides. Read through `effectiveFrontmatter`, so
+  // a project can set it once in its myst.yml for every document.
+  const fmShort = effectiveFrontmatter(source)?.shortCaptions;
+  const asked = fmShort === undefined ? (config.export?.shortCaptions ?? false) : fmShort;
+  const rule = readRule(asked);
+  // Said rather than ignored: a misspelt value would otherwise look exactly
+  // like a feature that does not work.
+  if (asked && asked !== false && rule == null) {
+    showToast(
+      `shortCaptions: "${asked}" is not understood -- use "sentence", or a number of characters (10 or more). ` +
+        `Captions are printed in full.`,
+      "warning",
+      8000,
+    );
+  }
+  const captions = restoreShortCaptions(read, { rule });
+  if (captions.fixed) await writeTextFile(bodyPath, captions.text);
+  const tex = captions.text;
+
   const blocks = framedBlocks(tex);
   // Whether {exercise} and {solution} occupy a rank depends on whether the
   // exercise plugin was in use for this build. Rather than require a setting,
@@ -1526,6 +1557,9 @@ async function postProcessTexFile(texPath, sourcePath) {
   }
 
   const parts = [`${styled.rewritten} admonition${styled.rewritten === 1 ? "" : "s"} styled`];
+  if (captions.fixed) parts.push(`${captions.fixed} caption${captions.fixed === 1 ? "" : "s"} restored to the lists of figures`);
+  if (captions.declared) parts.push(`${captions.declared} short caption${captions.declared === 1 ? "" : "s"} as declared`);
+  if (captions.shortened) parts.push(`${captions.shortened} shortened`);
   if (styled.labelled) parts.push(`${styled.labelled} labelled`);
   if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
   // Said rather than left to be discovered: the other parts belong to other

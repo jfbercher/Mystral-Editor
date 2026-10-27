@@ -212,3 +212,44 @@ details.toc .toc-number {
 .myst-index .index-ref:hover {
   text-decoration: underline;
 }
+
+/* Lists of figures and of tables -- {list-of-figures}, {list-of-tables}.
+   Deliberately plain: a number column and a caption, no leaders, no page
+   numbers (the preview has no pages). */
+.myst-float-list {
+  margin: 1em 0;
+}
+.myst-float-list-empty {
+  opacity: 0.6;
+  font-style: italic;
+}
+.myst-float-list .float-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+.myst-float-list .float-list-item {
+  display: flex;
+  gap: 0.6em;
+  margin: 0.15em 0;
+}
+.myst-float-list .float-list-number {
+  flex: none;
+  min-width: 5em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+.myst-float-list .float-list-title {
+  text-decoration: none;
+}
+.myst-float-list a.float-list-title:hover {
+  text-decoration: underline;
+}
+.myst-float-list .float-list-untitled {
+  font-style: italic;
+  opacity: 0.7;
+}
+.float-list-heading {
+  font-weight: 600;
+  margin: 1em 0 0.2em;
+}

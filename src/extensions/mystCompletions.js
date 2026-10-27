@@ -132,6 +132,8 @@ const DIRECTIVES = [
   { name: "toc", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
   { name: "table-of-contents", group: "Document", arg: "Title", opts: ["context", "depth", "class", "label", "dropdown", "open"] },
   { name: "show-index", group: "Document" },
+  { name: "list-of-figures", group: "Document", opts: ["title"], noBody: true },
+  { name: "list-of-tables", group: "Document", opts: ["title"], noBody: true },
 ];
 
 

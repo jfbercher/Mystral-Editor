@@ -1,6 +1,7 @@
 import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
+import { stripShortCaption } from "./markdownFigureLists.js";
 import IMurMurHash from "imurmurhash";
 
 // Remplace toutes les Admonitions par des MyST-like admonitions
@@ -301,6 +302,9 @@ class FigureMd extends directivesDefault.image {
     let captionTokens = [];
     let legendTokens = [];
     let imageToken = null;
+    // The figure's own metadata, not part of its legend. See
+    // `stripShortCaption`: blanked, never removed, so the source map holds.
+    if (data.body) data.body = stripShortCaption(data.body);
     if (data.body) {
       imageToken = this.state.md.parseInline(data.body.split("\n")[0], this.state.env)[0].children[0];
       imageToken.map = data.map;
@@ -333,7 +337,7 @@ class FigureMd extends directivesDefault.image {
           block: true,
         });
         captionTokens = [openCaption, ...captionBody, closeCaption];
-        if (legend) {
+        if (legend.trim()) {
           const legendMap = captionMap + caption.split("\n").length + 1;
           const openLegend = this.createToken("figure_legend_open", "", 1, {
             block: true,
@@ -505,7 +509,9 @@ export class TableDirective extends Directive {
 
 
     // 1. Parser le corps pour obtenir les tokens du tableau Markdown natif
-    const bodyTokens = this.nestedParse(data.body, data.bodyMap[0]);
+    // Same as for a figure: the line is the table's metadata, and handed to
+    // the table parser it is a row that is not one.
+    const bodyTokens = this.nestedParse(stripShortCaption(data.body), data.bodyMap[0]);
 
     // Chercher le token table_open
     const tableOpenIndex = bodyTokens.findIndex((t) => t.type === "table_open");
@@ -1161,6 +1167,7 @@ export const rawDirectives = {
 };
 
 export { indexDirectives } from "./markdownIndex.js";
+export { floatListDirectives } from "./markdownFigureLists.js";
 
 export const codeDirectives = {
   "code-cell": CodeCellDirective,

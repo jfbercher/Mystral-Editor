@@ -133,6 +133,7 @@ Two directives are added that address or enhance the documents stucture. The `to
 | `toc`, and the aliases `table-of-contents`, `tableofcontents`, `contents`, `toctree` | This work | Table of contents built from the document's headings, with `:depth:`, `:context:`, `:dropdown:` — see [toc](toc.md) |
 | `include`, `literalinclude` | This work | Inserts another file, parsed as MyST or shown as a code block — see [include](include.md) |
 | `show-index` | This work | Prints the document's index: everything marked with the `{index}` role, in alphabetical order, each term linking back to its occurrences — see *Index*, below |
+| `list-of-figures`, `list-of-tables`, and the LaTeX aliases `listoffigures`, `listoftables` | This work | Lists the document's figures, or its tables: number and caption, each linking to its figure. In a LaTeX export they become `\listoffigures` / `\listoftables` — see *Lists of figures and tables*, below |
 | `raw` | This work, for the preview only | A block handed verbatim to one output format, named as the argument or in `:format:`. mystmd handles it; what is added here is the preview, which used to show the grey « unknown directive » frame and so reported an error where there is none. It is shown as the literal text it is, labelled with the format it is written for |
 :::
 
@@ -185,6 +186,57 @@ Four forms are understood, the ones MyST documents:
 `single:` is the default and may be written out; `triple:` and `seealso:` work the same way as `pair:` and `see:`. A term marked inside a code block is left alone, as code should be.
 
 Two deliberate limits. A `triple: a; b; c` is filed three ways — each term with the other two — where Sphinx files it six; three is enough to find a term from any of the three, which is what an index is for. And the index is a document's, not a project's: `{show-index}` collects what this file marks, included files included, and knows nothing of its neighbours.
+
+### Lists of figures and tables
+
+A document that is going to be printed usually wants them, and MyST has no directive for either, so these two are this fork's:
+
+```
+:::{list-of-figures}
+:::
+
+:::{list-of-tables}
+:title: Tables
+:::
+```
+
+What is shown is deliberately plain: the number and the caption, nothing else. A page number would be a lie — the preview has no pages — and a section would say more about the document's structure than about its figures. Every figure is listed, whether or not it is numbered: a list that silently dropped the unnumbered ones would be read as a list of all of them. A caption links to its figure when the figure carries a `:label:`, since that is the only case where there is an anchor to link to.
+
+The optional `:title:` prints a heading above the list. It is an option rather than a heading written by hand because a heading written by hand would appear in the table of contents, which is rarely what is wanted of a list of figures.
+
+The LaTeX spellings `{listoffigures}` and `{listoftables}` are accepted as aliases, for the author who writes them without thinking.
+
+Both survive an export. `myst-plugins/float-lists.mjs`, installed into the project alongside the other plugins, teaches mystmd the two directives and turns each into a raw LaTeX node — `\listoffigures`, `\listoftables` — so LaTeX builds the list from the figures it has itself numbered, with its own page numbers. Nothing is emitted for the HTML site, for Word or for Typst: a raw node written for LaTeX is skipped by every other writer. That is a decision rather than an omission; a site has a sidebar and a search box, and a list of figures there would be furniture nobody asked for.
+
+A figure or a table can say what its own entry should read:
+
+```
+:::{figure} plot.png
+:label: fig-spectra
+
+The measured spectra of the three samples, with the fitted envelope and the residuals below.
+
+% shortcaption: Measured spectra
+:::
+```
+
+A comment rather than an option, and the reason is mystmd: an option it does not know draws an « unexpected option » warning on every build and is thrown away before any plugin can read it, while a comment passes in silence and arrives in the tree. The editor shows the short form in its own `{list-of-figures}`, so what you see beside the number is what will be printed.
+
+It must be written **after** the caption. mystmd takes the first block of a figure's body for its caption, so a comment placed first *becomes* the caption and the real one is demoted; the export plugin repairs that case rather than letting the caption vanish, but the rule is simpler than the repair.
+
+The text is plain: it is a comment, which nothing parses, so a `%` or an `&` in it is printed rather than obeyed, and italics or math cannot be had this way. That is the price of a short caption that cannot break the LaTeX run — and it keeps the printed list identical to the one the editor shows.
+
+The captions that declare nothing can be shortened automatically, by first sentence or by a budget in characters. It is off by default, since a caption printed in full is never wrong:
+
+```yaml
+---
+shortCaptions: sentence     # or a number of characters, e.g. 60
+---
+```
+
+The key is read from the document's frontmatter, from the project's `myst.yml` through `extends`, or from the editor's own `export.shortCaptions` — in that order, the document having the last word, as for `slides:`. mystmd reports it as an extra key it ignores, which it is: nothing in the export depends on mystmd knowing it. The editor applies the same rule to its own `{list-of-figures}` and `{list-of-tables}`, from the same shared code, so that the list you proof-read is the list that will be printed.
+
+One repair travels with them. `myst-to-tex` writes every caption as `\caption[]{…}`, and the brackets are LaTeX's *short* caption — exactly what the two lists print. Written empty, they give a list of numbers with nothing beside them, which is invisible until the day a document asks for the list. The export's `.tex` post-processing drops the empty brackets, so LaTeX falls back on the real caption; a long caption therefore appears in the list in full, which is what the author wrote and what they alone can shorten.
 
 (Roles)=
 ## Roles
