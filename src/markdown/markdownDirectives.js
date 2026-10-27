@@ -2,6 +2,21 @@ import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
 import { stripShortCaption } from "./markdownFigureLists.js";
+
+/**
+ * The float class among a `:class:` list, if there is one.
+ *
+ * `:class:` carries it rather than an option of our own because mystmd knows
+ * `:class:`, keeps it and passes it on, where it drops an option it has never
+ * heard of -- with a warning -- before anything downstream can read it. One
+ * word then styles the preview, reaches the HTML site and tells the LaTeX
+ * export to wrap the figure.
+ */
+const FLOAT_CLASS = /^float-(left|right|center)$/;
+const splitFloatClasses = (option) => {
+  const all = [].concat(option ?? []).flatMap((c) => String(c).split(/\s+/)).filter(Boolean);
+  return { float: all.find((c) => FLOAT_CLASS.test(c)) ?? null, rest: all.filter((c) => !FLOAT_CLASS.test(c)) };
+};
 import IMurMurHash from "imurmurhash";
 
 // Remplace toutes les Admonitions par des MyST-like admonitions
@@ -62,6 +77,18 @@ const OPTION_ALIASES = {
  * déclarés dans `option_spec`, et on les réunifie ici. Le nom canonique explicite
  * l'emporte si les deux sont fournis.
  */
+/**
+ * Options that are a list of class names, whatever they look like.
+ *
+ * markdown-it-docutils' `class_option` splits them into an array, and every
+ * directive downstream calls `.join(" ")` on them -- but a directive declaring
+ * `rawOptions` never sees that parser and gets the line as a string, so the
+ * join threw and the figure did not render at all. Normalising here rather
+ * than at each call site: the function exists to tidy raw options, and the
+ * two kinds of option were otherwise indistinguishable to their readers.
+ */
+const CLASS_OPTIONS = ["class", "figclass"];
+
 const normalizeOptions = (options = {}) => {
   const out = { ...options };
   for (const [alias, canonical] of Object.entries(OPTION_ALIASES)) {
@@ -69,6 +96,9 @@ const normalizeOptions = (options = {}) => {
       if (!(canonical in out)) out[canonical] = out[alias];
       delete out[alias];
     }
+  }
+  for (const key of CLASS_OPTIONS) {
+    if (typeof out[key] === "string") out[key] = out[key].split(/\s+/).filter(Boolean);
   }
   return out;
 };
@@ -293,6 +323,17 @@ class FigureMd extends directivesDefault.image {
     if (data.options.figwidth && data.options.figwidth !== "image") {
       openToken.attrSet("width", data.options.figwidth);
     }
+    // The float belongs to the figure, not to the image inside it: it is the
+    // figure and its caption that leave the flow together. `:figwidth:` then
+    // becomes the width of what floats, which is the only reading that makes
+    // sense once the text runs beside it.
+    const floats = splitFloatClasses(data.options.class);
+    if (floats.float) {
+      openToken.attrJoin("class", floats.float);
+      if (data.options.figwidth && data.options.figwidth !== "image") {
+        openToken.attrSet("style", `--float-width: ${data.options.figwidth}`);
+      }
+    }
     let target;
     if (data.args.length > 0) {
       target = getTarget(this.state, openToken, data.args[0]);
@@ -317,8 +358,8 @@ class FigureMd extends directivesDefault.image {
       if (data.options.align) {
         imageToken.attrJoin("class", `align-${data.options.align}`);
       }
-      if (data.options.class) {
-        imageToken.attrJoin("class", data.options.class.join(" "));
+      if (floats.rest.length) {
+        imageToken.attrJoin("class", floats.rest.join(" "));
       }
 
       const captionSplit = data.body.split("\n\n");
@@ -446,20 +487,41 @@ class FigureExtended extends directivesDefault.image {
     if (options.figwidth && options.figwidth !== "image") {
       openToken.attrSet("width", options.figwidth);
     }
+    // The float belongs to the figure, not to the image inside it: it is the
+    // figure and its caption that leave the flow together, and `:figwidth:`
+    // then becomes the width of what floats.
+    const floats = splitFloatClasses(options.class);
+    if (floats.float) {
+      openToken.attrJoin("class", floats.float);
+      if (options.figwidth && options.figwidth !== "image") {
+        openToken.attrSet("style", `--float-width: ${options.figwidth}`);
+      }
+    }
     let target;
     if (options.label) {
       target = getTarget(this.state, openToken, options.label);
     }
 
-    const imageToken = this.create_image(data);
+    // The parent reads `data.options` itself, not the normalised copy, and
+    // calls `.join` on the classes -- so it is handed the array, without the
+    // float class, which belongs to the figure and has already been put
+    // there. An empty list is dropped rather than passed: it would otherwise
+    // join to "" and leave an empty class attribute on the image.
+    const imageToken = this.create_image({
+      ...data,
+      options: { ...data.options, class: floats.rest.length ? floats.rest : undefined },
+    });
     imageToken.map = [data.map[0], data.map[0]];
     if (options.height) imageToken.attrSet("height", options.height);
     if (options.width) imageToken.attrSet("width", options.width);
     if (options.align) imageToken.attrJoin("class", `align-${options.align}`);
-    if (options.class) imageToken.attrJoin("class", options.class.join(" "));
+
 
     let captionTokens = [];
     let legendTokens = [];
+    // The figure's own metadata, not part of its legend. See
+    // `stripShortCaption`: blanked, never removed, so the source map holds.
+    if (data.body) data.body = stripShortCaption(data.body);
     if (data.body) {
       const [caption, ...legendParts] = data.body.split("\n\n");
       const legend = legendParts.join("\n\n");
@@ -472,7 +534,7 @@ class FigureExtended extends directivesDefault.image {
       const captionBody = this.nestedParse(caption, captionMap);
       const closeCaption = this.createToken("figure_caption_close", "figcaption", -1, { block: true });
       captionTokens = [openCaption, ...captionBody, closeCaption];
-      if (legend) {
+      if (legend.trim()) {
         const legendMap = captionMap + caption.split("\n").length + 1;
         const openLegend = this.createToken("figure_legend_open", "", 1, { block: true });
         const legendBody = this.nestedParse(legend, legendMap);

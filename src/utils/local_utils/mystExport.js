@@ -26,6 +26,7 @@ import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmoniti
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments, restoreShortCaptions } from "./texTidy.js";
 import { readRule } from "../shortCaption.js";
+import { rewriteFloats } from "./texFloats.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
 // as files: `?raw` means they travel with the application, always of the same
@@ -1537,11 +1538,17 @@ async function postProcessTexFile(texPath, sourcePath) {
   }
 
   const proof = repairProofLabels(styled.text, findProofLabels(expansion.text.split("\n")));
-  await writeTextFile(bodyPath, separateEnvironments(proof.text));
+  // After the admonitions: both rewrite environments, and a floated figure
+  // inside an admonition should become a wrapfigure inside the box that is
+  // already there, not the other way round.
+  const floats = rewriteFloats(proof.text);
+  await writeTextFile(bodyPath, separateEnvironments(floats.text));
 
   // In a multi-file export the body carries no preamble; the packages and the
   // box definitions have to go in the file that has `\begin{document}`.
-  if (split && styled.preamble && !styled.preambleWritten) {
+  const pendingPreamble =
+    (styled.preambleWritten ? "" : styled.preamble ?? "") + (floats.preambleWritten ? "" : floats.preamble ?? "");
+  if (split && pendingPreamble) {
     const at = main.indexOf("\\begin{document}");
     if (at === -1) {
       showToast(
@@ -1552,7 +1559,7 @@ async function postProcessTexFile(texPath, sourcePath) {
         0,
       );
     } else {
-      await writeTextFile(texPath, main.slice(0, at) + styled.preamble + main.slice(at));
+      await writeTextFile(texPath, main.slice(0, at) + pendingPreamble + main.slice(at));
     }
   }
 
@@ -1560,6 +1567,7 @@ async function postProcessTexFile(texPath, sourcePath) {
   if (captions.fixed) parts.push(`${captions.fixed} caption${captions.fixed === 1 ? "" : "s"} restored to the lists of figures`);
   if (captions.declared) parts.push(`${captions.declared} short caption${captions.declared === 1 ? "" : "s"} as declared`);
   if (captions.shortened) parts.push(`${captions.shortened} shortened`);
+  if (floats.floated) parts.push(`${floats.floated} float${floats.floated === 1 ? "" : "s"} wrapped`);
   if (styled.labelled) parts.push(`${styled.labelled} labelled`);
   if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
   // Said rather than left to be discovered: the other parts belong to other

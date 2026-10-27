@@ -238,6 +238,34 @@ The key is read from the document's frontmatter, from the project's `myst.yml` t
 
 One repair travels with them. `myst-to-tex` writes every caption as `\caption[]{…}`, and the brackets are LaTeX's *short* caption — exactly what the two lists print. Written empty, they give a list of numbers with nothing beside them, which is invisible until the day a document asks for the list. The export's `.tex` post-processing drops the empty brackets, so LaTeX falls back on the real caption; a long caption therefore appears in the list in full, which is what the author wrote and what they alone can shorten.
 
+### Floated figures and tables
+
+A figure or a table can leave the flow and let the text run beside it:
+
+```
+:::{figure} spectra.png
+:label: fig-spectra
+:class: float-right
+:figwidth: 40%
+
+The measured spectra.
+:::
+```
+
+`float-left`, `float-right` and `float-center` are classes rather than an option of their own, and that is the point: `:class:` is an option mystmd knows, so it keeps the word on the node and passes it to the HTML site, where an option it has never heard of is dropped — with a warning — before anything downstream can read it. The same word therefore styles the preview, reaches the site as a class, and tells the LaTeX export what to do.
+
+`:figwidth:` becomes the width of what floats; without it the float takes about 45 % of the column. The image inside fills that width, since it is the figure, not the image, that has left the flow.
+
+`float-center` is not a float at all, and is named one only so the three live together: it is a narrower block with the text above and below it, which is what `figure` already does in LaTeX.
+
+In the preview the float is contained by the chunk that holds it, so the wrapping stops at the next heading — where the author expects it to stop. Without that it escaped into the rest of the document and text three sections below went on wrapping around it.
+
+In a LaTeX export the figure and the table are wrapped, through the `float-lists.mjs` plugin and the `.tex` post-processing, and the packages are added for you. Two can do the job and the document uses whichever your installation has: `wrapstuff` when it is there, `wrapfig` otherwise.
+
+The difference is a visible defect rather than a preference. With `wrapfig`, when the text beside a figure runs out before the figure does, everything that follows stays indented by the width of the figure — the next section title included. `wrapstuff` provides `\wrapstuffclear`, which ends the wrap where it is asked to, and the export puts one before the next sectioning command of every float it wraps. `wrapstuff` is recent, so an installation of a few years ago will not have it; the document still builds there, with the old behaviour.
+
+LaTeX's own limits apply in either case and are worth knowing: a wrapped figure needs text after it to wrap around, two of them close together cannot both wrap — one is deferred, and `wrapfig` says so with `Collision between wrapping environments` — and a wrap does not split across a page break. None of this is visible in the preview, which has neither pages nor LaTeX's placement rules, so a floated figure is the one case where the printed page deserves a look.
+
 (Roles)=
 ## Roles
 

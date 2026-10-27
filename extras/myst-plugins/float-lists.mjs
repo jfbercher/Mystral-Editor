@@ -186,13 +186,83 @@ const shortCaptions = {
   },
 };
 
+
+/* ------------------------------------------------------------------ *
+ * Floated figures and tables
+ *
+ * `:class: float-left` / `float-right` on a `{figure}` or a `{table}` asks
+ * for the text to run beside it rather than below. `:class:` and not an
+ * option of our own: mystmd knows it, keeps it on the node and passes it to
+ * the HTML site, where it drops an option it has never heard of -- with a
+ * warning -- before anything downstream can read it.
+ *
+ * LaTeX does this with `wrapfigure` / `wraptable`, which the writer never
+ * emits, so the environment has to be changed in the `.tex` afterwards. The
+ * marker left here says which figure and how wide, in the same form as the
+ * short captions above and for the same reasons: a LaTeX comment, so a file
+ * that is never post-processed still compiles.
+ *
+ * `float-center` leaves no marker. There is no centred `wrapfigure`, and a
+ * centred block is what `figure` already does in LaTeX -- the class only has
+ * work to do in the preview and on the site.
+ * ------------------------------------------------------------------ */
+
+const FLOAT_CLASS = /(?:^|\s)float-(left|right)(?:\s|$)/;
+
+/** `45%` as the fraction of `\textwidth` LaTeX wants; anything else, none. */
+function widthFraction(width) {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(String(width ?? ""));
+  if (!m) return "";
+  const fraction = Number(m[1]) / 100;
+  return fraction > 0 && fraction <= 1 ? fraction.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") : "";
+}
+
+/** The width the author gave the figure, which lives on the image node. */
+function floatWidth(container) {
+  let found = "";
+  const walk = (node) => {
+    for (const child of node.children ?? []) {
+      if (found) return;
+      if (child.type === "image" && child.width) found = widthFraction(child.width);
+      else walk(child);
+    }
+  };
+  walk(container);
+  return found;
+}
+
+function markFloat(container) {
+  const m = FLOAT_CLASS.exec(String(container.class ?? ""));
+  if (!m) return false;
+  const side = m[1] === "left" ? "l" : "r";
+  // At the head of the figure rather than inside its caption, where the short
+  // caption's marker already sits: the two would then have to be read in
+  // either order. Here it is written just inside `\begin{figure}`, which is
+  // the environment the post-processing has to find anyway.
+  container.children = [{ type: "raw", tex: `%MYSTRALFLOAT:${side}:${floatWidth(container)}\n` }, ...(container.children ?? [])];
+  return true;
+}
+
+const floatMarkers = {
+  name: "Floated figures and tables",
+  stage: "project",
+  plugin: () => (tree) => {
+    const walk = (node) => {
+      for (const child of node.children ?? []) walk(child);
+      if (node.type === "container") markFloat(node);
+    };
+    walk(tree);
+    return tree;
+  },
+};
+
 const plugin = {
   name: "Mystral Editor — lists of figures and tables",
   directives: [
     listDirective("list-of-figures", "listoffigures", "listoffigures", "A list of the document's figures."),
     listDirective("list-of-tables", "listoftables", "listoftables", "A list of the document's tables."),
   ],
-  transforms: [shortCaptions],
+  transforms: [shortCaptions, floatMarkers],
 };
 
 export default plugin;

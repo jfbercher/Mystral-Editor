@@ -207,8 +207,9 @@ export const lineAtOffset = (starts, offset) => {
 
 /** This class stores the document text and renders the Markdown in the Preview */
 /** A slide's own settings, as attributes of the chunk that renders it. */
-function slideAttrs(chunk) {
+function chunkAttrs(chunk) {
   const parts = [];
+  if (chunk.hasFloat) parts.push(' data-float="1"');
   if (chunk.slideStyle) parts.push(` style="${chunk.slideStyle.replace(/"/g, "&quot;")}"`);
   for (const [key, value] of Object.entries(chunk.slideData ?? {})) {
     parts.push(` data-slide-${key.toLowerCase()}="${String(value).replace(/[<&"]/g, (c) => ({ "<": "&lt;", "&": "&amp;", '"': "&quot;" })[c])}"`);
@@ -217,8 +218,10 @@ function slideAttrs(chunk) {
 }
 
 /** The same, set on an element that already exists. */
-function applySlideAttrs(el, chunk) {
+function applyChunkAttrs(el, chunk) {
   if (!el) return;
+  if (chunk.hasFloat) el.setAttribute("data-float", "1");
+  else el.removeAttribute("data-float");
   const style = chunk.slideStyle ?? "";
   if ((el.getAttribute("style") ?? "") !== style) {
     if (style) el.setAttribute("style", style);
@@ -462,7 +465,7 @@ export class TextManager {
         const toRemove = [...this.preview.value.childNodes].filter((c) => !c.classList || !c.classList.contains("cm-previewFocus"));
         toRemove.forEach((c) => this.preview.value.removeChild(c));
         this.preview.value.innerHTML += newChunks
-          .map((c) => `<html-chunk id="html-chunk-${c.id}"${slideAttrs(c)}>${c.html}</html-chunk>`)
+          .map((c) => `<html-chunk id="html-chunk-${c.id}"${chunkAttrs(c)}>${c.html}</html-chunk>`)
           .join("");
       } else {
         // Save scroll position before patching: removing tall elements (code-cell hosts) can cause
@@ -477,7 +480,7 @@ export class TextManager {
           // On this path the element is kept and only its contents are
           // replaced, so a slide's own settings have to be restated: they
           // live on the element, not in the html.
-          applySlideAttrs(chunkEls[idx], chunk);
+          applyChunkAttrs(chunkEls[idx], chunk);
         });
 
         requestAnimationFrame(() => { previewEl.scrollTop = savedScrollTop; });
@@ -1006,6 +1009,11 @@ export class TextManager {
           endLine,
           slideStyle: overrides ? slideStyle(overrides) : "",
           slideData: overrides ? slideFurnitureData(overrides) : {},
+          // Read from the rendered html rather than from the source, so it
+          // says what actually floats. Never in Slides mode: a slide's chunk
+          // is a flex container, which contains its floats already, and the
+          // rule that would apply here would undo the slide's own layout.
+          hasFloat: !slideMode && (html.includes("float-left") || html.includes("float-right")),
         };
       });
 

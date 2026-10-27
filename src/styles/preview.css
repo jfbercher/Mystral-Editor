@@ -253,3 +253,66 @@ details.toc .toc-number {
   font-weight: 600;
   margin: 1em 0 0.2em;
 }
+
+/* Floated figures and tables -- `:class: float-left`, `float-right`,
+   `float-center`.
+   `:class:` and not an option of our own: mystmd knows it, keeps it, and
+   passes it on, where an option it does not know is dropped with a warning
+   before anything can read it. The same word therefore styles the preview,
+   reaches the HTML site as a class, and tells the LaTeX export to wrap the
+   figure. */
+figure.float-left,
+figure.float-right,
+table.float-left,
+table.float-right {
+  width: var(--float-width, 45%);
+  max-width: 100%;
+  margin-top: 0.2em;
+}
+figure.float-left,
+table.float-left {
+  float: left;
+  margin-right: 1.5em;
+  margin-bottom: 0.8em;
+}
+figure.float-right,
+table.float-right {
+  float: right;
+  margin-left: 1.5em;
+  margin-bottom: 0.8em;
+}
+/* Not a float at all, and named one only so the three live together: LaTeX
+   has no centred `wrapfigure`, and a centred block is what `figure` already
+   does there. Here it is a width plus two automatic margins. */
+figure.float-center,
+table.float-center {
+  float: none;
+  width: var(--float-width, 60%);
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+figure.float-left > img,
+figure.float-right > img,
+figure.float-center > img {
+  width: 100%;
+}
+
+/* Keep a float inside the chunk that holds it.
+   A chunk is an unknown element, so it is inline by default and establishes
+   nothing: a float escaped into the rest of the document and text three
+   sections below went on wrapping around it. `flow-root` makes the chunk a
+   block formatting context, which contains the float exactly as far as the
+   next heading -- where a new chunk begins, which is where an author expects
+   the wrapping to stop. Set only on the chunks that hold a float, and never
+   in Slides mode, where a chunk is a flex container that contains its floats
+   already. */
+html-chunk[data-float] {
+  display: flow-root;
+}
+html-chunk[data-float] h1,
+html-chunk[data-float] h2,
+html-chunk[data-float] h3,
+html-chunk[data-float] h4 {
+  clear: both;
+}
