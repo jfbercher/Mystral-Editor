@@ -12,6 +12,7 @@
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 import { config, loadConfig, configReady } from "../config.js";
+import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
@@ -26,8 +27,8 @@ import { parseParams, readValue, readFlag, writeValue, quantise, formatValue, fo
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
-const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
-const DEFAULT_PACKAGES = ["numpy", "matplotlib", "micropip"];
+// The distribution, what to load from it, and where it lives: see
+// pyodideInstall.js, which the Settings panel also drives.
 
 // ─── Singleton Pyodide ────────────────────────────────────────────────────────
 
@@ -52,15 +53,33 @@ function loadScript(src) {
 
 export async function loadPyodideRuntime(extraPackages = []) {
   if (pyodideInstance) {
-    if (extraPackages.length) await pyodideInstance.loadPackage(extraPackages);
+    if (extraPackages.length) {
+      await ensureLocalWheels(extraPackages);
+      await pyodideInstance.loadPackage(extraPackages);
+    }
     return pyodideInstance;
   }
   if (!loadingPromise) {
     loadingPromise = (async () => {
+      // Resolved once, here: everything below -- the wasm, the stdlib, the
+      // lock and every wheel -- is fetched by Pyodide itself relative to this
+      // one URL, so a local install is simply a different base and no code of
+      // ours sits in the path.
+      const { url: base, local } = await resolvePyodideBase(config.pyodide?.offline ?? "auto");
+      const startedAt = performance.now();
+      console.log(`[myst] Pyodide from ${local ? "the local install" : "the CDN"}: ${base}`);
       if (typeof globalThis.loadPyodide !== "function") {
-        await loadScript(`${PYODIDE_CDN}pyodide.js`);
+        await loadScript(`${base}pyodide.js`);
       }
-      const pyodide = await globalThis.loadPyodide({ indexURL: PYODIDE_CDN });
+      // `packageBaseUrl` as well, and not for symmetry. Reading loadPyodide's
+      // own source: it computes `cdnUrl = packageBaseUrl ?? <jsdelivr>` and
+      // only *afterwards* defaults `packageBaseUrl` to the lock file's folder.
+      // Left unset, `packageBaseUrl` therefore becomes the local folder --
+      // which is what loadPackage uses, and why the default packages worked --
+      // while `cdnUrl` stays jsdelivr, so whatever reads that one, micropip
+      // among them, quietly goes back to the network even with a complete
+      // local install. Passing it explicitly makes both the same.
+      const pyodide = await globalThis.loadPyodide({ indexURL: base, packageBaseUrl: base });
       await pyodide.loadPackage(DEFAULT_PACKAGES);
       pyodide.runPython(`
 import sys, io, js
@@ -197,11 +216,81 @@ def _mystral_who(include_all=False, ns=None):
 
       // Installation de jedi pour la complétion Tab et de pyodide_http pour le
       // réseau (best-effort, non bloquant).
+      // One by one rather than in a single call: loadPackage rejects the whole
+      // list as soon as one name fails, and the absence of pyodide-http must
+      // not cost the completion loaded beside it -- which is what micropip's
+      // `keep_going` did here before.
+      for (const name of HELPER_PACKAGES) {
+        try {
+          await pyodide.loadPackage(name);
+        } catch (err) {
+          console.warn(`[myst] ${name} could not be loaded`, err);
+        }
+      }
+
+      // micropip, taught to look in the local install before giving up.
+      //
+      // Its two paths are indistinguishable to a reader: a name absent from
+      // the lock goes to PyPI over the network, a name in the lock is taken
+      // from the local folder and nowhere else. So `micropip.install("bokeh")`
+      // returned without a word and the import after it failed, advising the
+      // reader to run the call they had just run. Here the wheel is fetched
+      // into the folder first, and if it cannot be, the reason is said plainly
+      // instead of being left to the next line to discover.
+      //
+      // In its own block: a failure to patch must not cost the completion.
+      try {
+        await pyodide.runPythonAsync(`
+import micropip as _micropip_mod, json as _json_mp, js as _js_mp
+
+_mystral_micropip_install = _micropip_mod.install
+
+_MYSTRAL_SPECIFIERS = ('==', '>=', '<=', '~=', '!=', '>', '<', ';', ' ')
+
+def _mystral_req_names(requirements):
+    """The bare project names of a micropip requirement list."""
+    if isinstance(requirements, str):
+        requirements = [requirements]
+    names = []
+    for raw in requirements or []:
+        text = str(raw).strip()
+        # A URL or a wheel path is nothing the lock can answer for.
+        if '://' in text or text.endswith('.whl'):
+            continue
+        name = text.split('[')[0]
+        for sep in _MYSTRAL_SPECIFIERS:
+            name = name.split(sep)[0]
+        name = name.strip()
+        if name:
+            names.append(name)
+    return names
+
+async def _mystral_micropip_patched(requirements, *args, **kwargs):
+    report = None
+    try:
+        raw = await _js_mp.globalThis._mystralEnsureWheels(_json_mp.dumps(_mystral_req_names(requirements)))
+        report = _json_mp.loads(raw)
+    except Exception:
+        report = None
+    if report and report.get('unavailable'):
+        names = ', '.join(report['unavailable'])
+        raise RuntimeError(
+            names + " is part of the Pyodide distribution, so micropip takes it from this "
+            "installation's offline folder rather than from PyPI -- and it is not there. "
+            "Connect to the network and run this again to add it, or add it to "
+            "pyodide.offlinePackages in config.json and press 'Add the missing packages' in Settings."
+        )
+    return await _mystral_micropip_install(requirements, *args, **kwargs)
+
+_micropip_mod.install = _mystral_micropip_patched
+`);
+      } catch (err) {
+        console.warn("[myst] micropip could not be taught about the local install", err);
+      }
+
       let httpPatched = false;
       try {
         httpPatched = await pyodide.runPythonAsync(`
-import micropip as _micropip
-await _micropip.install(['jedi', 'cloudpickle', 'pyodide_http'], keep_going=True)
 import jedi as _jedi_mod, json as _json_mod
 
 # The Completion objects of the last list are kept so that their docstring can
@@ -237,9 +326,8 @@ def _jedi_doc(i):
 # makes them work at all, and also what subjects them to the page's
 # cross-origin rules, exactly like a fetch written in JavaScript.
 #
-# In its own block: micropip is asked to keep going when one package of the
-# list fails, so the absence of pyodide_http must not cost the completion that
-# was installed beside it.
+# In its own block: the package may have failed to load a moment ago, and its
+# absence must not cost the completion that loaded beside it.
 try:
     import pyodide_http as _pyodide_http
     _pyodide_http.patch_all()
@@ -258,14 +346,44 @@ _mystral_http_patched
         console.warn('[myst] jedi unavailable, Tab will insert 4 spaces', _e);
       }
 
+      // Timed, so the claim that a local install is faster can be checked
+      // rather than believed. The honest comparison is a cold one: after an
+      // online session the webview serves the same files from its own cache,
+      // and the two are then much alike.
+      console.log(
+        `[myst] Pyodide ready in ${Math.round(performance.now() - startedAt)} ms ` +
+          `(${local ? "local install" : "CDN, or the webview cache standing in for it"})`,
+      );
+
       pyodideInstance = pyodide;
       return pyodide;
     })();
   }
   const pyodide = await loadingPromise;
-  if (extraPackages.length) await pyodide.loadPackage(extraPackages);
+  if (extraPackages.length) {
+    // Same bargain as for micropip: a `:packages:` naming something the local
+    // install does not have is fetched into it rather than failing.
+    await ensureLocalWheels(extraPackages);
+    await pyodide.loadPackage(extraPackages);
+  }
   return pyodide;
 }
+
+/**
+ * The bridge the patched `micropip.install` calls before doing its work.
+ *
+ * Python hands a JSON array and gets a JSON object back: a list crossing the
+ * boundary arrives as a proxy that has to be freed, and a string spares both
+ * sides that bookkeeping for something called a few times a session.
+ */
+globalThis._mystralEnsureWheels = async function (namesJson) {
+  try {
+    return JSON.stringify(await ensureLocalWheels(JSON.parse(namesJson)));
+  } catch (err) {
+    console.warn("[pyodide] could not complete the local install:", err);
+    return JSON.stringify({ skipped: true, added: [], unavailable: [] });
+  }
+};
 
 globalThis._pyodideStreamWrite = function (tag, text) {
   const cell = globalThis._pyodideCurrentCell;

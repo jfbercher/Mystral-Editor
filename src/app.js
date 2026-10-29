@@ -1,7 +1,7 @@
-import { configReady } from "./config.js";
+import { configReady, takeConfigProblem } from "./config.js";
 import { initZoom, initExternalLinkHandler, isTauri } from "./utils/local_utils.js";
 import { TabManager } from "./tab_manager.js";
-import { createUpdateUI } from "./utils/utils_ui.js";
+import { createUpdateUI, showToast } from "./utils/utils_ui.js";
 
 export async function checkForUpdates(onProgress) {
   if (!isTauri()) {
@@ -101,6 +101,9 @@ export async function initApp(options = {}) {
 
 
   await configReady();
+  // Now that there is somewhere to show it.
+  const configProblem = takeConfigProblem();
+  if (configProblem) showToast(configProblem, "error", 0);
   initZoom();
 
   const tabManager = new TabManager(options);

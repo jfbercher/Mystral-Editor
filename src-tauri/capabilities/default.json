@@ -107,6 +107,14 @@
         }
       ]
     },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        }
+      ]
+    },
     "fs:allow-app-write-recursive",
     "fs:allow-home-read-recursive",
     "fs:allow-home-write-recursive",

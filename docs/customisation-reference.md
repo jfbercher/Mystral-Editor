@@ -76,6 +76,7 @@ Some keys are still taken by the system, the browser or another application befo
 
 ---
 
+(spellcheck)=
 ## `spellcheck` — the language of the spell checker
 
 | Key | Default | Meaning |
@@ -115,6 +116,8 @@ A document declaring a language nobody has installed keeps the checking it had r
 
 | Key | Default | Meaning |
 |---|-----------|---|
+| `pyodide.offline` | `"auto"` | Where the Pyodide runtime and its packages are loaded from. `"auto"` uses the copy installed from Settings when there is a complete one, and the CDN otherwise; `"never"` keeps the CDN whatever is on disk, which is what one wants while testing a new version. Note what this key does **not** hold: whether a local copy exists. That is the state of a folder, and the folder answers it — a flag here would go on saying "installed" after the folder was emptied, after a half-finished download, or after an application update moved to another version of Pyodide. |
+| `pyodide.offlinePackages` | `[]` | Packages to download with the offline install, beyond numpy, matplotlib and the helpers. Dependencies are resolved from Pyodide's own lock, so naming `pandas` brings what pandas needs. Naming them here is not required — the folder also fills itself as packages are used, see below — but it is what makes a machine ready *before* it goes offline, which is the point on a classroom machine or a laptop about to travel. |
 | `pyodide.resetCwdOnRun` | `false` | `false` keeps notebook behaviour: the working directory persists from one cell to the next, so a cell may `os.chdir()` and the following ones stay there. `true` resets to `/local` before every run, which makes each cell reproducible in isolation at the cost of that continuity. |
 | `pyodide.figureWidth` | `""` | Default width of the matplotlib figures a cell produces, as a CSS length (`"60%"`, `"20em"`, `"480px"`). Empty leaves each figure at its natural size, bounded by the width of the cell. A cell overrides it with its own `:figwidth:` option. |
 | `pyodide.keys.run` | `"Shift-Enter"` | Run the current cell. |
@@ -127,6 +130,22 @@ A document declaring a language nobody has installed keeps the checking it had r
 | `pyodide.keys.deleteCell` | `""` | Delete the current cell. |
 | `pyodide.keys.editSource` | `""` | Inline preview only: show this cell as its markdown source (Escape comes back). |
 | `pyodide.keys.toggleInput` | `""` | Fold this cell's code away, or back |
+
+### Python without a network
+
+Settings offers **Install Python for offline use**: about 50 MB — the Pyodide runtime, its standard library, and one wheel per package of the default set with its dependencies, seventeen in all. Without it, a cell needs the network on every run, and a machine in a classroom or behind a firewall executes nothing at all.
+
+It lands in `<appDataDir>/pyodide/<version>/`, an exact mirror of the CDN directory, flat. Each wheel is checked against the `sha256` the distribution's own lock file gives; the core files, for which the lock says nothing, are checked for being non-empty and, for the WebAssembly module, for carrying its magic number — enough to catch a proxy that served an error page with a 200.
+
+A file named `complete.json` is written **last**, and it alone says the install is usable. An interrupted download therefore leaves a folder that is never mistaken for a cache, and starting again skips whatever is already verified rather than fetching forty megabytes twice. A new version of Pyodide is a new folder; the old one can be removed from the same button.
+
+One thing about this needs saying, because it is the opposite of what a cache usually does. `indexURL` is a single base: once it points at the local folder, Pyodide resolves **every** wheel of its own distribution there, and nowhere else. Being *known* to Pyodide is therefore what deprives a package of the network — `micropip.install("bokeh")` returned without a word and the import after it failed, advising the reader to run the call they had just run, while `micropip.install("labquiz")`, which Pyodide has never heard of, went to PyPI and worked.
+
+So the folder fills itself as it is used. When a cell's `:packages:` or a `micropip.install` names a distribution package the folder does not have, its wheel and those of its dependencies are fetched and checked into the folder first, and the call then proceeds: what worked once online works offline afterwards, and a package behaves the same whether Pyodide has heard of it or not. When it cannot be fetched — no network, usually — the reason is said at that point rather than left to the next line to discover.
+
+It is usually quicker as well, though the honest claim is narrower than it looks. The gain is certain on a first run, after an application update, and whenever the webview's cache has been evicted — which 37 MB of wheels makes likely. Just after an online session it is close to nothing, the webview serving the very same files from its own disk cache; and the integrity check Pyodide runs on every wheel is paid either way. What does disappear for good is the variance: no network latency, no slow CDN, and no thirty machines of a classroom asking jsDelivr for numpy in the same minute. The console says which base was used and how long the runtime took to be ready, so the comparison can be made rather than assumed.
+
+To set up several machines without each one downloading, install on one and copy that folder to the same place on the others: nothing in it is machine-specific.
 
 :::
 
@@ -233,6 +252,7 @@ Two conditions must hold before a file can be exported, and myst provides neithe
 
 ---
 
+(custom_css)=
 ## `custom.css` — stylesheet overrides
 
 `custom.css` is injected after the application stylesheet, so any rule or variable defined there wins. The active theme is exposed as a `data-theme` attribute on `#myst-css-namespace`, which gives a stable hook for per-theme overrides:

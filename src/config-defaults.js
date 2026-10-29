@@ -146,6 +146,22 @@ export const DEFAULT_CONFIG = {
   },
 
   pyodide: {
+    // Where the Pyodide runtime and its packages are loaded from.
+    // "auto" uses the copy installed from Settings when there is a complete
+    // one, and the CDN otherwise; "never" keeps the CDN whatever is on disk,
+    // which is what one wants while testing a new version. Whether a local
+    // copy *exists* is never recorded here: that is the state of a folder, and
+    // the folder itself answers it -- see pyodideInstall.js.
+    offline: "auto",
+
+    // Packages to add to the offline install, beyond numpy, matplotlib and the
+    // helpers. Dependencies are resolved from Pyodide's own lock, so naming
+    // "pandas" brings what pandas needs. This list matters: once a local copy
+    // is in use, Pyodide looks for every wheel in that folder and nowhere
+    // else, so a package absent from it fails even with a network. Name here
+    // whatever the documents ask for in a cell's `:packages:`.
+    offlinePackages: [],
+
     // false = notebook behaviour: CWD persists across cells (option B)
     // true  = resets os.chdir("/local") before each cell  (option A)
     resetCwdOnRun: false,

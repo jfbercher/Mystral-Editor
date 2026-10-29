@@ -9,12 +9,20 @@
     rendering, with its Jupyter stack, from inside the editor. Loopback only,
     and no wildcard host. connect-src deliberately does *not* allow it: the
     site's readiness is read from myst's own stdout rather than by polling it.
+
+    script-src allows asset: for one reason: a Pyodide installed locally is
+    loaded from the application's data folder, and Pyodide fetches its own
+    `pyodide.asm.js` with a dynamic import(), which script-src governs. The
+    file would be read but never evaluated otherwise, with no error naming the
+    cause. It costs little here, where 'unsafe-eval' is already granted and the
+    application runs arbitrary Python by design; assetProtocol.scope is the
+    knob to tighten if that ever stops being true.
   -->
   <meta 
   http-equiv="Content-Security-Policy" 
   content="
     default-src 'self' tauri: asset: https://asset.localhost;
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: https://asset.localhost https://cdn.jsdelivr.net https://accounts.google.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
     font-src 'self' https://fonts.gstatic.com data:;
     img-src 'self' asset: https://asset.localhost asset://* blob: data: https: http:;
