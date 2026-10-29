@@ -79,7 +79,7 @@
 .pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
 .pyodide-editor-row{display:flex;position:relative;width:100%}
 .pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
-.pyodide-output{min-height:2.5rem;max-height:var(--pyodide-output-max-height,25rem);overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
+.pyodide-output{font-size:var(--pyodide-output-font-size,var(--pyodide-cell-font-size,0.8rem));min-height:2.5rem;max-height:var(--pyodide-output-max-height,25rem);overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
 /* The cap keeps a long output from pushing the document away, but it also
    stopped the resize handle: dragging clamped at 25rem and a tall figure
    could not be revealed. Dragging writes an inline height, and that is the
@@ -100,4 +100,24 @@
    namespace, leaving the message on the left. */
 .pyodide-ran-at{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
-.pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{font-size:.82rem;color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit;font-size:.85rem}.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.85rem;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-html,.mw-htmlmath,.mw-markdown{font-size:.9rem}.mw-output{padding:.3rem 0}
+/* The widgets a cell's output may contain.
+   Their sizes are inherited, not set: each was pinned in rem a little above
+   the cell's own 0.8rem, so the output read larger than the code that
+   produced it and ignored the per-cell font buttons entirely. What they
+   inherit is --pyodide-output-font-size, which follows the cell unless a
+   document says otherwise. */
+.pyodide-widget-output{min-height:0}.pyodide-text-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}.mw-vbox{display:flex;flex-direction:column;gap:.4rem}.mw-hbox{display:flex;flex-direction:row;flex-wrap:nowrap;gap:.5rem;align-items:center;overflow-x:auto}.mw-text,.mw-dropdown{display:inline-flex;align-items:center;gap:.35rem}.mw-label{color:var(--color-foreground-secondary,#57606a);white-space:nowrap}.mw-input{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit}.mw-select{padding:.3rem .5rem;border:1px solid var(--color-border,#d0d7de);border-radius:4px;font:inherit}/* One text line tall, so the box sits on the line beside it.
+   A checkbox is drawn at a size of its own -- labquiz pins 14x15px plus a
+   2px border, 19px in all -- which made the wrapper taller than the line and
+   left the box floating above the text it belongs to. Fixing the wrapper to
+   one line and centring inside it aligns the two to within a fraction of a
+   pixel, and keeps doing so when the cell's font changes, which a padding in
+   px would not. Taller content simply overflows: nothing is clipped. */
+.mw-checkbox{display:inline-flex;align-items:center;gap:.3rem;height:1.2em}.mw-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .75rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}.mw-btn:disabled{opacity:.5;cursor:not-allowed}/* Doubled class, and not for show: MystContainer in MystStyles.js carries
+   `button, input, dialog, textarea { color: inherit }`, and being a styled
+   component its selector is a class plus an element -- (0,1,1), which beats a
+   single class. A coloured button therefore inherited the surrounding text
+   colour instead of its own white: right by accident in the dark theme,
+   black on blue in the light one. `.mw-btn.mw-btn-primary` is (0,2,0) and
+   wins without an !important. */
+.mw-btn.mw-btn-primary{background:#0969da;color:#fff;border-color:#0969da}.mw-btn.mw-btn-success{background:#1a7f37;color:#fff;border-color:#1a7f37}.mw-btn.mw-btn-info{background:#0550ae;color:#fff;border-color:#0550ae}.mw-btn.mw-btn-warning{background:#9a6700;color:#fff;border-color:#9a6700}.mw-btn.mw-btn-danger{background:#cf222e;color:#fff;border-color:#cf222e}.mw-btn.mw-btn-default{background:var(--color-background-primary,#fff)}.mw-output{padding:.3rem 0}
