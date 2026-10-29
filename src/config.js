@@ -55,6 +55,7 @@ mergeInto(config, DEFAULT_CONFIG);
  */
 const isTauri = "__TAURI_INTERNALS__" in window;
 
+let configProblem = null;
 let directives = BUILTIN_DIRECTIVES;
 let customCss  = "";
 let newFileTemplate = "";
@@ -116,6 +117,12 @@ async function loadConfigTauri() {
       _applyConfigData(data);
       console.log("config.json loaded from", configPath);
     } catch (err) {
+      // Kept, and said out loud later: a file that does not parse is not a
+      // file with one bad key -- every setting in it is lost and the whole
+      // application silently reverts to its defaults. A trailing comma does
+      // it, and in a console message nobody is watching, the symptom is
+      // "my setting stopped working" with no cause in sight.
+      configProblem = `config.json could not be read (${err?.message ?? err}). Every setting in it is ignored until it parses; the defaults are in use.`;
       console.warn("config.json could not be parsed.", err);
     }
   }
@@ -354,6 +361,18 @@ export function loadConfig() {
 
 /** Returns the ready promise, triggering loadConfig() if not yet started. */
 export const configReady = () => ready ?? loadConfig();
+
+/**
+ * What went wrong while reading config.json, if anything.
+ *
+ * Read once the interface exists -- see app.js -- because a toast raised while
+ * the configuration loads has nowhere to appear.
+ */
+export const takeConfigProblem = () => {
+  const problem = configProblem;
+  configProblem = null;
+  return problem;
+};
 
 /** Returns the active directive map (built-in + any user overrides). */
 export const getLabelledDirectives = () => directives;
