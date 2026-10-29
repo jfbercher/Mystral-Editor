@@ -41,7 +41,7 @@ project:
         - file: slides.md
         - file: project-frontmatter-extends.md
         - file: customisation-reference.md  
-        - file: myst-editor-css-variables.md
+        - file: mystral-editor-css-variables.md
         - file: windows_app_installation_guide.md
         - file: macos_app_installation_guide.md  
         - file: keyboard_shortcuts_en.md 
