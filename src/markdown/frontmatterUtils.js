@@ -11,6 +11,20 @@ import { readTextRelative, currentFileDir, isTauri } from "../utils/local_utils/
  * subscribers re-render once it lands. A failure is cached too -- a missing
  * file must not be re-read on every keystroke.
  */
+/**
+ * A cache key, as a human reads it.
+ *
+ * Keys are of two kinds: a path, for a file named by `extends`, and a
+ * composite one for a folder's project file -- "myst.yml" and the folder,
+ * joined by NUL so that neither can be mistaken for part of the other. NUL
+ * prints as nothing, so the raw key came out as `myst.yml/home/me/Downloads`
+ * and read like a path built back to front. It never was one.
+ */
+const describeKey = (key) => {
+  const parts = String(key).split("\u0000").filter(Boolean);
+  return parts.length > 1 ? `${parts[0]} in ${parts.slice(1).join(" ")}` : `"${key}"`;
+};
+
 export const extendsCache = {
   _map: new Map(),
   _pending: new Set(),
@@ -36,7 +50,7 @@ export const extendsCache = {
       .catch((err) => {
         this._pending.delete(key);
         if (this._epoch !== epoch) return;
-        console.warn(`[frontmatter] cannot read "${key}" —`, err?.message ?? err);
+        console.warn(`[frontmatter] cannot read ${describeKey(key)} —`, err?.message ?? err);
         this.set(key, { error: String(err?.message ?? err) });
       });
   },
