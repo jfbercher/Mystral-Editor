@@ -12,7 +12,7 @@
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 import { config, loadConfig, configReady } from "../config.js";
-import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels } from "../utils/local_utils/pyodideInstall.js";
+import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
@@ -228,6 +228,23 @@ def _mystral_who(include_all=False, ns=None):
         }
       }
 
+      // The second bridge: fetch *and* load. Defined here rather than at
+      // module scope because it needs this instance.
+      globalThis._mystralEnsureAndLoad = async function (namesJson) {
+        try {
+          const names = JSON.parse(namesJson);
+          const report = await ensureLocalWheels(names);
+          // Only what the distribution knows: loadPackage throws on a name it
+          // has never heard of, and those are micropip's business.
+          const known = await localLockNames(names);
+          if (known.length) await pyodide.loadPackage(known);
+          return JSON.stringify({ ...report, loaded: known });
+        } catch (err) {
+          console.warn("[pyodide] could not complete a dependency:", err);
+          return JSON.stringify({ added: [], unavailable: [], loaded: [] });
+        }
+      };
+
       // micropip, taught to look in the local install before giving up.
       //
       // Its two paths are indistinguishable to a reader: a name absent from
@@ -265,6 +282,106 @@ def _mystral_req_names(requirements):
             names.append(name)
     return names
 
+def _mystral_dep_name(requirement):
+    """The project name of a Requires-Dist line, or None if it does not apply.
+
+    Markers are evaluated rather than guessed at: a dependency carrying
+    ; extra == "dev", ; python_version < "3.9" or ; sys_platform == "win32"
+    is not ours, and dropping only the extras -- the obvious shortcut -- would
+    install wheels this runtime has no use for. packaging is in the
+    distribution and micropip vendors it; without it, the marked lines are
+    left alone rather than wrongly kept.
+    """
+    text = str(requirement).strip()
+    try:
+        from packaging.requirements import Requirement as _Req
+        parsed = _Req(text)
+        if parsed.marker is not None and not parsed.marker.evaluate():
+            return None
+        return parsed.name
+    except ImportError:
+        if ';' in text:
+            return None
+        name = text.split('[')[0]
+        for sep in _MYSTRAL_SPECIFIERS:
+            name = name.split(sep)[0]
+        return name.strip() or None
+    except Exception:
+        return None
+
+
+async def _mystral_complete_deps(names):
+    """Install what micropip resolved but silently did not fetch.
+
+    micropip does not raise here: asked for a PyPI package whose dependency
+    belongs to the Pyodide distribution, it installs the first, fails to find
+    the second under packageBaseUrl, and says nothing -- the import fails much
+    later, naming a package the reader never asked for.
+
+    So the metadata is read once it is on disk, which is the one moment the
+    real dependency list exists: importlib.metadata gives the Requires-Dist of
+    the version actually installed, with no network and no second resolver to
+    disagree with micropip. The walk repeats on what it adds, since a
+    dependency has dependencies of its own.
+    """
+    import importlib as _il_mp, importlib.metadata as _md_mp
+
+    # Freshly written by micropip a moment ago: whatever cached the contents
+    # of site-packages has to be told.
+    #
+    # How load-bearing these two lines are is not established. The walk came
+    # back empty without them and works with them, and nothing else changed
+    # between the two builds -- but the same reading, done by hand in a later
+    # cell, had always succeeded, and CPython on Linux sees a dist-info
+    # written an instant earlier with no invalidation at all. So either
+    # Emscripten's filesystem has a coarser notion of "changed" than the cache
+    # expects, or the failing build simply did not carry this code. Removing
+    # them and watching the walk is the experiment that would settle it.
+    try:
+        _il_mp.invalidate_caches()
+        _md_mp.MetadataPathFinder.invalidate_caches()
+    except Exception:
+        pass
+
+    seen = set()
+    pending = [n for n in names if n]
+    for _ in range(6):   # a dependency graph that deep is a different problem
+        wanted = []
+        for name in pending:
+            key = name.lower().replace('_', '-')
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                requires = _md_mp.requires(name) or []
+            except Exception as _err:
+                # Said, not swallowed: an empty walk that explains itself is
+                # the difference between a minute and an evening.
+                _js_mp.console.warn('[mystral] no metadata for ' + str(name) + ' -- ' + str(_err))
+                continue
+            for line in requires:
+                dep = _mystral_dep_name(line)
+                if dep and dep.lower().replace('_', '-') not in seen:
+                    wanted.append(dep)
+        if not wanted:
+            # Deliberately at log level, not debug: this is the ordinary
+            # outcome when every dependency comes from PyPI, but it is also
+            # the exact signature of the walk running and finding nothing --
+            # the failure of 29/10. Hidden behind a verbose filter, its
+            # absence would read as "the function never ran". Lower it once
+            # the three platforms are settled.
+            _js_mp.console.log('[mystral] nothing to complete for: ' + ', '.join(pending))
+            return
+        _js_mp.console.log('[mystral] completing dependencies: ' + ', '.join(wanted))
+        try:
+            answer = await _js_mp.globalThis._mystralEnsureAndLoad(_json_mp.dumps(wanted))
+            _js_mp.console.log('[mystral] ' + str(answer))
+        except Exception as _err:
+            _js_mp.console.warn('[mystral] could not load them -- ' + str(_err))
+            return
+        pending = wanted
+
+
 async def _mystral_micropip_patched(requirements, *args, **kwargs):
     report = None
     try:
@@ -280,7 +397,13 @@ async def _mystral_micropip_patched(requirements, *args, **kwargs):
             "Connect to the network and run this again to add it, or add it to "
             "pyodide.offlinePackages in config.json and press 'Add the missing packages' in Settings."
         )
-    return await _mystral_micropip_install(requirements, *args, **kwargs)
+    result = await _mystral_micropip_install(requirements, *args, **kwargs)
+    # Afterwards, because only then is the metadata on disk.
+    try:
+        await _mystral_complete_deps(_mystral_req_names(requirements))
+    except Exception as _err:
+        print('[mystral] could not complete the dependencies:', _err)
+    return result
 
 _micropip_mod.install = _mystral_micropip_patched
 `);

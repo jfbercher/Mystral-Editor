@@ -394,3 +394,15 @@ export async function ensureLocalWheels(names) {
   if (added.length) console.log(`[pyodide] added to the local install: ${added.join(", ")}`);
   return { skipped: false, added, unavailable };
 }
+
+/**
+ * Among `names`, those the distribution knows -- with their dependencies.
+ *
+ * What `loadPackage` may be handed: it throws on a name it has never heard
+ * of, and those are micropip's business anyway.
+ */
+export async function localLockNames(names) {
+  const { lock } = await missingLocalWheels(names);
+  if (!lock) return [];
+  return packageClosure(lock, [].concat(names ?? []).filter(Boolean)).packages;
+}
