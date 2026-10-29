@@ -27,7 +27,7 @@ Sponsor:
 * **A slide mode**, dedicated to slide preparation *and* a slideshow mode (with live execution of code-cells).
 * Reads markdown, yaml files; import/export jupyter notebook *ipynb* files. Exports your documents as LaTeX, PDF, DOC, HTML, and build full websites through mystmd. 
 * ****Six viewing modes****, including an *inline* mode that renders each block in place and opens only the block containing the cursor in source mode; a embedded view of the *generated MyST website*, and preview of *slides*. 
-* ****One codebase, two forms****: a desktop application for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application deployable anywhere without installation.
+* ****One codebase, two forms****: a desktop application for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application that can be deployed anywhere without installation.
 
 ## Scientific authoring
 
