@@ -17,16 +17,22 @@
     cause. It costs little here, where 'unsafe-eval' is already granted and the
     application runs arbitrary Python by design; assetProtocol.scope is the
     knob to tighten if that ever stops being true.
+
+    http://asset.localhost is there for Windows, where custom protocols are
+    served over http rather than as a scheme of their own -- which is why
+    http://ipc.localhost already appears in connect-src. Listing only the
+    https form would let a local Pyodide work on macOS and Linux and be
+    blocked on Windows, with the CSP as the last place anyone would look.
   -->
   <meta 
   http-equiv="Content-Security-Policy" 
   content="
-    default-src 'self' tauri: asset: https://asset.localhost;
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: https://asset.localhost https://cdn.jsdelivr.net https://accounts.google.com;
+    default-src 'self' tauri: asset: https://asset.localhost http://asset.localhost;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: https://asset.localhost http://asset.localhost https://cdn.jsdelivr.net https://accounts.google.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
     font-src 'self' https://fonts.gstatic.com data:;
     img-src 'self' asset: https://asset.localhost asset://* blob: data: https: http:;
-    connect-src 'self' https: tauri: asset: https://asset.localhost ipc: http://ipc.localhost;
+    connect-src 'self' https: tauri: asset: https://asset.localhost http://asset.localhost ipc: http://ipc.localhost;
     frame-src https://accounts.google.com http://localhost:* http://127.0.0.1:*;
   "
 />

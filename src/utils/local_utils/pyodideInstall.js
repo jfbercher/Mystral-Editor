@@ -13,6 +13,16 @@
  * can then point at the folder and Pyodide finds everything where it expects
  * it, with no code of ours in the path.
  *
+ * **Two scopes have to reach this folder, and a dot nearly stopped both.** A
+ * glob does not match a path segment beginning with a dot unless the dot is
+ * written literally, and that rule bit twice: the witness was called
+ * `.complete` and Tauri's filesystem scope refused it, and on Linux the folder
+ * itself lives under `~/.local/share`, where `assetProtocol.scope: ["**"]`
+ * answered 403 and nothing else did. Hence a visible witness, and
+ * `$APPDATA/**` beside `**` in `tauri.conf.json` -- the expanded variable
+ * carries the dot as a literal. macOS and Windows never showed either
+ * symptom: their data folders have no dotted segment.
+ *
  * **The witness file is the only truth.** `.complete` is written last, once
  * every file is in place, and the install is considered present if and only if
  * it is there. An interrupted download leaves no witness and is never mistaken
@@ -161,6 +171,20 @@ export async function localPyodideDir() {
 }
 
 /**
+ * A file inside the install, named the way this platform names files.
+ *
+ * Not `${dir}/${name}`: on Windows `appDataDir()` returns a path with
+ * backslashes, and gluing a forward slash to it gives a mixed-separator path
+ * that the filesystem will accept but that the capability's `$HOME/**`
+ * pattern may not -- a permission refusal on one platform only, with nothing
+ * in the message pointing at the separator.
+ */
+async function inInstall(dir, name) {
+  const { join } = await import("@tauri-apps/api/path");
+  return join(dir, name);
+}
+
+/**
  * Is there a usable copy, and what URL serves it?
  *
  * The URL is built from a path that already ends in a separator, so that the
@@ -174,8 +198,19 @@ export async function localPyodideStatus() {
     const { exists } = await import("@tauri-apps/plugin-fs");
     const { convertFileSrc } = await import("@tauri-apps/api/core");
     const dir = await localPyodideDir();
-    const installed = await exists(`${dir}/${WITNESS}`);
-    return { installed, dir, baseUrl: installed ? convertFileSrc(`${dir}/`) : null };
+    const installed = await exists(await inInstall(dir, WITNESS));
+    // The separator is part of what is encoded, and it has to be this
+    // platform's: Pyodide appends a bare file name to this base, and the
+    // asset protocol percent-decodes the whole thing back into a path.
+    let separator = "/";
+    try {
+      const { sep } = await import("@tauri-apps/api/path");
+      separator = typeof sep === "function" ? sep() : sep || "/";
+    } catch {
+      /* keep "/" */
+    }
+    const base = dir.endsWith(separator) ? dir : dir + separator;
+    return { installed, dir, baseUrl: installed ? convertFileSrc(base) : null };
   } catch (err) {
     console.warn("[pyodide] could not read the local install:", err);
     return { installed: false, dir: null, baseUrl: null };
@@ -222,7 +257,8 @@ export async function installLocalPyodide({ onProgress = () => {}, signal, extra
   await mkdir(dir, { recursive: true });
   // A witness from a previous attempt would make a half-written folder look
   // finished for as long as this one runs.
-  if (await exists(`${dir}/${WITNESS}`)) await remove(`${dir}/${WITNESS}`);
+  const witness = await inInstall(dir, WITNESS);
+  if (await exists(witness)) await remove(witness);
 
   const lockResponse = await fetch(`${PYODIDE_CDN}${LOCK_FILE}`, { signal });
   if (!lockResponse.ok) throw new Error(`pyodide-lock.json: ${lockResponse.status}`);
@@ -237,7 +273,7 @@ export async function installLocalPyodide({ onProgress = () => {}, signal, extra
   let bytes = 0;
   for (const file of files) {
     if (signal?.aborted) throw new Error("Installation cancelled.");
-    const target = `${dir}/${file.name}`;
+    const target = await inInstall(dir, file.name);
 
     // Already there and sound: a second attempt after a dropped connection
     // should not download forty megabytes again.
@@ -265,7 +301,7 @@ export async function installLocalPyodide({ onProgress = () => {}, signal, extra
 
   // Last, and only now.
   await writeFile(
-    `${dir}/${WITNESS}`,
+    await inInstall(dir, WITNESS),
     new TextEncoder().encode(JSON.stringify({ version: PYODIDE_VERSION, files: files.length, bytes, at: new Date().toISOString() }, null, 1)),
   );
   return { dir, files: files.length, bytes };
@@ -276,7 +312,8 @@ export async function removeLocalPyodide() {
   const { exists, remove } = await import("@tauri-apps/plugin-fs");
   const dir = await localPyodideDir();
   if (!(await exists(dir))) return false;
-  if (await exists(`${dir}/${WITNESS}`)) await remove(`${dir}/${WITNESS}`);
+  const witness = await inInstall(dir, WITNESS);
+  if (await exists(witness)) await remove(witness);
   await remove(dir, { recursive: true });
   return true;
 }
@@ -315,7 +352,7 @@ export async function missingLocalWheels(names) {
   const { exists, readFile } = await import("@tauri-apps/plugin-fs");
   let lock;
   try {
-    lock = JSON.parse(new TextDecoder().decode(await readFile(`${dir}/${LOCK_FILE}`)));
+    lock = JSON.parse(new TextDecoder().decode(await readFile(await inInstall(dir, LOCK_FILE))));
   } catch (err) {
     console.warn("[pyodide] the local lock could not be read:", err);
     return { dir, lock: null, missing: [] };
@@ -325,7 +362,7 @@ export async function missingLocalWheels(names) {
   const { packages } = packageClosure(lock, wanted);
   const missing = [];
   for (const key of packages) {
-    if (!(await exists(`${dir}/${lock.packages[key].file_name}`))) missing.push(key);
+    if (!(await exists(await inInstall(dir, lock.packages[key].file_name)))) missing.push(key);
   }
   return { dir, lock, missing };
 }
@@ -340,7 +377,7 @@ export async function ensureLocalWheels(names) {
 
   for (const key of missing) {
     const entry = lock.packages[key];
-    const target = `${dir}/${entry.file_name}`;
+    const target = await inInstall(dir, entry.file_name);
     try {
       const response = await fetch(`${PYODIDE_CDN}${entry.file_name}`);
       if (!response.ok) throw new Error(`${response.status}`);
