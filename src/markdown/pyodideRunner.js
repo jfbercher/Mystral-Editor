@@ -391,7 +391,10 @@ async def _mystral_install_walk(requirements):
                     wanted[key] = (requirement_text, dep_name)
 
         if not wanted:
-            _js_mp.console.log('[mystral] nothing left to resolve')
+            # Debug: this is how every walk ends, and the three platforms
+            # have been checked. The lines that remain at log or warn level
+            # are the ones that say something happened, or failed to.
+            _js_mp.console.debug('[mystral] nothing left to resolve')
             return
 
         names = [v[1] for v in wanted.values()]
