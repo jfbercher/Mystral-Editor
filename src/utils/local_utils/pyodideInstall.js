@@ -367,11 +367,40 @@ export async function missingLocalWheels(names) {
   return { dir, lock, missing };
 }
 
+/**
+ * Forget the empty answer the webview kept for a file that did not exist yet.
+ *
+ * The order of events is what does the damage: micropip asks for a wheel
+ * before we have fetched it, the asset protocol answers an error with no
+ * body, and the webview caches *that*. We then write the file -- the console
+ * says so, and it is there on disk -- and the very next `loadPackage` asks
+ * for the same URL and is served the empty response, which fails Pyodide's
+ * integrity check with "Content length: 0" on a file that is plainly
+ * complete. Restarting the application cleared it, which is what made the
+ * bug look like magic; Windows never showed it, serving its protocols over
+ * http through another path.
+ *
+ * `cache: "reload"` bypasses the stored entry and replaces it, so the fetch
+ * Pyodide is about to make finds the file. Failures are ignored: this is a
+ * repair of someone else's bookkeeping, and the load that follows is the
+ * real test.
+ */
+async function refreshCacheEntry(baseUrl, fileName) {
+  if (!baseUrl) return;
+  try {
+    await fetch(`${baseUrl}${fileName}`, { cache: "reload" });
+  } catch {
+    /* the load that follows will say if it mattered */
+  }
+}
+
 export async function ensureLocalWheels(names) {
   const { dir, lock, missing } = await missingLocalWheels(names);
   if (!lock || !missing.length) return { skipped: !lock, added: [], unavailable: [] };
 
   const { writeFile } = await import("@tauri-apps/plugin-fs");
+  // The URL Pyodide will ask for, needed to put the cache right afterwards.
+  const { baseUrl } = await localPyodideStatus();
   const added = [];
   const unavailable = [];
 
@@ -385,6 +414,7 @@ export async function ensureLocalWheels(names) {
       const problem = await verifyFile(entry.file_name, data, entry.sha256);
       if (problem) throw new Error(problem);
       await writeFile(target, data);
+      await refreshCacheEntry(baseUrl, entry.file_name);
       added.push(key);
     } catch (err) {
       console.warn(`[pyodide] ${key} could not be added to the local install:`, err);
