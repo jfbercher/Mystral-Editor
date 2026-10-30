@@ -36,6 +36,22 @@
 .pyodide-space-tag[data-shared="true"]{opacity:.4;border-style:dashed}
 .pyodide-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);font:inherit;font-size:.8rem;line-height:1;cursor:pointer;background:var(--color-background-primary,#fff);color:inherit}
 .pyodide-btn:disabled{opacity:.5;cursor:not-allowed}
+/* A cell presented as a single button ({quiz}). The editor is already hidden
+   by .pyodide-folded; what is left to remove is the chrome that says "editable
+   code" where there is nothing to edit. The status bar goes too: its namespace
+   and its timings are a cell's business, not a quiz's. */
+.pyodide-bare>.pyodide-header,.pyodide-bare>.pyodide-status-bar,.pyodide-bare>.pyodide-params-bar{display:none}
+.pyodide-bare-run{display:inline-flex;align-items:center;padding:.4rem .9rem;margin:.2rem 0 .4rem;border-radius:5px;border:1px solid var(--color-border,#d0d7de);background:var(--color-background-primary,#fff);color:inherit;font:inherit;font-size:.85rem;line-height:1.2;cursor:pointer}
+.pyodide-bare-run:hover:not(:disabled){background:var(--color-background-secondary,#f6f8fa)}
+.pyodide-bare-run:disabled{opacity:.5;cursor:progress}
+/* `:dropdown:` -- a disclosure around the output alone, the button staying
+   outside it as what runs the cell. */
+.pyodide-output-details{margin:0 0 .4rem}
+.pyodide-output-details>summary{cursor:pointer;font-size:.8rem;color:var(--color-foreground-secondary,#57606a);padding:.2rem .1rem;user-select:none}
+.pyodide-output-details>summary:hover{color:inherit}
+/* Unfolding a bare cell gives the toolbar back, so the code it runs can be
+   read and the cell behaves like any other. */
+.pyodide-bare:not(.pyodide-folded)>.pyodide-header,.pyodide-bare:not(.pyodide-folded)>.pyodide-status-bar{display:flex}
 /* The disclosure control. Narrow and quiet: it is used often and should not
    weigh as much as Run. */
 .pyodide-btn-fold{padding:.2rem .4rem;min-width:1.7rem;line-height:1;opacity:.7}
@@ -100,6 +116,14 @@
    namespace, leaving the message on the left. */
 .pyodide-ran-at{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap;margin-left:auto}
 .eval-result{font-style:inherit}.eval-pending{opacity:.5;font-style:italic;cursor:wait}.eval-error{color:#cf222e;text-decoration:underline dotted;cursor:help}
+/* An object that renders itself -- a DataFrame, a figure -- lands in the middle
+   of a paragraph. inline-block keeps the block markup it carries from breaking
+   the line it sits on, and top-aligns it with the text rather than letting a
+   tall table drop the whole line to its own baseline. */
+.eval-rich{display:inline-block;vertical-align:top;max-width:100%;overflow-x:auto}
+.eval-rich table{font-size:.85em}
+.eval-rich>:first-child{margin-top:0}.eval-rich>:last-child{margin-bottom:0}
+.eval-image{max-width:100%;height:auto;vertical-align:middle}
 /* The widgets a cell's output may contain.
    Their sizes are inherited, not set: each was pinned in rem a little above
    the cell's own 0.8rem, so the output read larger than the code that

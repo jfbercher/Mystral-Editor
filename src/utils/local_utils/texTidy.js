@@ -43,6 +43,68 @@ export function separateEnvironments(tex) {
   return tidied.replace(/\u0000VERBATIM(\d+)\u0000/g, (_, i) => kept[Number(i)]);
 }
 
+/**
+ * A single call of the form `obj.show('key')`, and nothing else.
+ *
+ * The object may be dotted (`lab.quizzes.show(...)`); the key is a quoted
+ * string holding no newline. Anything more -- an argument, a second
+ * statement, an assignment of the result -- is a code block an author wrote
+ * and means to print.
+ */
+const SHOW_CALL =
+  /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.show\(\s*(['"])(?:(?!\1)[^\\\n]|\\.)*\1\s*\)$/;
+
+/**
+ * Any environment holding exactly one line, with what surrounds it.
+ *
+ * Not a list of the environments code is set in: which one is used is the
+ * template's decision, and `plain_latex` writes
+ * `\begin{lstlisting}[language=python]` where another writes `verbatim`.
+ * Naming them meant the filter below silently matched nothing for the
+ * template most people export with. What identifies a quiz is its content,
+ * so the environment is read and not chosen.
+ *
+ * The arguments an environment may carry -- `[language=python]`, `{python}` --
+ * are part of its opening line and have to be stepped over to reach the one
+ * line of content.
+ */
+const ONE_LINE_ENVIRONMENT =
+  /(\n*)\\begin\{([A-Za-z@]+\*?)\}(?:\[[^\]\n]*\]|\{[^}\n]*\})*[ \t]*\n([^\n]*)\n[ \t]*\\end\{\2\}(\n*)/g;
+
+/**
+ * Drop the listings a `{quiz}` leaves in the LaTeX.
+ *
+ * `{quiz}` becomes an executable code cell, which is what the site needs: a
+ * reader with a kernel gets the real quiz. The LaTeX writer sees the same node
+ * and prints its source, so a PDF came out with `quz.show('quiz7')` set in
+ * verbatim where a quiz was meant -- the one line of the document the author
+ * never wrote and never wanted to read.
+ *
+ * It is removed here rather than suppressed upstream because no `visibility`
+ * in mystmd is conditional on the output format: hiding the cell for LaTeX
+ * would hide it for the site as well, which is the one place it matters.
+ *
+ * The match is deliberately narrow -- one statement, one call, nothing around
+ * it. A code block an author wrote to *show* how a quiz is displayed has the
+ * same shape, and would go too; that is the cost of reading the output rather
+ * than carrying a marker through a writer that has no room for one. What is
+ * *not* narrow is the environment: any one whose whole content is that call is
+ * taken, because the template chooses it.
+ *
+ * @returns {{text: string, removed: number}}
+ */
+export function stripQuizListings(tex) {
+  let removed = 0;
+  const text = String(tex ?? "").replace(ONE_LINE_ENVIRONMENT, (match, before, _env, body, after) => {
+    if (!SHOW_CALL.test(body.trim())) return match;
+    removed += 1;
+    // What stood around the block is kept as one paragraph break, so the text
+    // before and after does not run together.
+    return before && after ? "\n\n" : before || after;
+  });
+  return { text, removed };
+}
+
 /** The opening of a caption mystmd wrote: `\caption[]{` or `\caption*[]{`. */
 const EMPTY_SHORT_CAPTION = /\\caption(\*?)\[\]\{/g;
 

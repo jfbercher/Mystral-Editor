@@ -24,7 +24,7 @@ import { findProofLabels } from "../../markdown/scanProofLabels.js";
 import { scanAdmonitions } from "./scanAdmonitions.js";
 import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmonitions.js";
 import { repairProofLabels } from "./texProofLabels.js";
-import { separateEnvironments, restoreShortCaptions } from "./texTidy.js";
+import { separateEnvironments, restoreShortCaptions, stripQuizListings } from "./texTidy.js";
 import { readRule } from "../shortCaption.js";
 import { rewriteFloats } from "./texFloats.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
@@ -35,6 +35,7 @@ import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 import exerciseAdmonitionSource from "../../../extras/myst-plugins/exercise-admonition.mjs?raw";
 import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.mjs?raw";
 import floatListsSource from "../../../extras/myst-plugins/float-lists.mjs?raw";
+import quizSource from "../../../extras/myst-plugins/quiz.mjs?raw";
 import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
 
 /**
@@ -1016,11 +1017,40 @@ const PROJECT_PLUGINS = [
   ["exercise-admonition.mjs", exerciseAdmonitionSource],
   ["pyodide-outputs.mjs", pyodideOutputsSource],
   ["float-lists.mjs", floatListsSource],
+  ["quiz.mjs", quizSource],
 ];
 
 /** The site's style sheet, kept in the same folder as the plugins. */
 const SITE_STYLE = "mystral-site.css";
 const SITE_STYLE_PATH = `${PLUGIN_DIR}/${SITE_STYLE}`;
+
+/**
+ * Add to an existing `plugins:` list the plugins of ours it does not name.
+ *
+ * A project set up by an earlier version of the editor declares the plugins
+ * that existed then. The files themselves are rewritten on every build, so a
+ * new one lands on disk -- and is never declared, which is exactly how a
+ * `{quiz}` would have come out of a build as an unknown directive while its
+ * plugin sat in the folder beside it.
+ *
+ * Inserted after the first entry of the list rather than parsed and rewritten,
+ * for the same reason as everything else here: the file is the user's.
+ *
+ * @returns {{yml: string|null, missing: string[]}}
+ */
+export function declareMissingPlugins(yml) {
+  const missing = PROJECT_PLUGINS
+    .map(([name]) => `${PLUGIN_DIR}/${name}`)
+    .filter((entry) => !yml.includes(entry));
+  if (!missing.length) return { yml: null, missing };
+
+  const lines = yml.split("\n");
+  const at = lines.findIndex((l) => new RegExp(`^\\s*-\\s*\\.?/?${PLUGIN_DIR}/`).test(l));
+  if (at === -1) return { yml: null, missing };
+  const indent = lines[at].match(/^(\s*)/)[1];
+  lines.splice(at + 1, 0, ...missing.map((entry) => `${indent}- ${entry}`));
+  return { yml: lines.join("\n"), missing };
+}
 
 /**
  * Declare our style sheet as the site's, if the site has none.
@@ -1115,11 +1145,28 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     // `declare`, so a floated figure simply never floated on the site. It is
     // reported rather than done quietly.
     if (!declare) {
-      if (!yml.includes(PLUGIN_DIR) || yml.includes(SITE_STYLE_PATH)) return false;
-      const late = declareSiteStyle(yml);
-      if (!late.yml) return false;
-      await writeTextFile(ymlPath, late.yml);
-      showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      if (!yml.includes(PLUGIN_DIR)) return false;
+      let current = yml;
+
+      // Two things can be late in a project that already said yes: a plugin
+      // that did not exist when it was set up, and the stylesheet, which
+      // arrived after the plugins did. Both are added in one write.
+      const late = declareMissingPlugins(current);
+      if (late.yml) current = late.yml;
+
+      let styled = null;
+      if (!current.includes(SITE_STYLE_PATH)) {
+        styled = declareSiteStyle(current);
+        if (styled.yml) current = styled.yml;
+      }
+      if (current === yml) return false;
+      await writeTextFile(ymlPath, current);
+      if (late.yml) {
+        showToast(`${late.missing.join(", ")} added to myst.yml: the directives they provide need it to reach the exports.`, "success", 8000);
+      }
+      if (styled?.yml) {
+        showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      }
       return true;
     }
 
@@ -1632,7 +1679,11 @@ async function postProcessTexFile(texPath, sourcePath) {
   // inside an admonition should become a wrapfigure inside the box that is
   // already there, not the other way round.
   const floats = rewriteFloats(proof.text);
-  await writeTextFile(bodyPath, separateEnvironments(floats.text));
+  // Last, and after the floats: what it removes is a whole block, and taking
+  // it out earlier would shift every pairing the passes above counted on.
+  const quizzes = stripQuizListings(floats.text);
+  if (quizzes.removed) console.debug(`[export] ${quizzes.removed} quiz listing(s) removed from the .tex`);
+  await writeTextFile(bodyPath, separateEnvironments(quizzes.text));
 
   // In a multi-file export the body carries no preamble; the packages and the
   // box definitions have to go in the file that has `\begin{document}`.

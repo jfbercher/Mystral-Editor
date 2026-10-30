@@ -1182,6 +1182,78 @@ class CodeCellDirective extends Directive {
 }
 
 /**
+ * `{quiz}` -- a labquiz quiz, shown by a button.
+ *
+ *     :::{quiz} quz quiz7
+ *     :::
+ *
+ * The first argument is the QuizLab instance, the second the key of the quiz
+ * in its bank. The instance is named rather than assumed: it is an object the
+ * document itself built in an earlier cell, under whatever name its author
+ * chose. A single argument means the instance is called `quiz`.
+ *
+ * What it produces is an ordinary code-cell host running `<obj>.show('<key>')`
+ * -- not a rendering path of its own. A quiz is a live widget, so it needs a
+ * host that survives the re-render of its chunk, an output area the labquiz
+ * shim can draw into, and a place in the kernel: everything a cell already is.
+ * `data-chrome="bare"` only changes how that cell is dressed -- no toolbar,
+ * code folded away, one button -- and the code stays visible to whoever
+ * unfolds it, which is why it is written plainly rather than wrapped in a
+ * try/except nobody asked for.
+ */
+class QuizDirective extends Directive {
+  required_arguments = 1;
+  optional_arguments = 1;
+  final_argument_whitespace = false;
+  has_content = false;
+  option_spec = {
+    label:   directiveOptions.unchanged,
+    name:    directiveOptions.unchanged,
+    caption: directiveOptions.unchanged,
+    // What the button says. "Quiz" unless the document prefers otherwise.
+    button:  directiveOptions.unchanged,
+    // Put the output in a <details>, open, so a quiz that has been done can be
+    // folded away. `unchanged` rather than `flag` so the summary can be given
+    // along with it: `:dropdown: Questions`. Present and empty is still on,
+    // which is why the host carries "1" rather than the value itself.
+    dropdown: directiveOptions.unchanged,
+  };
+
+  run(data) {
+    // Rejoined and re-split rather than read positionally: how a directive
+    // parser divides its argument line is its own business, and one that has
+    // changed before.
+    const args = (data.args ?? []).join(" ").trim().split(/\s+/).filter(Boolean);
+    const [obj, key] = args.length > 1 ? args : ["quiz", args[0] ?? ""];
+    const code = `${obj}.show('${String(key).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')`;
+
+    const hash    = new IMurMurHash(code, 42).result().toString(16);
+    const id      = `code-cell-${hash}`;
+    const encoded = _encodeCode(code);
+
+    const env = this.state?.env ?? {};
+    const html =
+      `<div id="${id}" class="code-cell-host" ` +
+      `data-code="${encoded}" ` +
+      `data-packages='[]' ` +
+      `data-chrome="bare" ` +
+      `data-chrome-label="${escapeHtml(String(data.options?.button ?? "Quiz").trim())}" ` +
+      `data-dropdown="${data.options?.dropdown !== undefined ? "1" : ""}" ` +
+      `data-dropdown-label="${escapeHtml(String(data.options?.dropdown ?? "").trim())}" ` +
+      `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
+      `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
+      `data-python-space="${env.pythonSpace ?? "shared"}" ` +
+      `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
+      `data-linenos="false">` +
+      `</div>\n`;
+
+    const token = this.createToken("html_block", "", 0, { map: data.map, block: true });
+    token.content = html;
+    return [token];
+  }
+}
+
+/**
  * `{raw}` — a block handed to one output format verbatim.
  *
  * Without this it falls to markdown-it-docutils' unhandled branch and is shown
@@ -1233,4 +1305,5 @@ export { floatListDirectives } from "./markdownFigureLists.js";
 
 export const codeDirectives = {
   "code-cell": CodeCellDirective,
+  "quiz": QuizDirective,
 };

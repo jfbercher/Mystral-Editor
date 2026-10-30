@@ -1157,39 +1157,7 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
     }
   }
 
-  let figures = [];
-  try {
-    // SVG rather than PNG, so that zooming into a figure stays sharp instead of
-    // showing the pixels of a 120 dpi capture. Text is drawn as paths, which
-    // makes the result independent of the fonts available wherever it is later
-    // displayed or exported. A dense figure -- a scatter plot of a hundred
-    // thousand points -- produces an unreasonable SVG, so past a size limit the
-    // PNG is kept, and so it is whenever the SVG backend fails for any reason.
-    const figJson = pyodide.runPython(`
-import matplotlib.pyplot as plt, io, base64, json
-_SVG_LIMIT = 2_000_000
-_figs = []
-for _n in plt.get_fignums():
-    _f = plt.figure(_n)
-    _data = None
-    try:
-        _b = io.BytesIO()
-        with plt.rc_context({'svg.fonttype': 'path'}):
-            _f.savefig(_b, format='svg', bbox_inches='tight')
-        _raw = _b.getvalue()
-        if len(_raw) <= _SVG_LIMIT:
-            _data = 'data:image/svg+xml;base64,' + base64.b64encode(_raw).decode()
-    except Exception:
-        _data = None
-    if _data is None:
-        _b = io.BytesIO()
-        _f.savefig(_b, format='png', bbox_inches='tight', dpi=120)
-        _data = 'data:image/png;base64,' + base64.b64encode(_b.getvalue()).decode()
-    _figs.append(_data)
-    plt.close(_f)
-json.dumps(_figs)`);
-    figures = JSON.parse(figJson);
-  } catch {/* pas de matplotlib */}
+  const figures = captureFigures(pyodide);
 
   await syncWrittenFiles(pyodide, memfsSnapshot, prestagedBytes);
 
@@ -1498,7 +1466,30 @@ function openFigureViewer(src, alt = "") {
   document.body.appendChild(overlay);
 }
 
+/** The opening Python writes before the frames of a traceback. */
+const TRACEBACK = /^Traceback \(most recent call last\):\s*\n/;
+
+/**
+ * A traceback reduced to the line that says something.
+ *
+ * Recognised by its text rather than by the pane it arrives in. Pyodide prints
+ * the frames to stderr and leaves `PythonError` alone as the error value, so a
+ * rule written against the error pane shortened a line that was already one
+ * while the traceback went past it untouched. What identifies a traceback is
+ * how it starts; which stream carries it is Pyodide's business.
+ *
+ * Anything else is returned as it stands: a cell that prints to stderr on
+ * purpose is not reporting a failure.
+ */
+function shortenTraceback(text) {
+  const s = String(text);
+  if (!TRACEBACK.test(s)) return s;
+  const lines = s.split("\n").map((l) => l.trimEnd()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1].trim() : s;
+}
+
 function renderOutput(outputArea, result) {
+  const bare = outputArea.closest(".code-cell-host")?.dataset.chrome === "bare";
   outputArea.innerHTML = "";
   outputArea.hidden = false;
   let hasContent = false;
@@ -1510,10 +1501,18 @@ function renderOutput(outputArea, result) {
     ["returnValue", "pyodide-return-value"],
   ]) {
     if (!result[key]) continue;
+    // In a bare cell the error value is `PythonError` and nothing more -- the
+    // frames and the message are in stderr. Saying "PythonError" under a
+    // message that already names the failure is noise, so it is dropped.
+    if (bare && key === "error" && TRACEBACK.test(String(result.stderr ?? ""))) continue;
     hasContent = true;
     const pre = document.createElement("pre");
     pre.className = cls;
-    pre.textContent = result[key];
+    // A bare cell shows a button, not code, so the frames of a traceback name
+    // lines its reader cannot see. The last line is the one that says
+    // something: `KeyError: "Quiz 'quiz5' not found in bank."`, `NameError:
+    // name 'quz' is not defined`. The full text stays one unfold away.
+    pre.textContent = bare ? shortenTraceback(result[key]) : result[key];
     outputArea.appendChild(pre);
   }
 
@@ -1974,6 +1973,94 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     .filter(Boolean);
   setFolded(el.dataset.folded === "1" || tags.includes("hide-input"));
   if (el.dataset.cellFont) setCellFont(Number(el.dataset.cellFont));
+
+  // ── Bare chrome ─────────────────────────────────────────────────────────
+  // A cell that is presented as a single button: no toolbar, code folded
+  // away, nothing to read but what running it produces. `{quiz}` asks for it;
+  // anything else that is an action rather than a listing may.
+  //
+  // The button does not run anything itself -- it clicks Run. One run path
+  // means the streaming, the status, the namespace and the cleanup are the
+  // ones that have been debugged, and a second one would drift from them.
+  //
+  // Read from the host at each render rather than captured, and re-applied by
+  // _syncChrome: a widget that is reused keeps the attributes of its first
+  // render otherwise, and changing `:button:` in the document stayed without
+  // effect until a reload.
+  let bareBtn = null;
+  const syncChrome = () => {
+    const bare = el.dataset.chrome === "bare";
+    wrapper.classList.toggle("pyodide-bare", bare);
+    if (!bare) { bareBtn?.remove(); bareBtn = null; return; }
+    if (!bareBtn) {
+      bareBtn = document.createElement("button");
+      bareBtn.type = "button";
+      bareBtn.className = "pyodide-bare-run";
+      bareBtn.title = "Show this quiz (⌥/Alt-click to open the cell)";
+      bareBtn.addEventListener("click", (ev) => {
+        // Alt-click opens the cell, which is the grammar the toolbar already
+        // uses -- Run All, Restart, the size buttons. Hiding the toolbar took
+        // the chevron with it, so without this the cell under the button could
+        // not be opened at all: a door whose handle is on the other side.
+        if (ev.altKey) return setFolded(false);
+        // The button does not run anything itself -- it clicks Run. One run
+        // path means the streaming, the status, the namespace and the cleanup
+        // are the ones that have been debugged, and a second would drift.
+        runBtn.click();
+      });
+      // Run disables its own button for the length of a run; mirroring it here
+      // beats re-deriving the state, which is settled in half a dozen places
+      // (the finally of the run, a throw, a restart).
+      new MutationObserver(() => { bareBtn.disabled = runBtn.disabled; })
+        .observe(runBtn, { attributes: true, attributeFilter: ["disabled"] });
+
+      // Before the output, wherever it currently lives: `:dropdown:` may
+      // already have moved it inside its <details>.
+      wrapper.insertBefore(bareBtn, details ?? outputArea);
+      // Only when the button is created: folding is a view state the reader
+      // owns afterwards, and re-folding on every re-render would close a cell
+      // under the author typing elsewhere in the document.
+      setFolded(true);
+    }
+    bareBtn.textContent = el.dataset.chromeLabel || "Quiz";
+  };
+
+  // `:dropdown:` -- the output in a <details>, so a quiz that has been done can
+  // be folded away without clearing it.
+  //
+  // The <details> follows the output area's own `hidden` rather than being
+  // driven from the run: that flag is set in several places (the run, a clear,
+  // a sidecar restore), and an empty open frame showing before the first run
+  // was the result of trying to track them.
+  let details = null;
+  const syncDropdown = () => {
+    const wanted = el.dataset.dropdown === "1";
+    if (wanted && !details) {
+      details = document.createElement("details");
+      details.className = "pyodide-output-details";
+      details.open = true;
+      details.hidden = outputArea.hidden;
+      details.appendChild(document.createElement("summary"));
+      outputArea.replaceWith(details);
+      details.appendChild(outputArea);
+      new MutationObserver(() => { details.hidden = outputArea.hidden; })
+        .observe(outputArea, { attributes: true, attributeFilter: ["hidden"] });
+    } else if (!wanted && details) {
+      details.replaceWith(outputArea);
+      details = null;
+    }
+    if (details) {
+      details.querySelector("summary").textContent =
+        el.dataset.dropdownLabel || el.dataset.chromeLabel || "Output";
+    }
+  };
+
+  // Order matters on the first call: the button is placed before the output
+  // area, which the dropdown then moves into the <details>.
+  syncChrome();
+  syncDropdown();
+  el._syncDropdown = syncDropdown;
+  el._syncChrome = syncChrome;
 
   // ── État de synchronisation ───────────────────────────────────────────────
   let _currentCode    = code;
@@ -2463,17 +2550,163 @@ export function clearAllCells(root = document.body) {
 }
 
 /**
- * Evaluate a single Python expression and return its string representation.
+ * The numbers of the matplotlib figures currently open, or null when
+ * matplotlib is not loaded. Taken before an evaluation so that what it opened
+ * can be told from what was already there.
+ */
+function openFigureNumbers(pyodide) {
+  try {
+    return JSON.parse(pyodide.runPython(
+      `import matplotlib.pyplot as _plt, json as _json; _json.dumps(_plt.get_fignums())`));
+  } catch {
+    return null;   // matplotlib absent: nothing to capture later either
+  }
+}
+
+/**
+ * Capture the open matplotlib figures as data URLs, and close them.
+ *
+ * SVG rather than PNG, so that zooming into a figure stays sharp instead of
+ * showing the pixels of a 120 dpi capture. Text is drawn as paths, which makes
+ * the result independent of the fonts available wherever it is later displayed
+ * or exported. A dense figure -- a scatter plot of a hundred thousand points --
+ * produces an unreasonable SVG, so past a size limit the PNG is kept, and so it
+ * is whenever the SVG backend fails for any reason.
+ *
+ * @param {object} pyodide
+ * @param {number[]|null} skip  figure numbers to leave alone, open and
+ *   uncaptured. A cell captures everything (null); an {eval} passes the
+ *   figures that were already open, so it shows what the expression drew and
+ *   not what the document had drawn before it.
+ */
+function captureFigures(pyodide, skip = null) {
+  try {
+    const figJson = pyodide.runPython(`
+import matplotlib.pyplot as plt, io, base64, json
+_SVG_LIMIT = 2_000_000
+_skip = set(json.loads('${JSON.stringify(skip ?? [])}'))
+_figs = []
+for _n in plt.get_fignums():
+    if _n in _skip:
+        continue
+    _f = plt.figure(_n)
+    _data = None
+    try:
+        _b = io.BytesIO()
+        with plt.rc_context({'svg.fonttype': 'path'}):
+            _f.savefig(_b, format='svg', bbox_inches='tight')
+        _raw = _b.getvalue()
+        if len(_raw) <= _SVG_LIMIT:
+            _data = 'data:image/svg+xml;base64,' + base64.b64encode(_raw).decode()
+    except Exception:
+        _data = None
+    if _data is None:
+        _b = io.BytesIO()
+        _f.savefig(_b, format='png', bbox_inches='tight', dpi=120)
+        _data = 'data:image/png;base64,' + base64.b64encode(_b.getvalue()).decode()
+    _figs.append(_data)
+    plt.close(_f)
+json.dumps(_figs)`);
+    return JSON.parse(figJson);
+  } catch {
+    return [];   // pas de matplotlib
+  }
+}
+
+/**
+ * Asks an object how it wants to be shown, using the repr protocol Jupyter
+ * made standard. Anything that already knows how to draw itself in a notebook
+ * -- a DataFrame, a matplotlib figure, a sympy expression -- draws itself in
+ * an {eval} too, instead of being flattened to str().
+ *
+ * It is defined in Pyodide's own globals rather than in a user namespace,
+ * where it would turn up in dir() and in the sidecar snapshot.
+ *
+ * The lookup is on the *type*, as IPython does it: an instance attribute
+ * called _repr_html_ is data the document happens to carry, not a method for
+ * rendering it. Everything is handed back as JSON so nothing crosses the
+ * boundary but a string.
+ */
+const RICH_REPR_SRC = `
+def _mystral_rich_repr(_obj):
+    import base64 as _b64, json as _json
+    _LIMIT = 2_000_000
+    for _name, _kind in (("_repr_html_", "html"), ("_repr_svg_", "svg")):
+        _fn = getattr(type(_obj), _name, None)
+        if _fn is None:
+            continue
+        try:
+            _v = _fn(_obj)
+        except Exception:
+            continue
+        if isinstance(_v, tuple):          # (data, metadata)
+            _v = _v[0]
+        if isinstance(_v, str) and _v.strip() and len(_v) <= _LIMIT:
+            return _json.dumps({"kind": _kind, "value": _v})
+    _fn = getattr(type(_obj), "_repr_png_", None)
+    if _fn is not None:
+        try:
+            _v = _fn(_obj)
+        except Exception:
+            _v = None
+        if isinstance(_v, tuple):
+            _v = _v[0]
+        if isinstance(_v, (bytes, bytearray)):
+            _v = _b64.b64encode(bytes(_v)).decode()
+        if isinstance(_v, str) and _v.strip() and len(_v) <= _LIMIT:
+            return _json.dumps({"kind": "png", "value": _v})
+    return _json.dumps({"kind": "text", "value": str(_obj)})
+`;
+
+/**
+ * Evaluate a single Python expression and describe its result.
  * Lightweight variant of executePython() used by the {eval} inline role:
  * no file pre-staging, no matplotlib figure collection, no file sync.
+ *
  * @param {string} expr
- * @returns {Promise<string>}
+ * @returns {Promise<{kind: "text"|"html"|"svg"|"png", value: string}>}
  */
 export async function runExpression(expr, space = SHARED_SPACE) {
   const pyodide = await loadPyodideRuntime();
+  const figsBefore = openFigureNumbers(pyodide);
   const result = await pyodide.runPythonAsync(expr, { globals: getNamespace(space, pyodide) });
-  if (result === undefined || result === null) return "";
-  return String(result);
+
+  // A plotting call is the case the repr protocol does not cover: `plt.plot(x)`
+  // returns a list of Line2D and draws into the current figure. A notebook
+  // shows the figure because its backend displays whatever was left open at
+  // the end of the cell; the same rule here, and the figure wins over the
+  // value, which is the bookkeeping nobody wants to read mid-sentence.
+  if (figsBefore !== null) {
+    const drawn = captureFigures(pyodide, figsBefore);
+    if (drawn.length) {
+      result?.destroy?.();
+      return {
+        kind: "html",
+        value: drawn.map((src) => `<img class="eval-image" alt="matplotlib figure" src="${src}">`).join(""),
+      };
+    }
+  }
+
+  if (result === undefined || result === null) return { kind: "text", value: "" };
+
+  // Simple values come back already converted; only a proxy has a Python
+  // object behind it to interrogate.
+  const isProxy = typeof result === "object" && typeof result.destroy === "function";
+  if (!isProxy) return { kind: "text", value: String(result) };
+
+  try {
+    // Not memoised in a flag: a hard restart replaces the runtime, and the
+    // flag would then promise a function that no longer exists.
+    if (!pyodide.globals.has("_mystral_rich_repr")) pyodide.runPython(RICH_REPR_SRC);
+    const describe = pyodide.globals.get("_mystral_rich_repr");
+    const json = describe(result);
+    describe.destroy?.();
+    return JSON.parse(json);
+  } catch {
+    return { kind: "text", value: String(result) };
+  } finally {
+    result.destroy?.();
+  }
 }
 
 

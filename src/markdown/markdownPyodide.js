@@ -47,8 +47,7 @@ export const evalCache = {
       })
       .catch(err => {
         if (this._epoch !== epoch) return;   // clear() happened — discard stale error
-        const msg = String(err).replace(/"/g, "&quot;");
-        this.set(key, `<span class="eval-error" title="${msg}">⚠ eval error</span>`);
+        this.set(key, { kind: "error", value: String(err) });
       });
   },
   /** Subscribe to results; returns an unsubscribe function. */
@@ -72,11 +71,42 @@ onCellExecuted(() => evalCache.clear());
 
 const EVAL_RESULT_RULE = "eval_result";
 
+const escapeHtml = (s) =>
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * Turn the {kind, value} answer of runExpression() into inline HTML.
+ *
+ * Text is escaped. The three rich kinds are the object's own rendering, which
+ * is markup by definition -- it was produced by the document's own code, like
+ * any HTML the source contains, so escaping it would only show its tags.
+ */
+function renderEvalValue(val) {
+  switch (val?.kind) {
+    case "html":
+    case "svg":
+      return `<span class="eval-result eval-rich">${val.value}</span>`;
+    case "png":
+      return `<img class="eval-result eval-image" alt="{eval} result" src="data:image/png;base64,${val.value}">`;
+    case "error": {
+      const msg = escapeHtml(val.value).replace(/"/g, "&quot;");
+      return `<span class="eval-error" title="${msg}">⚠ eval error</span>`;
+    }
+    default:
+      return `<span class="eval-result">${escapeHtml(val?.value ?? "")}</span>`;
+  }
+}
+
 /**
  * {eval} role — evaluates a Python expression via Pyodide and inserts its
- * string representation inline in the text flow (per mystmd.org spec).
+ * representation inline in the text flow (per mystmd.org spec).
  *
  * Usage:  {eval}`2 + 2`   →   4
+ *
+ * An object that knows how to draw itself -- _repr_html_, _repr_svg_ or
+ * _repr_png_ -- is drawn rather than flattened to str(). That covers static
+ * output only: a live widget needs a host that survives the re-render of its
+ * chunk, which is what a code-cell provides and a role does not.
  *
  * The result is cached in evalCache. On first encounter a placeholder is
  * rendered; once the async evaluation settles the cache notifies its
@@ -94,12 +124,7 @@ export class EvalRole extends Role {
     const cacheKey = `${space}\u0000${expr}`;
 
     if (evalCache.has(cacheKey)) {
-      const val = evalCache.get(cacheKey);
-      // val is already escaped/safe HTML from runExpression (plain string) or
-      // an error <span> from the catch branch of evalCache.resolve().
-      const safe = val.startsWith("<") ? val
-        : val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      token.content = `<span class="eval-result">${safe}</span>`;
+      token.content = renderEvalValue(evalCache.get(cacheKey));
     } else {
       // Kick off async evaluation; return a placeholder for now.
       evalCache.resolve(cacheKey, runExpression(expr, space));
@@ -221,7 +246,13 @@ function ensureObserver(parent, owner = "") {
         // this attribute, so the reused widget has to be told to rebuild it.
         evictedHost.dataset.params = el.dataset.params ?? "";
         evictedHost.dataset.tags = el.dataset.tags ?? "";
+        evictedHost.dataset.chrome = el.dataset.chrome ?? "";
+        evictedHost.dataset.chromeLabel = el.dataset.chromeLabel ?? "";
+        evictedHost.dataset.dropdown = el.dataset.dropdown ?? "";
+        evictedHost.dataset.dropdownLabel = el.dataset.dropdownLabel ?? "";
         evictedHost._syncParams?.();
+        evictedHost._syncChrome?.();
+        evictedHost._syncDropdown?.();
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.

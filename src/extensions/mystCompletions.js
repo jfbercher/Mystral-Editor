@@ -99,6 +99,7 @@ const DIRECTIVES = [
   { name: "code", group: "Code", arg: "python" },
   { name: "code-block", group: "Code", arg: "python" },
   { name: "code-cell", group: "Code", arg: "python" },
+  { name: "quiz", group: "Code", arg: "quiz quiz1", opts: ["button", "dropdown", "label", "caption"], noBody: true },
   //{ name: "literalinclude", group: "Code", arg: "path/to/file.py" },
 
   // Layout
@@ -154,6 +155,7 @@ const DIRECTIVE_OPTIONS = {
   // `align`, `caption` and `label` only matter to an export: they turn the
   // figure a cell produced into a figure of the document.
   "code-cell": ["tags", "linenos", "packages", "params", "figwidth", "align", "caption", "label"],
+  "quiz": ["button", "dropdown", "label", "caption"],
   literalinclude: ["lines", "language", "linenos", "start-at", "end-at"],
   admonition: ADMONITION_OPTIONS,
   dropdown: ["open", "icon"],

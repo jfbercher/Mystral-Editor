@@ -119,6 +119,7 @@ This is an important addition in Mystral Editor: the existing placeholder `code-
 | --- | --- | --- |
 | `code-cell` | Library name, fully rewritten | A Python cell run by Pyodide is introduced, with its own editor and toolbar. See [executable-content](executable-content.md) |
 | `code`, `code-block` | Library | Unchanged, static code blocks |
+| `quiz` | This work | A labquiz quiz, shown by a button. See *Quizzes*, below |
 :::
 
 ### Document structure
@@ -272,6 +273,32 @@ The second is the width: `:figwidth:` is read by mystmd into the image, not into
 
 LaTeX's own limits apply in either case and are worth knowing: a wrapped figure needs text after it to wrap around, two of them close together cannot both wrap — one is deferred, and `wrapfig` says so with `Collision between wrapping environments` — and a wrap does not split across a page break. None of this is visible in the preview, which has neither pages nor LaTeX's placement rules, so a floated figure is the one case where the printed page deserves a look.
 
+### Quizzes
+
+A quiz from the **labquiz** package, presented as a button:
+
+```
+:::{quiz} quiz quiz7
+:button: Questionnaire
+:dropdown: Answers
+:::
+```
+
+The first argument names the `QuizLab` instance, the second the key of the quiz in its bank. The first argument is the name of the instance the document itself built in an earlier cell, under whatever name its author chose; a single argument leaves it to the usual name `quiz`. `:button:` is what the button says, and `:dropdown:` puts the output in a disclosure, open, so a quiz that has been done can be folded away without clearing it -- with the summary it is given, or the button's label.
+
+The directive actually produces is an ordinary code-cell running `quiz.show('quiz7')`, dressed differently. A quiz is a live widget, so it needs a host that survives the re-render of its chunk, an output area the labquiz shim can draw into, and a place in the kernel -- everything a cell already is, and none of which a role could provide. Only the dressing changes: no toolbar, the code folded away, one button. The button does not run anything itself, it presses Run, so there is one execution path and not two that drift apart. ⌥/Alt-clicking the button opens the cell for checking or editing.  In inline mode, the pencil reveal the directive source which then can be edited. 
+
+
+A failure is reduced to its last line -- eg `KeyError: "Quiz 'quiz5' not found in bank."`, `NameError: name 'quz' is not defined`.
+
+Hiding the toolbar hid the controls that open the cell, so the button carries them: ⌥/Alt-clicking it opens the cell instead of running it. That is also the way to the directive's own markdown source, through the toolbar's `✎`, which matters because a block holding a code-cell is rendered even with the caret inside it: in inline mode there is no other way to edit a `{quiz}`.
+
+On an HTML site the directive becomes a real executable code cell, through the `quiz.mjs` plugin. A site set up by the editor already declares `jupyter.lite`, so a reader gets a kernel in the browser and the quiz is playable there; labquiz runs under JupyterLite. A static snapshot of the widgets was the alternative and was rejected: it would show a quiz that answers nothing.
+
+In a LaTeX or PDF export, nothing. The same node makes the LaTeX writer print the cell's source, and no `visibility` in mystmd is conditional on the output format, so the `.tex` post-processing removes any environment whose whole content is a single `obj.show('key')` call -- the environment is read rather than chosen, since the template decides whether it is `verbatim` or `lstlisting`.
+
+**A property worth knowing**: that filter identifies the block by its content, which is the only handle left once the writer has dropped everything else. So `obj.show('key')` appears nowhere in a `.tex` or a PDF -- including in a code block an author wrote on purpose, to show how a quiz is displayed.
+
 (Roles)=
 ## Roles
 
@@ -289,11 +316,17 @@ LaTeX's own limits apply in either case and are worth knowing: a wrapped figure 
 | `sub`, `subscript`, `sup`, `superscript` | Library | |
 | `raw` | Library | |
 | `cite` | This work | A bibliography citation; `[@key]` is the usual spelling |
-| `eval` | This work | Evaluates a Python expression and inserts its value in the text flow |
+| `eval` | This work | Evaluates a Python expression and inserts its result in the text flow |
 | `abbr`, `abbreviation` | markdown-it-docutils | An abbreviation and its definition: `` {abbr}`FFT (Fast Fourier Transform)` ``. Terms declared in the frontmatter are recognised in prose without it — see *Abbreviations*, above |
 | `index` | This work | Marks a term for the index, showing it and nothing more. `single`, `pair`, `triple`, `see` and `seealso` prefixes, and the `text <term>` form — see *Index*, above |
 
 :::
+
+`eval` inserts a result, not a string. An object that knows how to draw itself -- through `_repr_html_`, `_repr_svg_` or `_repr_png_`, the protocol Jupyter made standard -- is drawn, so `` {eval}`df.head()` `` renders the table and not its `repr`. A plotting call is the case that protocol does not cover, since `plt.plot(x)` returns a list of `Line2D` and draws into the current figure: the role therefore shows what the expression *drew*, as a notebook does, and the figure wins over the value. Figures that were already open are left alone, so one drawn earlier in the document does not turn up in the middle of a sentence.
+
+That covers static output only. A live widget needs a host that survives the re-render of its chunk, which is what a code-cell provides and a role does not -- see *Quizzes*, above.
+
+On an HTML site, `{eval}` is not evaluated at all: its value is the editor's, computed in the editor, and neither JupyterLite nor thebe updates it. A document exported after a run carries the values it had then, and one exported without a run carries none. Worth knowing before putting a figure in a sentence rather than in a cell.
 
 The three reference roles — `eq`, `ref`, `numref` — are the ones Library already supported, and they are used here **unchanged**. `proof:ref` and `prf:ref` are added as aliases of `numref`, which is what they are in mystmd: there, only the kind `ref` substitutes the target's title, every other kind goes through the numbered template. Writing `` {proof:ref}`my-theorem` `` therefore renders *Theorem 1* here and exports as it stands. 
 👉🏼 What *really changed* beneath them is what they point to something: this work resolves labels through a document-wide reference map. 
