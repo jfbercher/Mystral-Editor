@@ -310,83 +310,115 @@ def _mystral_dep_name(requirement):
         return None
 
 
-async def _mystral_complete_deps(names):
-    """Install what micropip resolved but silently did not fetch.
+def _mystral_dep_req(line):
+    """A Requires-Dist line as (requirement, bare name), or (None, None).
 
-    micropip does not raise here: asked for a PyPI package whose dependency
-    belongs to the Pyodide distribution, it installs the first, fails to find
-    the second under packageBaseUrl, and says nothing -- the import fails much
-    later, naming a package the reader never asked for.
+    The requirement keeps its version constraint, because that is what gets
+    installed; the bare name is what the lock is asked about. Extras are
+    dropped -- we want what the package needs to run, not what its authors
+    need to test it.
+    """
+    text = str(line).strip()
+    try:
+        from packaging.requirements import Requirement as _Req
+        parsed = _Req(text)
+        if parsed.marker is not None and not parsed.marker.evaluate():
+            return None, None
+        return parsed.name + str(parsed.specifier or ''), parsed.name
+    except ImportError:
+        if ';' in text:
+            return None, None
+        name = _mystral_dep_name(text)
+        return (text.split('[')[0].strip(), name) if name else (None, None)
+    except Exception:
+        return None, None
 
-    So the metadata is read once it is on disk, which is the one moment the
-    real dependency list exists: importlib.metadata gives the Requires-Dist of
-    the version actually installed, with no network and no second resolver to
-    disagree with micropip. The walk repeats on what it adds, since a
-    dependency has dependencies of its own.
+
+async def _mystral_install_walk(requirements):
+    """Install, never letting micropip ask for a wheel of the distribution.
+
+    That is the whole point, and it is about *when*, not what. micropip takes
+    a distribution package from packageBaseUrl -- the offline folder -- and a
+    wheel that is not yet there answers 404. On macOS and Linux the webview
+    keeps that 404 for the rest of the session, so writing the file a moment
+    later changes nothing: the next request is served the cached refusal, and
+    only a restart clears it. Windows escapes it, serving the same protocol
+    over http, where a 404 without cache headers is not stored.
+
+    So micropip is never allowed to ask. Each round installs the pending
+    requirements with deps=False, reads what they declare from the metadata
+    just written -- the real list, for the version actually installed, with no
+    network and no second resolver -- hands the distribution ones to us, and
+    keeps the PyPI ones for the next round. A chain PyPI to PyPI to
+    distribution is covered at any depth, which neither a single pass nor a
+    query to PyPI would have managed.
     """
     import importlib as _il_mp, importlib.metadata as _md_mp
 
-    # Freshly written by micropip a moment ago: whatever cached the contents
-    # of site-packages has to be told.
-    #
-    # How load-bearing these two lines are is not established. The walk came
-    # back empty without them and works with them, and nothing else changed
-    # between the two builds -- but the same reading, done by hand in a later
-    # cell, had always succeeded, and CPython on Linux sees a dist-info
-    # written an instant earlier with no invalidation at all. So either
-    # Emscripten's filesystem has a coarser notion of "changed" than the cache
-    # expects, or the failing build simply did not carry this code. Removing
-    # them and watching the walk is the experiment that would settle it.
-    try:
-        _il_mp.invalidate_caches()
-        _md_mp.MetadataPathFinder.invalidate_caches()
-    except Exception:
-        pass
-
+    pending = [requirements] if isinstance(requirements, str) else list(requirements or [])
     seen = set()
-    pending = [n for n in names if n]
-    for _ in range(6):   # a dependency graph that deep is a different problem
-        wanted = []
-        for name in pending:
-            key = name.lower().replace('_', '-')
-            if key in seen:
+
+    for _ in range(8):   # a chain that long is a different problem
+        if not pending:
+            return
+        await _mystral_micropip_install(pending, deps=False)
+
+        # Freshly written: whatever cached the contents of site-packages has
+        # to be told before the metadata is read.
+        try:
+            _il_mp.invalidate_caches()
+            _md_mp.MetadataPathFinder.invalidate_caches()
+        except Exception:
+            pass
+
+        wanted = {}
+        for requirement in pending:
+            name = _mystral_dep_name(requirement)
+            if not name:
                 continue
-            seen.add(key)
+            seen.add(name.lower().replace('_', '-'))
             try:
-                requires = _md_mp.requires(name) or []
+                declared = _md_mp.requires(name) or []
             except Exception as _err:
-                # Said, not swallowed: an empty walk that explains itself is
-                # the difference between a minute and an evening.
                 _js_mp.console.warn('[mystral] no metadata for ' + str(name) + ' -- ' + str(_err))
                 continue
-            for line in requires:
-                dep = _mystral_dep_name(line)
-                if dep and dep.lower().replace('_', '-') not in seen:
-                    wanted.append(dep)
+            for line in declared:
+                requirement_text, dep_name = _mystral_dep_req(line)
+                if not dep_name:
+                    continue
+                key = dep_name.lower().replace('_', '-')
+                if key not in seen and key not in wanted:
+                    wanted[key] = (requirement_text, dep_name)
+
         if not wanted:
-            # Deliberately at log level, not debug: this is the ordinary
-            # outcome when every dependency comes from PyPI, but it is also
-            # the exact signature of the walk running and finding nothing --
-            # the failure of 29/10. Hidden behind a verbose filter, its
-            # absence would read as "the function never ran". Lower it once
-            # the three platforms are settled.
-            _js_mp.console.log('[mystral] nothing to complete for: ' + ', '.join(pending))
+            _js_mp.console.log('[mystral] nothing left to resolve')
             return
-        _js_mp.console.log('[mystral] completing dependencies: ' + ', '.join(wanted))
+
+        names = [v[1] for v in wanted.values()]
+        _js_mp.console.log('[mystral] resolving: ' + ', '.join(names))
+
+        # The distribution ones are ours to place and load; the answer says
+        # which they were, closure included.
+        handled = []
         try:
-            answer = await _js_mp.globalThis._mystralEnsureAndLoad(_json_mp.dumps(wanted))
-            _js_mp.console.log('[mystral] ' + str(answer))
+            answer = _json_mp.loads(await _js_mp.globalThis._mystralEnsureAndLoad(_json_mp.dumps(names)))
+            handled = [str(x).lower().replace('_', '-') for x in (answer.get('loaded') or [])]
+            if answer.get('unavailable'):
+                _js_mp.console.warn('[mystral] could not be fetched: ' + ', '.join(answer['unavailable']))
         except Exception as _err:
-            _js_mp.console.warn('[mystral] could not load them -- ' + str(_err))
-            return
-        pending = wanted
+            _js_mp.console.warn('[mystral] the local install could not be completed -- ' + str(_err))
+
+        seen.update(handled)
+        pending = [req for key, (req, _n) in wanted.items() if key not in handled and req]
 
 
 async def _mystral_micropip_patched(requirements, *args, **kwargs):
-    report = None
+    # Asked for a distribution package by name, the wheel has to be there
+    # before micropip looks for it -- same reason as the walk below.
     try:
-        raw = await _js_mp.globalThis._mystralEnsureWheels(_json_mp.dumps(_mystral_req_names(requirements)))
-        report = _json_mp.loads(raw)
+        report = _json_mp.loads(
+            await _js_mp.globalThis._mystralEnsureWheels(_json_mp.dumps(_mystral_req_names(requirements)))
+        )
     except Exception:
         report = None
     if report and report.get('unavailable'):
@@ -395,15 +427,15 @@ async def _mystral_micropip_patched(requirements, *args, **kwargs):
             names + " is part of the Pyodide distribution, so micropip takes it from this "
             "installation's offline folder rather than from PyPI -- and it is not there. "
             "Connect to the network and run this again to add it, or add it to "
-            "pyodide.offlinePackages in config.json and press 'Add the missing packages' in Settings."
+            "pyodide.offlinePackages in config.json and press the button in Settings."
         )
-    result = await _mystral_micropip_install(requirements, *args, **kwargs)
-    # Afterwards, because only then is the metadata on disk.
-    try:
-        await _mystral_complete_deps(_mystral_req_names(requirements))
-    except Exception as _err:
-        print('[mystral] could not complete the dependencies:', _err)
-    return result
+
+    # deps are walked by hand, so the caller's own arguments are honoured on
+    # the first round only through this path.
+    if kwargs.get('deps') is False or args:
+        return await _mystral_micropip_install(requirements, *args, **kwargs)
+    return await _mystral_install_walk(requirements)
+
 
 _micropip_mod.install = _mystral_micropip_patched
 `);
