@@ -1,35 +1,26 @@
 import { Transport } from "@open-rpc/client-js/src/transports/Transport";
 import { getNotifications } from "@open-rpc/client-js/src/Request";
 
-export default class PostMessageWorkerTransport extends Transport {
+export default class PostMessageWorkerTransport {
   constructor(worker) {
-    super();
     this.worker = worker;
-    this.postMessageID = `post-message-transport-${Math.random()}`;
-  }
-
-  messageHandler = (ev) => {
-    this.transportRequestManager.resolveResponse(JSON.stringify(ev.data));
-  };
-
-  connect() {
-    return new Promise((resolve) => {
-      this.worker.addEventListener("message", this.messageHandler);
-      resolve();
+    this.messageHandlers = [];
+    this.closeHandlers = [];
+    this.errorHandlers = [];
+    worker.addEventListener("message", (ev) => {
+      const raw = typeof ev.data === "string" ? ev.data : JSON.stringify(ev.data);
+      this.messageHandlers.forEach((h) => h(raw));
+    });
+    worker.addEventListener("error", (ev) => {
+      this.errorHandlers.forEach((h) => h(new Error(ev.message || "Worker error")));
     });
   }
-
-  async sendData(data) {
-    const prom = this.transportRequestManager.addRequest(data, null);
-    const notifications = getNotifications(data);
-    if (this.worker) {
-      this.worker.postMessage(data.request);
-      this.transportRequestManager.settlePendingRequest(notifications);
-    }
-    return prom;
-  }
-
+  send(message) { this.worker.postMessage(JSON.parse(message)); }
+  onMessage(cb) { this.messageHandlers.push(cb); }
+  onClose(cb) { this.closeHandlers.push(cb); }
+  onError(cb) { this.errorHandlers.push(cb); }
   close() {
     this.worker.terminate();
+    this.closeHandlers.forEach((h) => h());
   }
 }
