@@ -28,3 +28,4 @@ _build
 # Pyodide cell outputs saved beside a document
 *.myst.cache.json
 BACKLOG.md
+UPSTREAM-SYNC.md
