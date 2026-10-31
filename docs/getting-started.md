@@ -4,8 +4,7 @@ title: Getting Started
 
 Pre-built binaries for macOS (Apple Silicon and Intel), Linux (x64 and ARM64), and Windows are available on the [Releases page](https://github.com/jfbercher/Mystral-Editor/releases). Download the package for your platform.
 
-Each release carries the following packages, where `x.x.x` is the version
-number of the release:
+Each release carries the following packages, where `x.x.x` is the version number of the release:
 
 :::{table} Plateforms and packages
 :label: Table_of_Distributions
@@ -21,9 +20,7 @@ number of the release:
 
 For the website, the files must be compiled manually using the `npm run build` command, then the files generated in `/dist` directory copied to the target website.
 
-The remaining files of a release are not meant to be downloaded by hand: the
-`.app.tar.gz` archives and the `.sig` signatures belong to the automatic
-updater described below, and `latest.json` is the manifest it reads.
+The remaining files of a release are not meant to be downloaded by hand: the `.app.tar.gz` archives and the `.sig` signatures belong to the automatic updater described below, and `latest.json` is the manifest it reads.
 
 ### macOS
 

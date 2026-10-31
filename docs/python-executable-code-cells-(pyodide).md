@@ -73,6 +73,20 @@ Demo of `{eval}`directive (1 of 2)
 
 Demo of `{eval}`directive (2 of 2)
 :::
+
+What `{eval}` inserts is a result and not a string: an object that knows how to draw itself -- a DataFrame, a figure -- is drawn, through the `_repr_html_` / `_repr_svg_` / `_repr_png_` protocol Jupyter made standard. A plotting call is the one case that protocol does not cover, since `plt.plot(x)` returns a list of `Line2D` and draws into the current figure; the role therefore shows what the expression drew, as a notebook does. Two limits are worth knowing: a *live* widget cannot be inserted this way, since it would need a host surviving the re-render of its chunk, and on an HTML site `{eval}` is never re-evaluated -- its value is the one the editor computed, and a document exported without a run carries none.
+
+🧪 **Quizzes** -- A `{quiz}` directive integrates the **[labquiz](https://github.com/jfbercher/labquiz)** package: `:::{quiz} qz quiz7` shows a button that, pressed, displays the quiz in the preview and grades it there.
+
+```
+:::{quiz} qz quiz7
+:button: Questionnaire
+:dropdown: Answers
+:::
+```
+
+It is actually a *code-cell* running `qz.show('quiz7')`, dressed as a button. A quiz is a live widget: it needs a host that survives the re-render of its chunk, an output area the labquiz shim can draw into and a place in the kernel, all of which a cell already is. Unfolding it gives back the toolbar and the code; a failure is reduced to its last line, since a reader of a button cannot see the lines a traceback names. On an HTML site the directive becomes a real executable cell, and as the editor declares `jupyter.lite` the quiz is playable there. In a PDF, nothing: the export removes it. See [directives-and-roles](directives-and-roles.md) for the full description.
+
 ℹ️ **Workspaces** Which Python  runs in each document is chosen by specifying a `python:` key in its frontmatter: 
 - `shared` (the default) for the namespace common to every document that asks for nothing else,
 - `isolated` for one of its own, 
@@ -83,5 +97,7 @@ What is separated is the variables; imported modules, matplotlib's state and the
 ℹ️ **Sidecar** Alongside a document the editor writes a sidecar file holding its cell outputs and a snapshot of its namespace, so reopening it shows the results *without re-running everything* and the variables come back.
 
 Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. 
+
+ℹ️ **On the published site, the cells stay alive.** The figures the editor computed are carried into the MyST site as they are, so a reader sees them without waiting for anything; and if the document declares a `kernelspec`, the same cells can be re-run in the reader's own browser, the result replacing the figure in place. Nothing is installed for that — the kernel is JupyterLite, fetched on demand, and only when someone actually presses Run. See [export](export.md) for the keys that enable it.
 
 There is more information on [executable-content](executable-content.md) which covers all of it.

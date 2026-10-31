@@ -23,7 +23,21 @@ date: 2026-10-14
 
 **[Mystral Editor](https://github.com/jfbercher/Mystral-Editor)** is a lightweight, offline-capable editor with large [MyST Markdown](https://myst-parser.readthedocs.io/)[^MyST] support and live-preview, oriented toward academic documents, with equations, bibliography management, automatic numbering of floating elements and structured navigation.
 
-[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, themes).
+[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder). 
+
+
+
+
+### What distinguishes Mystral
+
+* ****A complete, offline scientific MyST editor, with no server or build chain.**** What the preview displays is what `myst build` will produce: numbering, cross-references, bibliography, and mathematical macros, see [localfile management](local-file-management.md) and [scientific authoring](scientific-authoring.md). 
+* ****Executable Python code-cells directly in the document****, powered by Pyodide: no kernel, no installation, and no network connection once loaded, — and *results persist across sessions*, see [executable content](python-executable-code-cells-(pyodide).md).
+* **A presentation mode**, dedicated to slide preparation *{u}`and`* a slideshow mode (with live execution of code-cells), see [slides documentation](slides.md).
+* Reads markdown, yaml files; import/export jupyter notebook *ipynb* files. Exports your documents as LaTeX, PDF, DOC, HTML, and build full websites through mystmd, see [export documentation](export.md).
+* ****Six viewing modes****, including an *inline* mode that renders each block in place and opens only the block containing the cursor in source mode; a embedded view of the *generated MyST website*, and preview of *slides*. 
+* ****One codebase, two forms****: a [desktop application](desktop-application-(tauri).md) for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application that can be deployed anywhere without installation.
+* **Comprehensive documentation and extensive customization options**: [customisation reference](customisation-reference.md), [css variables](mystral-editor-css-variables.md),  configurable [keyboard shortcuts](keyboard_shortcuts_en.md), 
+
 
 
 Mystral Editor ships in two forms:
@@ -40,6 +54,8 @@ The original Myst-Editor is distributed under an Apache 2.0 license. The two fol
 
 ### Features Inherited from Myst-Editor
 
+[Mystral Editor](https://github.com/jfbercher/Mystral-Editor) begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor built on the [MyST Markdown](https://myst-parser.readthedocs.io/) syntax. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications, Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, themes).
+
 Mystral Editor retains and extends all upstream editor features:
 
 - **Live preview and dual-pane sync**: changes are immediately reflected in the preview, with cursor-based highlight and scroll synchronization.
@@ -49,8 +65,8 @@ Mystral Editor retains and extends all upstream editor features:
 - **Diff view**: display changes relative to the document's initial state, with a discard-all option.
 - **Document templates**: loadable from an external JSON file to speed up document creation.
 - **HTML / PDF export**: copy rendered HTML or print to PDF from toolbar buttons. Kept in the web build; the desktop application hides them in favour of its own export menu, described below.
-- **Spell checker**: configurable Hunspell integration (language, dictionary path).
-- **Customization**: CodeMirror themes, Vim mode, scroll-past-last-line, CSS overrides via Shadow DOM.
+- **Spell checker**: configurable Hunspell integration (language, dictionary path). new dictionaries can be installed and language specified in the [frontmatter](customisation-reference.md#spellcheck). 
+- **Customization**: CodeMirror themes, Vim mode, scroll-past-last-line, CSS overrides via Shadow DOM, see [customisation](customisation-reference.md) and [custom css](customisation-reference.md#custom_css). 
 - **Custom transforms**: regular expressions turning syntax into arbitrary HTML (issue links, etc.).
 - **MyST roles and directives**: some roles (`{ref}`, `{eq}`, etc.) and directives were already present in MyST editor and are extended/completed in Mystral.
 
@@ -373,6 +389,20 @@ Demo of `{eval}`directive (1 of 2)
 
 Demo of `{eval}`directive (2 of 2)
 :::
+
+What `{eval}` inserts is a result and not a string: an object that knows how to draw itself -- a DataFrame, a figure -- is drawn, through the `_repr_html_` / `_repr_svg_` / `_repr_png_` protocol Jupyter made standard. A plotting call is the one case that protocol does not cover, since `plt.plot(x)` returns a list of `Line2D` and draws into the current figure; the role therefore shows what the expression drew, as a notebook does. Two limits are worth knowing: a *live* widget cannot be inserted this way, since it would need a host surviving the re-render of its chunk, and on an HTML site `{eval}` is never re-evaluated -- its value is the one the editor computed, and a document exported without a run carries none.
+
+🧪 **Quizzes** -- A `{quiz}` directive integrates the **[labquiz](https://github.com/jfbercher/labquiz)** package: `:::{quiz} qz quiz7` shows a button that, pressed, displays the quiz in the preview and grades it there.
+
+```
+:::{quiz} qz quiz7
+:button: Questionnaire
+:dropdown: Answers
+:::
+```
+
+It is actually a *code-cell* running `qz.show('quiz7')`, dressed as a button. A quiz is a live widget: it needs a host that survives the re-render of its chunk, an output area the labquiz shim can draw into and a place in the kernel, all of which a cell already is. Unfolding it gives back the toolbar and the code; a failure is reduced to its last line, since a reader of a button cannot see the lines a traceback names. On an HTML site the directive becomes a real executable cell, and as the editor declares `jupyter.lite` the quiz is playable there. In a PDF, nothing: the export removes it. See [directives-and-roles](directives-and-roles.md) for the full description.
+
 ℹ️ **Workspaces** Which Python  runs in each document is chosen by specifying a `python:` key in its frontmatter: 
 - `shared` (the default) for the namespace common to every document that asks for nothing else,
 - `isolated` for one of its own, 
@@ -384,13 +414,7 @@ What is separated is the variables; imported modules, matplotlib's state and the
 
 Each cell editor uses the same Python syntax coloring as the main editor (`--tok-*` CSS variables), and the cell UI background adapts automatically to the active light or dark theme via `--color-background-*` variables. 
 
-ℹ️ **On the published site, the cells stay alive.** The figures the editor
-computed are carried into the MyST site as they are, so a reader sees them
-without waiting for anything; and if the document declares a `kernelspec`, the
-same cells can be re-run in the reader's own browser, the result replacing the
-figure in place. Nothing is installed for that — the kernel is JupyterLite,
-fetched on demand, and only when someone actually presses Run. See
-[export](export.md) for the keys that enable it.
+ℹ️ **On the published site, the cells stay alive.** The figures the editor computed are carried into the MyST site as they are, so a reader sees them without waiting for anything; and if the document declares a `kernelspec`, the same cells can be re-run in the reader's own browser, the result replacing the figure in place. Nothing is installed for that — the kernel is JupyterLite, fetched on demand, and only when someone actually presses Run. See [export](export.md) for the keys that enable it.
 
 There is more information on [executable-content](executable-content.md) which covers all of it.
 
@@ -527,8 +551,7 @@ For *Tauri desktop apps*:
 
 Pre-built binaries for macOS (Apple Silicon and Intel), Linux (x64 and ARM64), and Windows are available on the [Releases page](https://github.com/jfbercher/Mystral-Editor/releases). Download the package for your platform.
 
-Each release carries the following packages, where `x.x.x` is the version
-number of the release:
+Each release carries the following packages, where `x.x.x` is the version number of the release:
 
 :::{table} Plateforms and packages
 :label: Table_of_Distributions
@@ -544,9 +567,7 @@ number of the release:
 
 For the website, the files must be compiled manually using the `npm run build` command, then the files generated in `/dist` directory copied to the target website.
 
-The remaining files of a release are not meant to be downloaded by hand: the
-`.app.tar.gz` archives and the `.sig` signatures belong to the automatic
-updater described below, and `latest.json` is the manifest it reads.
+The remaining files of a release are not meant to be downloaded by hand: the `.app.tar.gz` archives and the `.sig` signatures belong to the automatic updater described below, and `latest.json` is the manifest it reads.
 
 ### macOS
 
