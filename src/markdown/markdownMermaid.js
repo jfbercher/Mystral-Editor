@@ -63,7 +63,9 @@ const markdownItMermaid = (md, { lineMap, parent, theme }) => {
             el.className = "mermaid";
           })
           .catch((err) => {
-            el.innerHTML = `<b>Mermaid error:</b>\n${err}`;
+            const label = document.createElement("b");
+            label.textContent = "Mermaid error:";
+            el.replaceChildren(label, document.createTextNode(`\n${err}`));
             el.classList.remove("mermaid");
           })
           .finally(() => {
@@ -72,7 +74,7 @@ const markdownItMermaid = (md, { lineMap, parent, theme }) => {
       });
     }
 
-    return `<pre ${self.renderAttrs(token)}>${cached?.svg ?? code}</pre>`;
+    return `<pre ${self.renderAttrs(token)}>${cached?.svg ?? md.utils.escapeHtml(code)}</pre>`;
   };
 };
 
