@@ -89,6 +89,13 @@ export const decodeOutput = (data) => {
  * Two names rather than one: cmd reads a batch file as it goes, so the
  * long-running `myst start` keeps a script of its own instead of having it
  * overwritten under its feet by the next export.
+ *
+ * And for the same reason, one file per invocation rather than one for all of
+ * them -- see `scriptName`. The single name held only as long as no two
+ * commands ran at once; four git commands sent together made cmd resume its
+ * reading in the middle of another command, and the symptoms were a shell
+ * complaining about `{u}`, one command reporting another one's error, and a
+ * status output arriving in pieces.
  */
 export async function windowsScript(line, name) {
   const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
@@ -104,6 +111,28 @@ export async function windowsScript(line, name) {
   return path;
 }
 
+let scriptCounter = 0;
+
+/**
+ * A script name of this invocation's own.
+ *
+ * cmd reads a batch file while it runs it, so two commands sharing a name is
+ * not a tidiness question: the second one's write lands in the middle of the
+ * first one's read.
+ */
+const scriptName = (prefix) => `${prefix}-${Date.now().toString(36)}-${scriptCounter++}.bat`;
+
+/** Remove a script once its command has finished with it. */
+async function dropScript(path) {
+  if (!path) return;
+  try {
+    const { remove } = await import("@tauri-apps/plugin-fs");
+    await remove(path);
+  } catch {
+    /* a leftover in the config folder is harmless; a failed command is not */
+  }
+}
+
 export async function runShell(line, cwd, env = {}) {
   const { Command } = await import("@tauri-apps/plugin-shell");
   // `/d` keeps an AutoRun entry from changing the directory under us, and `/s`
@@ -116,7 +145,7 @@ export async function runShell(line, cwd, env = {}) {
   let winArg = null;
   if (isWindows) {
     try {
-      winArg = await windowsScript(line, "mystral-run.bat");
+      winArg = await windowsScript(line, scriptName("mystral-run"));
     } catch (err) {
       console.warn("[export] the command script could not be written:", err);
     }
@@ -139,6 +168,8 @@ export async function runShell(line, cwd, env = {}) {
     // catches. Turning it into an ordinary failure is what makes it visible.
     console.error("[export] could not start the shell:", scope, err);
     return { code: -1, stdout: "", stderr: String(err?.message ?? err), scope };
+  } finally {
+    await dropScript(winArg);
   }
 }
 
@@ -165,7 +196,7 @@ export async function runShellLimited(line, { cwd, env = {}, timeoutMs = 30000 }
   let winArg = null;
   if (isWindows) {
     try {
-      winArg = await windowsScript(line, "mystral-net.bat");
+      winArg = await windowsScript(line, scriptName("mystral-net"));
     } catch (err) {
       console.warn("[shell] the command script could not be written:", err);
     }
@@ -207,6 +238,7 @@ export async function runShellLimited(line, { cwd, env = {}, timeoutMs = 30000 }
       if (done) return;
       done = true;
       clearTimeout(timer);
+      dropScript(winArg);
       resolve({ code, stdout: joined("stdout"), stderr: joined("stderr"), timedOut });
     };
 

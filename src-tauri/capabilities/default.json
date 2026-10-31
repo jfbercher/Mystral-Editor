@@ -118,6 +118,9 @@
         },
         {
           "path": "$HOME/**/.git/**"
+        },
+        {
+          "path": "$APPCONFIG/**"
         }
       ]
     },

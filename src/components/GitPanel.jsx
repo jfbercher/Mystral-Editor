@@ -324,7 +324,12 @@ const GitPanel = () => {
               fetch. Pull from your terminal.
             </p>
           )}
-          {state.tracking === null && state.branch && <p>This branch tracks nothing, so there is nowhere to push.</p>}
+          {/* Not "no upstream": `upstream` is also what a great many people
+              call their second remote, and git's own message then reads as a
+              claim that the remote is missing. */}
+          {state.tracking === null && state.branch && (
+            <p>This branch does not follow a branch on any remote, so there is nowhere to push it.</p>
+          )}
           {state.error && <p>{state.error}</p>}
         </>
       )}
