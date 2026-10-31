@@ -1,4 +1,5 @@
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { h } from "preact";
 import { EditorView } from "codemirror";
 import { useContext, useEffect, useRef } from "preact/hooks";
 import styled from "styled-components";
@@ -101,7 +102,30 @@ const CommitForm = styled(Modal)`
   }
 `;
 
-const CommitModal = ({ initialSummary = "", onSubmit, onClose, documents = [], parent, latestCommit, statusSocket }) => {
+/**
+ * @param {object} props
+ * @param {boolean} [props.open] - whether the dialog shows. Defaults to
+ *   `Boolean(initialSummary)`, which is how the git wrapper has always driven
+ *   it; a caller with nothing to put in the summary says so explicitly.
+ * @param {boolean} [props.readOnly] - show the diffs and nothing else: no
+ *   staging, no discarding, no message. What the editor's first git screen is.
+ * @param {(document: object) => void} [props.onDiscard] - throw away one
+ *   file's changes. Supplied by the caller rather than done here: in the
+ *   collaborative wrapper that means rewriting a shared document and telling a
+ *   server, which is knowledge this dialog has no business holding.
+ */
+const CommitModal = ({
+  initialSummary = "",
+  open = undefined,
+  readOnly = false,
+  onSubmit,
+  onClose,
+  onDiscard,
+  documents = [],
+  parent,
+  latestCommit,
+}) => {
+  const isOpen = open ?? Boolean(initialSummary);
   const summary = useSignal(initialSummary);
   const description = useSignal("");
   const message = useComputed(() => `${summary.value}\n\n${description.value}`);
@@ -110,7 +134,7 @@ const CommitModal = ({ initialSummary = "", onSubmit, onClose, documents = [], p
   const modalRef = useRef();
 
   useEffect(() => {
-    if (initialSummary) {
+    if (isOpen) {
       summary.value = initialSummary;
       description.value = "";
       changedDocs.value = documents;
@@ -122,7 +146,7 @@ const CommitModal = ({ initialSummary = "", onSubmit, onClose, documents = [], p
       modalRef.current.onclose = () => {};
       modalRef.current.close();
     }
-  }, [initialSummary]);
+  }, [isOpen]);
 
   function handleStage(staged, file) {
     if (staged) {
@@ -136,25 +160,34 @@ const CommitModal = ({ initialSummary = "", onSubmit, onClose, documents = [], p
     <CommitForm ref={modalRef}>
       <div id="diffs">
         {/* Only mount the diff editors while the modal is open, so they are destroyed on close. */}
-        {initialSummary &&
+        {isOpen &&
           changedDocs.value.map((d) => (
             <Diff
               key={d.file}
               parent={parent}
               document={d}
+              readOnly={readOnly}
               onStage={(staged) => handleStage(staged, d.file)}
-              discardFile={() => {
-                handleStage(false, d.file);
-                d.client.ytext.delete(0, d.client.ytext.length);
-                d.client.ytext.insert(0, d.initialText);
-                statusSocket.current?.send?.(d.client.provider.roomname);
-                changedDocs.value = changedDocs.peek().filter((doc) => doc.file !== d.file);
-                if (changedDocs.peek().length === 0) modalRef.current?.close?.();
-              }}
+              discardFile={
+                onDiscard &&
+                (() => {
+                  handleStage(false, d.file);
+                  onDiscard(d);
+                  changedDocs.value = changedDocs.peek().filter((doc) => doc.file !== d.file);
+                  if (changedDocs.peek().length === 0) modalRef.current?.close?.();
+                })
+              }
             />
           ))}
       </div>
-      {latestCommit ? (
+      {readOnly ? (
+        <div className="buttons">
+          <div />
+          <button type="button" onClick={() => modalRef.current.close()}>
+            Close
+          </button>
+        </div>
+      ) : latestCommit ? (
         <form
           onSubmit={(ev) => {
             ev.preventDefault();
@@ -197,9 +230,22 @@ const CommitModal = ({ initialSummary = "", onSubmit, onClose, documents = [], p
   );
 };
 
-const MergeViewCodeEditor = styled(CodeEditor)``;
+/**
+ * Built on first use, not when this module loads.
+ *
+ * `styled(CodeEditor)` reads `CodeEditor` as soon as the module body runs, and
+ * this dialog is now reachable from the editor's own import graph -- where
+ * `CodeMirror.jsx` may not have finished initialising yet. That is a temporal
+ * dead zone, and it showed as `Cannot access 'CodeEditor' before
+ * initialization` at startup, with nothing on screen to say where it came
+ * from. Deferring the call moves the read to render time, by which point every
+ * module has run, and makes the dialog safe to import from anywhere rather
+ * than safe along one particular path.
+ */
+let mergeViewEditor = null;
+const MergeViewEditor = () => (mergeViewEditor ??= styled(CodeEditor)``);
 
-const Diff = ({ document, parent, onStage, discardFile }) => {
+const Diff = ({ document, parent, onStage, discardFile, readOnly = false }) => {
   const { options } = useContext(MystState);
   const diffRef = useRef();
   const staged = useSignal(true);
@@ -234,6 +280,7 @@ const Diff = ({ document, parent, onStage, discardFile }) => {
     <div className="diff-parent">
       <div className="file-controls">
         <div className="file-name">
+          {!readOnly && (
           <input
             type="checkbox"
             name={document.file}
@@ -241,6 +288,7 @@ const Diff = ({ document, parent, onStage, discardFile }) => {
             checked={staged.value}
             onChange={(ev) => (staged.value = ev.target.checked)}
           />
+          )}
           <label
             for={document.file}
             className={staged.value ? "" : "unstaged"}
@@ -249,9 +297,9 @@ const Diff = ({ document, parent, onStage, discardFile }) => {
             {document.file}
           </label>
         </div>
-        <button onClick={() => discardFile()}>Discard changes</button>
+        {discardFile && <button onClick={() => discardFile()}>Discard changes</button>}
       </div>
-      {staged.value && <MergeViewCodeEditor ref={diffRef} />}
+      {staged.value && h(MergeViewEditor(), { ref: diffRef })}
     </div>
   );
 };

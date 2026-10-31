@@ -141,6 +141,12 @@
           "path": "$HOME/**"
         },
         {
+          "path": "$HOME/**/.git"
+        },
+        {
+          "path": "$HOME/**/.git/**"
+        },
+        {
           "path": "$APPCONFIG/**"
         }
       ]
@@ -163,6 +169,12 @@
           "path": "$HOME/**"
         },
         {
+          "path": "$HOME/**/.git"
+        },
+        {
+          "path": "$HOME/**/.git/**"
+        },
+        {
           "path": "$APPCONFIG/**"
         }
       ]
@@ -172,6 +184,12 @@
       "allow": [
         {
           "path": "$HOME/**"
+        },
+        {
+          "path": "$HOME/**/.git"
+        },
+        {
+          "path": "$HOME/**/.git/**"
         },
         {
           "path": "$APPCONFIG/**"

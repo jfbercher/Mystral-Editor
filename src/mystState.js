@@ -28,6 +28,12 @@ export const predefinedButtons = {
   fullscreen: { id: "fullscreen", tooltip: "Fullscreen" },
   refresh: { id: "refresh", tooltip: "Refresh issue links" },
   settings: { id: "settings", tooltip: "Editor settings", dropdown: Settings },
+  // The git button is not here but in GitPanel.jsx, and deliberately: this
+  // module is imported by CodeMirror.jsx, while the git panel reaches
+  // CodeMirror through the diff dialog. Naming it here closed that circle, and
+  // the dialog's `styled(CodeEditor)` then ran before CodeMirror had finished
+  // initialising -- "Cannot access 'CodeEditor' before initialization", at
+  // startup, with nothing on screen to say where it came from.
   suggestMode: { id: "suggest-mode", tooltip: "Toggle suggest mode", active: (state) => state.suggestMode.value },
 };
 

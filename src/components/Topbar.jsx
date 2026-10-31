@@ -381,7 +381,19 @@ const SuggestIcon = () => (
   </svg>
 );
 
+/** A branch: a commit, and a second line leaving it. */
+const GitIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <circle cx="7" cy="5" r="2.2" />
+    <circle cx="7" cy="19" r="2.2" />
+    <circle cx="17" cy="9" r="2.2" />
+    <path d="M7 7.2v9.6" />
+    <path d="M17 11.2c0 3.2-2.6 4.6-5.4 5.1" />
+  </svg>
+);
+
 const icons = {
+  git: GitIcon,
   fullscreen: FullscreenIcon,
   "copy-html": CopyIcon,
   refresh: RefreshIcon,
@@ -536,7 +548,12 @@ export const EditorTopbar = ({ alert, buttons }) => {
                 className="icon"
                 active={button.active?.({ suggestMode })}
                 type="button"
-                title={button.tooltip}
+                // A function rather than a string when the text follows
+                // something -- git's branch and count, say. Called here, in the
+                // render, so reading a signal inside it subscribes; the memo
+                // above copies the button and would otherwise have frozen a
+                // getter's value at the moment it was spread.
+                title={typeof button.tooltip === "function" ? button.tooltip() : button.tooltip}
                 name={button.id}
                 onClick={button.action}
               >

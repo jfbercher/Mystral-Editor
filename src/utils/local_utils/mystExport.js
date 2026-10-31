@@ -26,6 +26,7 @@ import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmoniti
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments, restoreShortCaptions, stripQuizListings } from "./texTidy.js";
 import { readRule } from "../shortCaption.js";
+import { LOGIN_SHELL, WINDOWS_SHELL, windowsScript, runShell as runShellWithEnv } from "./shell.js";
 import { rewriteFloats } from "./texFloats.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
@@ -51,9 +52,11 @@ import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
  */
 const MYST_ENV = { MYSTMD_ALLOW_NODEENV: "no" };
 
-/** Scope names declared in src-tauri/capabilities/default.json. */
-const LOGIN_SHELL = "login-shell";
-const WINDOWS_SHELL = "windows-shell";
+/**
+ * Every myst command carries `MYST_ENV`; `shell.js` knows nothing of myst, so
+ * the environment is bound here, once, rather than at each of the call sites.
+ */
+const runShell = (line, cwd) => runShellWithEnv(line, cwd, MYST_ENV);
 
 /**
  * `sh` does not exist on Windows outside a Git installation, so the two
@@ -624,118 +627,6 @@ export async function hasMystYml(tab) {
  * and walks all of it -- failing on TCC-protected paths such as
  * ~/Library/Accounts. The explicit `cd` runs after the profile and wins.
  */
-/**
- * Decode what a command printed, without ever being able to fail.
- *
- * The shell plugin decodes the output as UTF-8 and rejects the whole call when
- * one byte does not fit: `invalid utf-8 sequence of 1 bytes from index 85`,
- * raised as if the shell could not be started, taking the exit code, the
- * output and any chance of a diagnosis with it. On Windows that is the normal
- * case and not the exception -- `cmd.exe` and the tools it runs write in the
- * machine's legacy code page, so a single accented character in a message from
- * latexmk or myst was enough to lose the export.
- *
- * Asking for the bytes and decoding them here cannot fail, which is the point:
- * a non-fatal decoder substitutes U+FFFD rather than throwing. It is the net
- * under the `chcp 65001` in `runShell`, not the cure -- the cure is making the
- * output UTF-8 in the first place, the active code page being quite possibly
- * one nothing here can decode. The second pass as windows-1252 covers the
- * common Western case and leaves the text approximate elsewhere; approximate
- * text beats a lost exit code.
- */
-const decodeOutput = (data) => {
-  if (typeof data === "string") return data;
-  if (!data || !data.length) return "";
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const utf8 = new TextDecoder("utf-8").decode(bytes);
-  if (!utf8.includes("\uFFFD")) return utf8;
-  try {
-    return new TextDecoder("windows-1252").decode(bytes);
-  } catch {
-    return utf8;
-  }
-};
-
-/**
- * Hand a command line to `cmd.exe` through a file, because it cannot be handed
- * over as an argument.
- *
- * Rust quotes each argument of a process it starts in the MSVC convention,
- * which escapes an inner double quote as a backslash-quote pair. `cmd.exe`
- * knows nothing of that escape: it leaves the backslash alone, and the program
- * cmd then starts reads the pair through its own CRT, which turns it back into
- * a literal quote. A line holding `myst build "doc.md" --tex` therefore
- * reaches myst as a file named `"doc.md"`, quotes included -- which exists
- * nowhere, so myst falls back to exporting the project and the document
- * exported is whichever article the project happens to list. myst's own log is
- * where this was finally read, in its `$file` field:
- * `...\\Documents\\"tst-exercisebis.md"`.
- *
- * No quoting of ours survives that path, so none is attempted on it. The line
- * goes into a `.bat` written under the application's config folder, where we
- * decide the quoting, and cmd is given the script's path -- a single argument
- * holding no quote, which Rust passes through untouched.
- *
- * `%` is doubled, since a batch file expands `%NAME%` and a file name may hold
- * one. `chcp 65001` sits in the script rather than being chained with `&`: see
- * `decodeOutput` for why the output has to be UTF-8.
- *
- * Two names rather than one: cmd reads a batch file as it goes, so the
- * long-running `myst start` keeps a script of its own instead of having it
- * overwritten under its feet by the next export.
- */
-async function windowsScript(line, name) {
-  const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
-  const { appConfigDir, join } = await import("@tauri-apps/api/path");
-  const dir = await appConfigDir();
-  try {
-    await mkdir(dir, { recursive: true });
-  } catch {
-    /* already there, which is the usual case */
-  }
-  const path = await join(dir, name);
-  await writeTextFile(path, `@echo off\r\nchcp 65001>nul\r\n${line.replace(/%/g, "%%")}\r\n`);
-  return path;
-}
-
-async function runShell(line, cwd) {
-  const { Command } = await import("@tauri-apps/plugin-shell");
-  // `/d` keeps an AutoRun entry from changing the directory under us, and `/s`
-  // makes cmd strip the outer quotes and take the rest of the line verbatim --
-  // without it, a line holding quoted paths is re-parsed and falls apart.
-  // On Windows the line goes through a script rather than an argument; see
-  // `windowsScript`. If it cannot be written, the inline form is still better
-  // than nothing: it works for every command that needs no quoting, and it
-  // still asks for UTF-8 output.
-  let winArg = null;
-  if (isWindows) {
-    try {
-      winArg = await windowsScript(line, "mystral-run.bat");
-    } catch (err) {
-      console.warn("[export] the command script could not be written:", err);
-    }
-  }
-  const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", winArg ?? `chcp 65001>nul & ${line}`]] : [LOGIN_SHELL, ["-lc", line]];
-  console.log("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
-
-  try {
-    // `encoding: "raw"` hands back the bytes; see `decodeOutput`.
-    const opts = { env: MYST_ENV, encoding: "raw" };
-    if (cwd) opts.cwd = cwd;
-    const out = await Command.create(scope, args, opts).execute();
-    const res = { ...out, stdout: decodeOutput(out.stdout), stderr: decodeOutput(out.stderr) };
-    if (res.code !== 0) console.log("[export] exit", res.code, "\n", res.stdout, "\n", res.stderr);
-    return { ...res, scope };
-  } catch (err) {
-    // A shell that cannot even be started -- a scope the capabilities do not
-    // declare, a program that is not there -- used to reject and vanish: an
-    // export is reached from an asynchronous toast callback, where nothing
-    // catches. Turning it into an ordinary failure is what makes it visible.
-    console.error("[export] could not start the shell:", scope, err);
-    return { code: -1, stdout: "", stderr: String(err?.message ?? err), scope };
-  }
-}
-
 async function runMyst(argline, cwd) {
   // The directory is changed inside the line on POSIX only, where a login
   // shell's profile can move it after the fact. `cmd /d` cannot be moved, so

@@ -14,6 +14,7 @@ import { syncCheckboxes } from "./markdown/markdownCheckboxes";
 import { TableOfContents } from "./components/TableOfContents";
 import { SitePane } from "./components/SitePane";
 import ErrorModal from "./components/ErrorModal";
+import { GitModal } from "./components/GitPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createLogger, Logger } from "./logger";
 import { setupPreviewPopups, invalidatePreviewMapCache } from "./utils/previewPopup";
@@ -239,6 +240,7 @@ function stopResize() {
     <StyleSheetManager target={options.parent}>
       <MystContainer id="myst-css-namespace">
         <ErrorModal />
+        <GitModal />
         <ErrorBoundary>
           <EditorParent mode={options.mode.value} $fullscreen={fullscreen.value}>
             {options.topbar.value && <EditorTopbar alert={alert} buttons={buttons} />}

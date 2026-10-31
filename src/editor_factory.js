@@ -1,6 +1,7 @@
 import * as localUtils from "./utils/local_utils.js";
 import { resetBibliography } from "./markdown/bibliography.js"
 import MystEditor, { predefinedButtons } from "./MystEditor.jsx";
+import { gitButton } from "./components/GitPanel.jsx";
 import { YCommentsParent } from "./components/Comment";
 import { effect } from "@preact/signals";
 import { h } from "preact";
@@ -60,6 +61,8 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
   // [1,2,3,4,6] silently selected something else whenever that list changed.
   const reducedButtons = [
     predefinedButtons.settings,
+    // Desktop only: it reads a repository through the git of the machine.
+    ...(isTauri ? [gitButton] : []),
     // "Copy document as HTML" and "Print document as pdf" only in the web
     // build. The desktop one has the export menu, which writes real files
     // through myst; on the web these two are the only way to get the document

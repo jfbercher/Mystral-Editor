@@ -551,7 +551,15 @@ const MystEditorGit = ({
             documents={commitDocuments.current?.filter?.((d) => d.textChanged) ?? []}
             parent={props.parent}
             latestCommit={commits.value?.[0]?.hash == commit.value?.hash}
-            statusSocket={statusSocket}
+            onDiscard={(d) => {
+              // What the dialog used to do itself, said here instead: rewrite
+              // the shared document back to its committed text, and tell the
+              // server the file is clean again. Knowledge of collaboration has
+              // no business living in a dialog that shows diffs.
+              d.client.ytext.delete(0, d.client.ytext.length);
+              d.client.ytext.insert(0, d.initialText);
+              statusSocket.current?.send?.(d.client.provider.roomname);
+            }}
           />
           {room.value && <MystEditorPreact />}
         </MystContainer>
