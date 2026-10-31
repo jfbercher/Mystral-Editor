@@ -1129,6 +1129,9 @@ export function sanitize(unsafeHTML) {
   return purify.sanitize(unsafeHTML, {
     ADD_TAGS: ["foreignobject", "iframe"],
     ADD_ATTR: ["dominant-baseline", "target"],
+    // Les libellés de Mermaid sont du HTML dans un <foreignObject> : sans cela, DOMPurify les supprime.
+    HTML_INTEGRATION_POINTS: { foreignobject: true, "annotation-xml": true },
+
     ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|mailto|tel|blob|asset):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   });
 }
