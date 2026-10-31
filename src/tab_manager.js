@@ -81,6 +81,26 @@ export class TabManager {
     // the tab bar) active did nothing.  This fallback runs the same actions on
     // the active tab when no one else has handled the event -- CodeMirror calls
     // preventDefault on the keys it owns, so the two never both fire.
+    /**
+     * Save every tab that has unsaved work, for whoever asks.
+     *
+     * Committing is the case: git reads the files on disk, so what is only on
+     * screen would be left out of the commit without a word -- the worst kind
+     * of surprise, since the author watched the diff and saw it there.
+     *
+     * The caller collects promises out of `detail` and awaits them: dispatch is
+     * synchronous, so by the time it returns every listener has added its own.
+     * An event rather than a reference to this object, because the panel that
+     * asks lives in a component tree that has no way to reach it.
+     */
+    document.addEventListener("mystral-save-dirty", (ev) => {
+      for (const tabInfo of this.openTabs.values()) {
+        if (!tabInfo?.mounted || !tabInfo.tabState?.dirty) continue;
+        const saving = tabInfo.tabState.smartSave?.();
+        if (saving) ev.detail?.promises?.push(saving);
+      }
+    });
+
     document.addEventListener("keydown", (ev) => {
       if (ev.defaultPrevented || ev.repeat) return;
       const tabInfo = this.openTabs.get(this.activeTabId);

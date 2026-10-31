@@ -19,6 +19,17 @@ import { isWindows } from "./fs.js";
 export const LOGIN_SHELL = "login-shell";
 export const WINDOWS_SHELL = "windows-shell";
 
+/** Quote a value for a POSIX shell. */
+export const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+
+/**
+ * Quote a value for the shell in use.
+ *
+ * `cmd.exe` knows only the double quote and has no escape for it -- which costs
+ * nothing here, since Windows forbids it in a file name.
+ */
+export const q = (s) => (isWindows ? `"${String(s).replace(/"/g, "").replace(/\//g, "\\")}"` : shq(s));
+
 /**
  * Decode what a command printed, without ever being able to fail.
  *
@@ -129,4 +140,98 @@ export async function runShell(line, cwd, env = {}) {
     console.error("[export] could not start the shell:", scope, err);
     return { code: -1, stdout: "", stderr: String(err?.message ?? err), scope };
   }
+}
+
+/**
+ * Run a command that may never finish, and give up on it.
+ *
+ * `runShell` awaits `execute()`, which waits for the process to end. That is
+ * right for everything that reads or writes locally and wrong for anything
+ * that talks to a network: git asks for a password on its terminal, and this
+ * one has no terminal and no one in front of it. `GIT_TERMINAL_PROMPT=0` turns
+ * most of those into an error, but not all -- an ssh helper, a proxy, a host
+ * that accepts the connection and then says nothing -- and the application
+ * would simply stop answering, with no button to press.
+ *
+ * So the process is spawned rather than awaited, its output collected as it
+ * comes, and it is killed if it outstays the deadline. `Child.kill()` is the
+ * one thing the plugin gives us for that.
+ *
+ * @returns {Promise<{code: number, stdout: string, stderr: string, timedOut: boolean}>}
+ */
+export async function runShellLimited(line, { cwd, env = {}, timeoutMs = 30000 } = {}) {
+  const { Command } = await import("@tauri-apps/plugin-shell");
+
+  let winArg = null;
+  if (isWindows) {
+    try {
+      winArg = await windowsScript(line, "mystral-net.bat");
+    } catch (err) {
+      console.warn("[shell] the command script could not be written:", err);
+    }
+  }
+  const [scope, args] = isWindows
+    ? [WINDOWS_SHELL, ["/d", "/s", "/c", winArg ?? `chcp 65001>nul & ${line}`]]
+    : [LOGIN_SHELL, ["-lc", line]];
+  console.log("[shell]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
+
+  const opts = { env, encoding: "raw" };
+  if (cwd) opts.cwd = cwd;
+  const command = Command.create(scope, args, opts);
+
+  const chunks = { stdout: [], stderr: [] };
+  const collect = (where) => (data) => {
+    if (typeof data === "string") chunks[where].push(new TextEncoder().encode(data));
+    else chunks[where].push(data instanceof Uint8Array ? data : new Uint8Array(data));
+  };
+  command.stdout.on("data", collect("stdout"));
+  command.stderr.on("data", collect("stderr"));
+
+  const joined = (where) => {
+    const parts = chunks[where];
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const all = new Uint8Array(total);
+    let at = 0;
+    for (const part of parts) {
+      all.set(part, at);
+      at += part.length;
+    }
+    return decodeOutput(all);
+  };
+
+  return new Promise((resolve) => {
+    let child = null;
+    let timer = null;
+    let done = false;
+    const finish = (code, timedOut) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ code, stdout: joined("stdout"), stderr: joined("stderr"), timedOut });
+    };
+
+    command.on("close", ({ code }) => finish(code ?? -1, false));
+    command.on("error", (err) => {
+      chunks.stderr.push(new TextEncoder().encode(String(err)));
+      finish(-1, false);
+    });
+
+    command
+      .spawn()
+      .then((spawned) => {
+        child = spawned;
+        timer = setTimeout(() => {
+          // Said before killing: the output collected so far is often the whole
+          // diagnosis -- a host name, a refused key -- and it would be lost in
+          // a bare "timed out".
+          console.warn("[shell] no answer after", timeoutMs, "ms, stopping:", line);
+          child?.kill?.().catch(() => {});
+          finish(-1, true);
+        }, timeoutMs);
+      })
+      .catch((err) => {
+        chunks.stderr.push(new TextEncoder().encode(String(err?.message ?? err)));
+        finish(-1, false);
+      });
+  });
 }

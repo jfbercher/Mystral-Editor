@@ -34,6 +34,7 @@ project:
         - file: modifications.md
         - file: completion.md  
         - file: export.md
+        - file: git.md
         - file: toc.md
         - file: include.md   
         - file: directives-and-roles.md  

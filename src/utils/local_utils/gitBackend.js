@@ -25,7 +25,7 @@
  */
 
 import { isWindows, parentDir } from "./fs.js";
-import { runShell } from "./shell.js";
+import { runShell, runShellLimited, shq, q } from "./shell.js";
 
 /**
  * A path normalised for *comparison only*.
@@ -42,6 +42,20 @@ import { runShell } from "./shell.js";
  * would never report the mistake, which is exactly why the rule is written here.
  */
 export const nfc = (s) => String(s ?? "").normalize("NFC");
+
+/**
+ * The same text with one kind of line ending, for *showing* only.
+ *
+ * A blob holds LF. On Windows, `core.autocrlf` is true by default, so the file
+ * checked out beside it holds CRLF -- and comparing the two as they stand makes
+ * every single line of every document look changed. The diff would be useless
+ * and, worse, convincing.
+ *
+ * Only the display is normalised. What is committed is the file on disk, which
+ * git converts back on its own: it is git's business, and doing it ourselves
+ * would be deciding something the author already configured.
+ */
+export const lf = (s) => String(s ?? "").replace(/\r\n/g, "\n");
 
 /** What the editor offers to commit. Everything else it writes stays out. */
 const COMMITTABLE = /\.(md|markdown|py|ipynb|ya?ml|png|jpe?g|gif|svg|webp|pdf|bib|csv)$/i;
@@ -164,7 +178,11 @@ const FIELDS = {
  * tells the author there is work not yet recorded anywhere.
  */
 export async function status(repo) {
-  const out = await git(repo, "status --porcelain=v2 -z --untracked-files=normal");
+  // `--untracked-files=all` and not the default `normal`: with `normal`, git
+  // reports an untracked *directory* as one entry, `notes/`, and says nothing
+  // of the documents inside it -- which is how a whole new chapter folder came
+  // out of the panel as a single unopenable line. `all` lists the files.
+  const out = await git(repo, "status --porcelain=v2 -z --untracked-files=all");
   if (out.code !== 0) throw new Error(out.stderr.trim() || `git status failed (${out.code})`);
   return parseStatus(out.stdout);
 }
@@ -262,4 +280,156 @@ export async function changes(repo) {
       return { ...entry, tracked: tree.has(nfc(entry.path)), headText: found ? await blob(repo, found.sha) : null };
     }),
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Writing
+ *
+ * The rule of the reading side -- no path on the command line -- cannot be
+ * kept whole here: `git add` has to be told which files, and the shell plugin
+ * cannot close a child's standard input (`Child` offers `write` and `kill`
+ * and nothing else), so `--pathspec-from-file=-` would wait on an EOF that
+ * never comes.
+ *
+ * So the list goes into a file and only *that* file's path is quoted -- a path
+ * we build, never a document's. The file is written inside the git directory:
+ * anywhere in the working tree it would show up in `git status` as something
+ * the author never created, and would be offered back to them for committing.
+ * ------------------------------------------------------------------ */
+
+/** Where a list or a message is handed to git. Inside `.git`, never beside it. */
+const scratch = (repo, name) => `${repo.gitDir}${isWindows ? "\\" : "/"}${name}`;
+
+/** Quote one of our own paths for the shell in use. */
+const quoted = (path) => (isWindows ? q(path) : shq(path));
+
+async function writeScratch(repo, name, text) {
+  const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+  const file = scratch(repo, name);
+  await writeTextFile(file, text);
+  return file;
+}
+
+async function dropScratch(repo, name) {
+  try {
+    const { remove } = await import("@tauri-apps/plugin-fs");
+    await remove(scratch(repo, name));
+  } catch {
+    /* it did its work; a leftover in .git is harmless and invisible */
+  }
+}
+
+/**
+ * Stage exactly these paths, as git spells them.
+ *
+ * NUL-separated, so a name may hold anything but a NUL -- which no filesystem
+ * allows anyway. `--literal-pathspecs` because a document may legitimately be
+ * called `notes[draft].md`, and git would otherwise read the brackets as a
+ * pattern.
+ */
+export async function stage(repo, paths) {
+  if (!paths.length) return;
+  const file = await writeScratch(repo, "mystral-pathspec", paths.join("\0"));
+  try {
+    const out = await git(
+      repo,
+      `--literal-pathspecs add --all --pathspec-from-file=${quoted(file)} --pathspec-file-nul`,
+    );
+    if (out.code !== 0) throw new Error(out.stderr.trim() || `git add failed (${out.code})`);
+  } finally {
+    await dropScratch(repo, "mystral-pathspec");
+  }
+}
+
+/**
+ * Commit what is staged, with `message` as written.
+ *
+ * Through a file rather than `-m`: a message holds newlines, quotes and
+ * apostrophes by nature, and it is the one piece of text here that the author
+ * composed rather than git.
+ *
+ * The author is git's own: whatever `user.name` and `user.email` say on this
+ * machine. The editor asks nobody to identify themselves and stores nothing --
+ * a commit made here is a commit the author could have made in their terminal.
+ */
+export async function commit(repo, message) {
+  const file = await writeScratch(repo, "mystral-commit-msg", message);
+  try {
+    const out = await git(repo, `commit -F ${quoted(file)}`);
+    if (out.code !== 0) throw new Error(out.stderr.trim() || out.stdout.trim() || `git commit failed (${out.code})`);
+    // `commit` prints its summary on stdout; the first line holds the branch
+    // and the short hash, which is what there is to say afterwards.
+    return out.stdout.trim().split("\n")[0] ?? "";
+  } finally {
+    await dropScratch(repo, "mystral-commit-msg");
+  }
+}
+
+
+/* ------------------------------------------------------------------ *
+ * The network
+ *
+ * One command, and the only one here that can fail for reasons outside the
+ * machine. Two precautions, both necessary.
+ * ------------------------------------------------------------------ */
+
+/** The branch this one tracks, or null when it tracks none. */
+export async function upstream(repo) {
+  const out = await git(repo, "rev-parse --abbrev-ref --symbolic-full-name @{u}");
+  return out.code === 0 ? out.stdout.trim() || null : null;
+}
+
+/**
+ * How far apart this branch and its upstream are, as last fetched.
+ *
+ * No network: it compares the refs already on the machine. So `behind` means
+ * "behind what was known at the last fetch", which is the honest thing to show
+ * and not the same as "behind the server". The editor does not fetch on its
+ * own -- reaching the network without being asked is not something an editor
+ * should do while someone is writing.
+ */
+export async function aheadBehind(repo) {
+  const out = await git(repo, "rev-list --left-right --count @{u}...HEAD");
+  if (out.code !== 0) return null;
+  const [behind, ahead] = out.stdout.trim().split(/\s+/).map(Number);
+  return Number.isFinite(ahead) && Number.isFinite(behind) ? { ahead, behind } : null;
+}
+
+/**
+ * Push the current branch to its upstream.
+ *
+ * `GIT_TERMINAL_PROMPT=0` is the first precaution: git asks for a password on
+ * its terminal, and this child has pipes and nobody in front of them. Without
+ * it, a repository over HTTPS with no credential helper would leave a process
+ * waiting for an answer that cannot be given. With it, git says so and stops.
+ * A graphical helper -- the macOS keychain, an ssh-agent -- still works, which
+ * is the point: the editor pushes with the credentials the author already has,
+ * and asks for none of its own.
+ *
+ * The deadline is the second: not every way of hanging goes through a prompt.
+ * A host that accepts the connection and then says nothing would hang just as
+ * well, and the plugin's only remedy is to kill the child.
+ */
+export async function push(repo, { timeoutMs = 60000 } = {}) {
+  const out = await runShellLimited("git push --porcelain", {
+    cwd: repo.root,
+    env: {
+      GIT_DIR: repo.gitDir,
+      GIT_WORK_TREE: repo.root,
+      LC_ALL: "C",
+      GIT_TERMINAL_PROMPT: "0",
+    },
+    timeoutMs,
+  });
+  if (out.timedOut) {
+    throw new Error(
+      `no answer after ${Math.round(timeoutMs / 1000)}s, so the command was stopped. ` +
+        `What it had said: ${(out.stderr || out.stdout).trim() || "nothing"}`,
+    );
+  }
+  if (out.code !== 0) throw new Error((out.stderr || out.stdout).trim() || `git push failed (${out.code})`);
+  // `--porcelain` prints one line per ref plus a `Done`; the ref line is what
+  // there is to report.
+  const line = out.stdout.split("\n").find((l) => /^[\t *!=+-]/.test(l) && !/^Done/.test(l));
+  return (line ?? out.stdout).trim();
 }

@@ -26,7 +26,7 @@ import { framedBlocks, pairAdmonitions, rewriteAdmonitions } from "./texAdmoniti
 import { repairProofLabels } from "./texProofLabels.js";
 import { separateEnvironments, restoreShortCaptions, stripQuizListings } from "./texTidy.js";
 import { readRule } from "../shortCaption.js";
-import { LOGIN_SHELL, WINDOWS_SHELL, windowsScript, runShell as runShellWithEnv } from "./shell.js";
+import { LOGIN_SHELL, WINDOWS_SHELL, windowsScript, shq, q, runShell as runShellWithEnv } from "./shell.js";
 import { rewriteFloats } from "./texFloats.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
@@ -68,17 +68,6 @@ const runShell = (line, cwd) => runShellWithEnv(line, cwd, MYST_ENV);
  */
 
 const EXPORT_DIR = "_build/exports";
-
-/** Quote a value for a POSIX shell. */
-const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
-
-/**
- * Quote a value for the shell in use.
- *
- * `cmd.exe` knows only the double quote and has no escape for it -- which costs
- * nothing here, since Windows forbids it in a file name.
- */
-const q = (s) => (isWindows ? `"${String(s).replace(/"/g, "").replace(/\//g, "\\")}"` : shq(s));
 
 /** Found by probing, for this session, when config.json names no path. */
 let probedMystPath = null;

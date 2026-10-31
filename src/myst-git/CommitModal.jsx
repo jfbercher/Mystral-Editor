@@ -18,6 +18,22 @@ const CommitForm = styled(Modal)`
     margin-top: 20px;
   }
 
+  .file-controls button.fold {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .binary {
+    margin: 4px 0 0;
+    font-size: 13px;
+    opacity: 0.7;
+  }
+
   label,
   input,
   textarea {
@@ -249,6 +265,10 @@ const Diff = ({ document, parent, onStage, discardFile, readOnly = false }) => {
   const { options } = useContext(MystState);
   const diffRef = useRef();
   const staged = useSignal(true);
+  // Folded per file, and open to begin with: the question "what changed" is
+  // asked of a diff, and a commit touching a dozen files is read by folding
+  // away the ones already understood rather than by scrolling past them.
+  const folded = useSignal(false);
 
   useEffect(() => {
     if (!diffRef.current) return;
@@ -280,6 +300,17 @@ const Diff = ({ document, parent, onStage, discardFile, readOnly = false }) => {
     <div className="diff-parent">
       <div className="file-controls">
         <div className="file-name">
+          {!document.binary && (
+            <button
+              type="button"
+              className="fold"
+              aria-expanded={!folded.value}
+              title={folded.value ? "Show what changed" : "Hide what changed"}
+              onClick={() => (folded.value = !folded.value)}
+            >
+              {folded.value ? "›" : "⌄"}
+            </button>
+          )}
           {!readOnly && (
           <input
             type="checkbox"
@@ -299,7 +330,13 @@ const Diff = ({ document, parent, onStage, discardFile, readOnly = false }) => {
         </div>
         {discardFile && <button onClick={() => discardFile()}>Discard changes</button>}
       </div>
-      {staged.value && h(MergeViewEditor(), { ref: diffRef })}
+      {/* Bytes have no diff to show, and reading them as text printed a
+          screenful of replacement characters. The file is still committed. */}
+      {document.binary ? (
+        <p className="binary">Not a text file — committed as it is, with nothing to compare.</p>
+      ) : (
+        staged.value && !folded.value && h(MergeViewEditor(), { ref: diffRef })
+      )}
     </div>
   );
 };

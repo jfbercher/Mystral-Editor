@@ -34,6 +34,7 @@ Mystral Editor begun as a fork of [Myst-Editor](https://github.com/antmicro/myst
 * Reads markdown, yaml files; import/export jupyter notebook *ipynb* files. Exports your documents as LaTeX, PDF, DOC, HTML, and build full websites through mystmd, see [export documentation](export.md).
 * ****Six viewing modes****, including an *inline* mode that renders each block in place and opens only the block containing the cursor in source mode; a embedded view of the *generated MyST website*, and preview of *slides*. 
 * ****One codebase, two forms****: a [desktop application](desktop-application-(tauri).md) for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application that can be deployed anywhere without installation.
+* ****Git from the editor****: see what changed since the last commit, read the diffs, commit and push — using the `git` of your machine, your own configuration and your own credentials. Nothing is fetched, pulled or committed without being asked, see [git](git.md).
 * **Comprehensive documentation and extensive customization options**: [customisation reference](customisation-reference.md), [css variables](mystral-editor-css-variables.md),  configurable [keyboard shortcuts](keyboard_shortcuts_en.md), 
 
 

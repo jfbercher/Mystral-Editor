@@ -112,6 +112,12 @@
       "allow": [
         {
           "path": "$HOME/**"
+        },
+        {
+          "path": "$HOME/**/.git"
+        },
+        {
+          "path": "$HOME/**/.git/**"
         }
       ]
     },
@@ -156,6 +162,12 @@
       "allow": [
         {
           "path": "$HOME/**"
+        },
+        {
+          "path": "$HOME/**/.git"
+        },
+        {
+          "path": "$HOME/**/.git/**"
         },
         {
           "path": "$APPCONFIG/**"
