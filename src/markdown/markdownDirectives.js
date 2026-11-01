@@ -299,6 +299,28 @@ const shared_option_spec = {
   number: directiveOptions.unchanged, // alias de enumerator
 };
 
+/**
+ * How wide a floated figure should be.
+ *
+ * `:figwidth:` is the figure's own width and wins. Failing that, `:width:` --
+ * the image's -- is taken, because a floated figure *is* its image plus a
+ * caption, and an author who writes `:width: 10%` on one means the thing to be
+ * a tenth of the column. Without this the stylesheet gave the figure 45 % and
+ * the image inside it filled that, so `:width:` had no visible effect at all:
+ * the rule `figure.float-* > img {width: 100%}` beats a presentational
+ * attribute. The site has always read the image's width, so the two were
+ * saying different things about the same document.
+ *
+ * A bare number is pixels, as it is for the attribute it comes from; a custom
+ * property with no unit is simply invalid and would be dropped.
+ */
+function floatWidth(options) {
+  const figure = options.figwidth && options.figwidth !== "image" ? options.figwidth : null;
+  const raw = String(figure ?? options.width ?? "").trim();
+  if (!raw || raw === "image") return null;
+  return /^\d+(\.\d+)?$/.test(raw) ? `${raw}px` : raw;
+}
+
 class FigureMd extends directivesDefault.image {
   option_spec = {
     ...shared_option_spec,
@@ -330,9 +352,8 @@ class FigureMd extends directivesDefault.image {
     const floats = splitFloatClasses(data.options.class);
     if (floats.float) {
       openToken.attrJoin("class", floats.float);
-      if (data.options.figwidth && data.options.figwidth !== "image") {
-        openToken.attrSet("style", `--float-width: ${data.options.figwidth}`);
-      }
+      const width = floatWidth(data.options);
+      if (width) openToken.attrSet("style", `--float-width: ${width}`);
     }
     let target;
     if (data.args.length > 0) {
@@ -493,9 +514,8 @@ class FigureExtended extends directivesDefault.image {
     const floats = splitFloatClasses(options.class);
     if (floats.float) {
       openToken.attrJoin("class", floats.float);
-      if (options.figwidth && options.figwidth !== "image") {
-        openToken.attrSet("style", `--float-width: ${options.figwidth}`);
-      }
+      const width = floatWidth(options);
+      if (width) openToken.attrSet("style", `--float-width: ${width}`);
     }
     let target;
     if (options.label) {
@@ -1254,6 +1274,32 @@ class QuizDirective extends Directive {
 }
 
 /**
+ * `{clear}` -- end the wrapping here, as `\wrapstuffclear` does in LaTeX.
+ *
+ * A float is contained by the chunk that holds it, so wrapping already stops at
+ * the next heading. This is for the other case: stopping it in the middle of a
+ * section, where the text that follows should start below the figure rather
+ * than beside it.
+ *
+ * An empty `div` carrying a class, because that is the one thing that travels
+ * everywhere: the preview styles it, mystmd keeps a div and its class for the
+ * site, and the LaTeX writer walks a div and emits its children -- so the
+ * plugin adds a raw node beside it for that chain. See `float-lists.mjs`.
+ */
+class ClearDirective extends Directive {
+  required_arguments = 0;
+  optional_arguments = 0;
+  has_content = false;
+  option_spec = {};
+
+  run(data) {
+    const token = this.createToken("html_block", "", 0, { map: data.map, block: true });
+    token.content = `<div class="float-clear"></div>\n`;
+    return [token];
+  }
+}
+
+/**
  * `{raw}` — a block handed to one output format verbatim.
  *
  * Without this it falls to markdown-it-docutils' unhandled branch and is shown
@@ -1306,4 +1352,8 @@ export { floatListDirectives } from "./markdownFigureLists.js";
 export const codeDirectives = {
   "code-cell": CodeCellDirective,
   "quiz": QuizDirective,
+  "float-clear": ClearDirective,
+  // `clear` is accepted too, but `float-clear` is the name: it says what is
+  // being cleared, in a document where the word alone could mean anything.
+  "clear": ClearDirective,
 };
