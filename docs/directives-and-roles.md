@@ -255,11 +255,15 @@ The measured spectra.
 
 `float-left`, `float-right` and `float-center` are classes rather than an option of their own, and that is the point: `:class:` is an option mystmd knows, so it keeps the word on the node and passes it to the HTML site, where an option it has never heard of is dropped — with a warning — before anything downstream can read it. The same word therefore styles the preview, reaches the site as a class, and tells the LaTeX export what to do.
 
-`:figwidth:` becomes the width of what floats; without it the float takes about 45 % of the column. The image inside fills that width, since it is the figure, not the image, that has left the flow.
+`:figwidth:` becomes the width of what floats. Failing that, `:width:` is used -- a floated figure is its image plus a caption, so an author who writes `:width: 30%` on one means the thing to be three tenths of the column. With neither, the float takes about 45 % of the column. The image inside fills that width, since it is the figure, not the image, that has left the flow.
 
 `float-center` is not a float at all, and is named one only so the three live together: it is a narrower block with the text above and below it, which is what `figure` already does in LaTeX.
 
 In the preview the float is contained by the chunk that holds it, so the wrapping stops at the next heading — where the author expects it to stop. Without that it escaped into the rest of the document and text three sections below went on wrapping around it.
+
+To stop it earlier, `:::{float-clear}` on its own ends the wrapping where it stands, as `\wrapstuffclear` does in LaTeX: what follows starts below the figure instead of beside it. It is the same thing everywhere -- an empty `div` carrying a class both stylesheets know, plus, for the LaTeX chain alone, a raw node holding the macro the export already uses for the breaks it makes by itself at each section. `{clear}` is accepted as a shorter spelling.
+
+A float inside an admonition is contained by that box, which grows to hold it. Worth saying because it did not: a box is sized by its text, and a figure taller than the text beside it was drawn straight through the bottom border.
 
 In a LaTeX export the figure and the table are wrapped, through the `float-lists.mjs` plugin and the `.tex` post-processing, and the packages are added for you. Two can do the job and the document uses whichever your installation has: `wrapstuff` when it is there, `wrapfig` otherwise.
 

@@ -109,6 +109,22 @@ details.admonition {
   border: var(--border-2) solid var(--green-500);
   margin-bottom: 16px;
 
+  /* A floated figure inside the box has to be contained by it. A plain block
+     is not a block formatting context, so a figure taller than the text beside
+     it was drawn straight through the bottom border -- the box being sized by
+     its text alone.
+
+     A clearing pseudo-element rather than display:flow-root, which would do the
+     same job: a details element carries its open and closed behaviour on its
+     own display, and an empty block at the end of the box disturbs nothing.
+     (No backticks in here: this stylesheet lives in a template literal, and
+     one of them ends it.) */
+  &::after {
+    content: "";
+    display: block;
+    clear: both;
+  }
+
   // Contenu interne
   .admonition {
     margin: 0 22px 14px 22px;
