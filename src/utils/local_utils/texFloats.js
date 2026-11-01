@@ -173,7 +173,11 @@ export function rewriteFloats(tex) {
 
   let preamble = "";
   let preambleWritten = false;
-  if (floated) {
+  // Also when nothing was rewritten here: `{clear}` writes `\mystwrapclear`
+  // through the mystmd plugin, and a document whose float sits in another file
+  // of a multi-file export would otherwise reach LaTeX with the macro
+  // undefined.
+  if (floated || out.includes("\\mystwrapclear")) {
     preamble = FLOAT_PREAMBLE;
     const docAt = out.indexOf("\\begin{document}");
     if (docAt !== -1) {

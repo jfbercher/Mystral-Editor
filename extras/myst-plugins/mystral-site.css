@@ -111,6 +111,14 @@ figure.float-center img,
   display: flow-root;
 }
 
+/* `{clear}` -- the author ending the wrap before the next section does it for
+   them. Empty and of no height: all it contributes is the clearance. The same
+   word and the same meaning as in the editor's preview.css. */
+.float-clear {
+  clear: both;
+  height: 0;
+}
+
 /* Stop the wrapping at the next section.
    The site has no chunking to contain a float, so a figure taller than the
    text beside it would carry the wrap into the following sections -- the same

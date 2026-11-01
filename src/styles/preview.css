@@ -297,6 +297,12 @@ figure.float-right > img,
 figure.float-center > img {
   width: 100%;
 }
+/* `{clear}` -- the author ending the wrap before the next heading does it for
+   them. Empty and of no height: all it contributes is the clearance. */
+.float-clear {
+  clear: both;
+  height: 0;
+}
 
 /* Keep a float inside the chunk that holds it.
    A chunk is an unknown element, so it is inline by default and establishes

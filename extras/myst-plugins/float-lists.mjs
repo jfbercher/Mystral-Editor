@@ -326,11 +326,33 @@ const floatMarkers = {
   },
 };
 
+/**
+ * `{clear}` -- end the wrapping here.
+ *
+ * Two nodes, because two chains read different things. The `div` carries the
+ * class the site stylesheet knows, and every other writer walks it and emits
+ * its children, which is nothing. The `raw` node is seen by the LaTeX writer
+ * alone, and holds the macro the editor's `.tex` post-processing already
+ * defines for the wrap it ends by itself at each section.
+ */
+const clearDirective = {
+  name: "float-clear",
+  alias: ["clear"],
+  doc: "End the text wrapping around a floated figure or table.",
+  run() {
+    return [
+      { type: "div", class: "float-clear", children: [] },
+      { type: "raw", tex: "\n\\mystwrapclear\n\n" },
+    ];
+  },
+};
+
 const plugin = {
   name: "Mystral Editor — lists of figures and tables",
   directives: [
     listDirective("list-of-figures", "listoffigures", "listoffigures", "A list of the document's figures."),
     listDirective("list-of-tables", "listoftables", "listoftables", "A list of the document's tables."),
+    clearDirective,
   ],
   transforms: [shortCaptions, floatMarkers],
 };
