@@ -23,7 +23,7 @@ import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirro
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { pythonHighlightStyle as pythonHighlight } from "../extensions/pythonHighlightStyle";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { parseParams, readValue, readFlag, writeValue, quantise, formatValue, formatFlag } from "./cellParams.js";
+import { parseParams, parseParamsOptions, readValue, readFlag, writeValue, quantise, formatValue, formatFlag } from "./cellParams.js";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -1938,9 +1938,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       controls.push({ spec, input: slider });
     }
 
-    const applyBtn = mkBtn("pyodide-btn-apply", "Apply");
-    applyBtn.title = "Write these values into the cell's code and run it";
-    applyBtn.addEventListener("click", () => {
+    /**
+     * Write the controls into the code, then run.
+     *
+     * The values live in the code and nowhere else -- `:params:` declares the
+     * range, the cell's own source holds what it is set to -- so applying them
+     * is an edit of the document, with everything that implies: an undo step,
+     * a dirty file, a new cache key, a line on the collaboration stream.
+     *
+     * Which is why this is bound to `change` and not to `input`. A range emits
+     * `change` on release and `input` on every pixel of a drag; the second
+     * would write the document a hundred times for one gesture.
+     */
+    const applyAndRun = () => {
       let next = editorContainer.value;
       for (const { spec, input } of controls) {
         const written =
@@ -1953,9 +1963,24 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       // cache entry and tells the source side, exactly as a typed edit would.
       if (next !== editorContainer.value) editorContainer.value = next;
       _syncToEditor(view);
-      runBtn.click();
-    });
+      // The values are written either way; the run waits when one is already
+      // under way rather than stacking on it. Run disables its own button for
+      // the length of an execution, which is the state to read.
+      if (!runBtn.disabled) runBtn.click();
+    };
+
+    const applyBtn = mkBtn("pyodide-btn-apply", "Apply");
+    applyBtn.title = "Write these values into the cell's code and run it";
+    applyBtn.addEventListener("click", applyAndRun);
     paramsBar.append(applyBtn);
+
+    // `:params: auto, …` -- the same thing, without the click. The button
+    // stays: a cell that failed is re-run from it without having to disturb a
+    // control that is already where it should be.
+    if (parseParamsOptions(el.dataset.params ?? "").auto) {
+      applyBtn.title += " (this cell also runs when a control is released)";
+      for (const { input } of controls) input.addEventListener("change", applyAndRun);
+    }
   };
 
   wrapper.append(header, editorRow, paramsBar, statusBar, outputArea);

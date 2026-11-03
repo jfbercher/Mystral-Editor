@@ -62,7 +62,7 @@ The options understood are:
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
 - `:tags: hide-input` opens the cell with its code folded away, showing the toolbar and the output alone. Other tags are stored and round-tripped but not otherwise interpreted.  
-- `:params: n = 1..100 step 1` puts a control under the cell. See *Parameters*, below.
+- `:params: n = 1..100 step 1` puts a control under the cell, and `:params: auto, n = 1..100 step 1` makes it run on its own when the control is released. See *Parameters*, below.
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
 A figure opens full screen when clicked: the wheel zooms about the pointer, dragging moves it, a double-click returns to the initial view, and `Escape` or a click beside the figure closes it. Figures are captured as SVG, with their text converted to outlines so that the result does not depend on the fonts available wherever it is later shown or exported; a zoom therefore stays sharp however far it goes. A figure too dense for that -- a scatter plot of a hundred thousand points -- falls back to a PNG capture at 120 dpi, which zooms as a picture does.  
@@ -184,6 +184,22 @@ Whatever the declaration says, the code wins when it says anything: the initial 
 The range is declared in the option; the *value* is read from the code and written back to it. Pressing Apply rewrites the cell's assignment -- `n = 12` becomes `n = 37` -- and then runs the cell. Reopening the document therefore shows what it will actually run, and there is no second place to keep in step.
 
 That is the point of the feature, and the reason it is not `ipywidgets`. The cell stays plain Python: it reads an `n` that its own first line sets, so it runs the same way under `myst build --execute`, in Jupyter, or for a reader who copies it out. A value injected into the namespace by a widget would work here and raise `NameError` everywhere else. The cost is one line rewritten per apply; the gain is a document that is still a document.
+
+### Running without pressing Apply
+
+Add `auto` among the declarations and the cell runs by itself when a control is released:
+
+```
+:params: auto, n = 1..100 step 1, amp = 0.1..5
+```
+
+`autorun` is accepted as the same word. It is a bare word in the comma-separated list, which costs nothing: a declaration that does not parse is skipped anyway, so an existing line stays valid and the two readings of it need not know about each other.
+
+It is deliberately off by default, and the reason is worth knowing before turning it on. The control listens for *release*, not for movement: a slider sends an event at every pixel of a drag, and applying the values is an edit of the document -- an undo step, a modified file, a new cache key -- so a single gesture would rewrite the document a hundred times. Release gives one rewrite per adjustment, which is what you would have typed anyway.
+
+What this means in practice is that the feature is good exactly as long as the cell is quick. A cell that answers in a tenth of a second feels immediate; one that takes three seconds turns its own slider into something that looks broken, and the Apply button is the better interface for it. Only the author knows which it is, which is why the editor does not decide.
+
+The button stays in either case: a cell that failed is run again from it without having to disturb a control that is already where it should be. And if an execution is still under way when a control is released, the values are written but the run is dropped rather than queued behind it.
 
 ### Integers and floats  
 

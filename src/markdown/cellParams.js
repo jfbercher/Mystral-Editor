@@ -105,6 +105,25 @@ export function parseParams(spec) {
   return out;
 }
 
+/**
+ * The settings a `:params:` line carries that are not controls.
+ *
+ * `auto` is a bare word among the comma-separated declarations:
+ * `:params: auto, n = 1..100 step 1`. It fits there because `parseParams`
+ * already skips whatever does not parse as a declaration, so the two readings
+ * of the same line do not have to know about each other.
+ *
+ * Opt-in, and deliberately. Running on release suits a cell that answers in a
+ * blink and makes a control feel broken on one that takes three seconds -- and
+ * which it is, only the author knows.
+ */
+export function parseParamsOptions(spec) {
+  const words = String(spec ?? "")
+    .split(",")
+    .map((piece) => piece.trim().toLowerCase());
+  return { auto: words.includes("auto") || words.includes("autorun") };
+}
+
 const NUMBER = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?";
 const BOOL = "True|False";
 
