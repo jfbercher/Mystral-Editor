@@ -24,6 +24,7 @@
  */
 
 import { config } from "../config.js";
+import { hidePreviewPopup } from "../utils/previewPopup.js";
 
 const SETTLE_MS = 150;
 
@@ -364,6 +365,13 @@ function inCellEditor() {
 export function attachSlideView(preview, getSettings = () => null) {
   if (!preview) return () => {};
 
+  /**
+   * A preview popup is put away by the pointer leaving what it belongs to, and
+   * in a deck the pointer does not move: the slides are changed from the
+   * keyboard. So the deck says when what is on screen has changed.
+   */
+  const dismissPopup = () => hidePreviewPopup(preview.getRootNode());
+
   let frame = 0;
   let settle = 0;
   let badgeTimer = 0;
@@ -534,6 +542,7 @@ export function attachSlideView(preview, getSettings = () => null) {
     // Which way the deck is moving, so a slide comes in from the side one is
     // going towards and goes back the way it came.
     preview.dataset.slideDir = dir > 0 ? "next" : "prev";
+    dismissPopup();
     if (dir > 0) {
       if (fragment < fragmentCount(all[slide])) fragment += 1;
       else if (slide < all.length - 1) {
@@ -553,6 +562,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const startPresenting = (from = slideInView()) => {
     presenting = true;
+    dismissPopup();
     slide = Math.max(0, Math.min(from, slideCount() - 1));
     fragment = 0;
     preview.dataset.slideDir = "next";
@@ -567,6 +577,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const stopPresenting = () => {
     presenting = false;
+    dismissPopup();
     preview.classList.remove("presenting");
     if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});
     schedule();

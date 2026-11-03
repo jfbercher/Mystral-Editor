@@ -134,7 +134,17 @@ async function readMystYml() {
     if (isTauri() || typeof fetch !== "function" || typeof document === "undefined") throw err;
     const res = await fetch(new URL("myst.yml", document.baseURI), { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
+    // A development server answers 200 with the application's own page for any
+    // path it does not have -- the single-page fallback. Without this test the
+    // index was handed to the YAML parser, which reported, with some reason,
+    // that it could not read myst.yml because a document separator was expected
+    // at the `<!--` of line 10.
+    const type = res.headers.get("content-type") ?? "";
+    const text = await res.text();
+    if (/html/i.test(type) || /^\s*<(!doctype|html)\b/i.test(text)) {
+      throw new Error("no myst.yml here (the server answered with a page)");
+    }
+    return text;
   }
 }
 
