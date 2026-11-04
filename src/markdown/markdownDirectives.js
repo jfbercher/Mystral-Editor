@@ -1028,7 +1028,7 @@ function buildTocList(nodes, maxDepth, sectionLabelMap, depth = 1, md = null, sh
       return `<li><a href="#${escapeHtml(anchor)}">${num}${headingInlineHtml(md, node.text)}</a>${children}</li>`;
     })
     .join("\n");
-  return `<ul>\n${items}\n</ul>`;
+  return `<ul style="list-style: none;">\n${items}\n</ul>`;
 }
 
 class TocDirective extends Directive {
