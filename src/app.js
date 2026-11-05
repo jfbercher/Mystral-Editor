@@ -133,6 +133,33 @@ export async function initApp(options = {}) {
       console.error("Failed to focus window on startup:", err);
     }
 
+    // Closing the window: stop the site first, and wait for it.
+    //
+    // `beforeunload` was doing this and could not: stopping is asynchronous and
+    // the page is already gone when the promise would settle, so the server
+    // outlived the application with its ports held. Tauri's own event is made
+    // for exactly this -- it lets the close be held back until the work is
+    // done, and then closes for good.
+    try {
+      const appWindow = getCurrentWindow();
+      let leaving = false;
+      await appWindow.onCloseRequested(async (event) => {
+        if (leaving) return; // the second pass, after we asked to close
+        const { siteRunning, stopSite } = await import("./utils/local_utils/mystExport.js");
+        if (!siteRunning()) return;
+        event.preventDefault();
+        try {
+          await stopSite();
+        } catch (err) {
+          console.warn("[quit] the site could not be stopped:", err);
+        }
+        leaving = true;
+        await appWindow.close();
+      });
+    } catch (err) {
+      console.error("Failed to install the close handler:", err);
+    }
+
     // Listen for file-open events
     await listen("open-file", (event) => {
       console.log("File open event received:", event.payload);

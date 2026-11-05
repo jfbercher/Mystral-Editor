@@ -145,9 +145,19 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
           text: "🔄 Save and reload",
           action: async () => {
             const saved = await tab.smartSave();
-            if (saved) {
-              window.location.reload();
+            if (!saved) return;
+            // Before the reload, and awaited. `beforeunload` cannot do this:
+            // stopping the site is asynchronous and the page is gone before it
+            // returns, which is why a reload used to leave the port taken. Here
+            // there is time, because nothing has been unloaded yet.
+            if (mystExport.siteRunning()) {
+              try {
+                await mystExport.stopSite();
+              } catch (err) {
+                console.warn("[reload] the site could not be stopped:", err);
+              }
             }
+            window.location.reload();
           },
         },
         (!isTauri ? {

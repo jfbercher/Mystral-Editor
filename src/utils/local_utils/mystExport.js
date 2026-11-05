@@ -2127,7 +2127,29 @@ export async function mystBuild(tab) {
 
 // --- myst start -------------------------------------------------------------
 
+/** How the launching shell tells us the group it put the server in. */
+const SITE_PGID_MARK = "MYSTRAL_SITE_PGID:";
+const SITE_PGID_RE = new RegExp(`${SITE_PGID_MARK}(\\d+)`);
+
 let siteChild = null;
+/**
+ * The process group the site runs in, on POSIX.
+ *
+ * Measured, and it is the crux of the whole business: launched from the editor,
+ * `myst start` and the content server it spawns both inherit *the application's*
+ * own process group -- the same one as the editor and its dev server. There is
+ * therefore no group meaning "the site and nothing else", and no parent link
+ * either: the content server's parent is a process that is already gone.
+ *
+ * Which is also why Ctrl-C works in a terminal and a kill from here does not.
+ * A shell puts a foreground job in a *new* group, and Ctrl-C signals that whole
+ * group; nothing created such a group for us.
+ *
+ * `set -m` asks the shell for the same thing: with job control on, a command put
+ * in the background gets a group of its own, led by the pid `$!` reports. That
+ * pid, echoed on a marker line, is this.
+ */
+let sitePgid = null;
 let sitePortInUse = null;
 /** The folder the running server was started in; a site serves one project. */
 let siteDir = null;
@@ -2188,9 +2210,19 @@ export async function startSite(tab) {
   // verb: there the server is a grandchild, and stopping it kills the shell
   // first -- to be checked on Windows.
   const ports = `--port ${port} --server-port ${siteContentPort()}`;
+  // On POSIX the server is put in the background under job control rather than
+  // `exec`ed: `exec` gave a pid that was myst's own, which was convenient and
+  // not enough -- the content server is a separate process, and killing myst
+  // leaves it holding its port. A background job under `set -m` gets a process
+  // group of its own, which is the one thing that names the site and nothing
+  // else. The shell stays, waiting on the job, so its output still flows here
+  // and its exit still marks the end.
   const line = isWindows
     ? `${mystInvocation()} start ${ports}`
-    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}exec ${mystInvocation()} start ${ports} < /dev/null`;
+    : `cd ${shq(dir)} && ${pathPrefix(mystCmd())}set -m\n` +
+      `${mystInvocation()} start ${ports} < /dev/null &\n` +
+      `echo "${SITE_PGID_MARK}$!"\n` +
+      `wait $!`;
   console.log("[export] sh -lc", line);
   // Through a script of its own on Windows, for the same two reasons as every
   // other command: quoting that survives, and UTF-8 output -- this one's is
@@ -2204,6 +2236,11 @@ export async function startSite(tab) {
   // the output is more reliable than trusting the request.
   const watch = (line) => {
     console.log("[myst start]", line);
+    const group = SITE_PGID_RE.exec(String(line));
+    if (group) {
+      sitePgid = Number(group[1]);
+      console.log("[export] the site runs in process group", sitePgid);
+    }
     // The port first, so that the address is right when the ready line lands.
     const match = SITE_URL_RE.exec(String(line)) ?? SITE_READY_RE.exec(String(line));
     if (match) sitePortInUse = Number(match[1]);
@@ -2217,6 +2254,7 @@ export async function startSite(tab) {
     const unexpected = siteChild && !siteStopping;
     cancelSiteOpener();
     siteChild = null;
+    sitePgid = null;
     sitePortInUse = null;
     siteStopping = false;
     if (unexpected) {
@@ -2388,18 +2426,91 @@ export async function sitePageUrl(tab) {
   return `${base}/${slugify(stemOf(path))}`;
 }
 
+/**
+ * Ask the server to stop, rather than take it away.
+ *
+ * `Child.kill()` sends SIGKILL, which nothing can catch: myst gets no chance
+ * to shut down the content server it launched, and that one goes on holding
+ * its port. Ctrl-C in a terminal does not do that -- it sends SIGINT, which
+ * myst handles, and it sends it to the whole foreground process group. Both
+ * differences matter, and this tries the cheaper of the two first.
+ *
+ * Through the shell, since the plugin offers no choice of signal. The pid is
+ * myst's own: the command line `exec`s, so no wrapper stands between.
+ *
+ * @returns {Promise<boolean>} whether the signal was delivered
+ */
+async function interruptSite(pid) {
+  if (isWindows) {
+    // The tree, and before anything else. `taskkill /T` walks from a pid down
+    // through the processes it started, which is the only thing that reaches
+    // the content server -- but it can only walk a tree that still stands.
+    // Killing the shell first, as this used to, orphaned the children and left
+    // `/T` nothing to follow: the node processes went on holding their ports.
+    if (!pid) return false;
+    const res = await runShell(`taskkill /F /T /PID ${pid}`);
+    if (res?.code !== 0) console.warn("[export] taskkill:", res?.stderr || res?.stdout);
+    return res?.code === 0;
+  }
+  // The group when there is one, and only then: a negative pid signals every
+  // process in it, which is what a terminal's Ctrl-C does and what makes the
+  // content server go with its parent. Without the group this reaches myst
+  // alone, which was measured to be useless -- it dies, its child does not.
+  const who = sitePgid ? `-${sitePgid}` : pid ? String(pid) : null;
+  if (!who) return false;
+  const res = await runShell(`kill -INT ${who}`);
+  if (res?.code !== 0) console.warn("[export] SIGINT was refused:", res?.stderr || res?.stdout);
+  return res?.code === 0;
+}
+
+/** Wait, briefly, for the close handler to say the server is gone. */
+function siteExited(timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (!siteChild) return resolve(true);
+      if (Date.now() - started > timeoutMs) return resolve(false);
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
 export async function stopSite() {
   if (!siteChild) return;
   siteStopping = true;
   cancelSiteOpener();
   const pid = siteChild.pid;
-  try {
-    await siteChild.kill();
-  } catch (err) {
-    console.warn("[export] could not stop the site:", err);
+  const group = sitePgid;
+  const child = siteChild;
+
+  // Asked first, taken away second.
+  const asked = await interruptSite(pid);
+  const gone = asked ? await siteExited() : false;
+  console.log(
+    `[export] site stop: ${isWindows ? "taskkill /T" : "SIGINT"} ${asked ? "sent" : "not sent"} to ` +
+      `${group ? `group ${group}` : `pid ${pid}`}, ${gone ? "it exited" : "still there"}`,
+  );
+  // A group that did not answer the polite signal is taken away whole, which
+  // the plugin's own kill() cannot do: it knows one pid.
+  if (group && !gone) await runShell(`kill -KILL -${group}`).catch(() => {});
+
+  if (siteChild) {
+    try {
+      await child.kill();
+    } catch (err) {
+      console.warn("[export] could not stop the site:", err);
+    }
   }
   siteChild = null;
-  await freeSitePorts(pid);
+  // The last resort, and only that. It kills whatever listens on those two
+  // ports, which is not necessarily ours -- a development server of the
+  // author's own on 3000 would go with it. Signalling the group names our
+  // processes exactly, so the sweep is kept for the cases where there is no
+  // group to name: Windows, where `taskkill /F /T` does the work instead, and
+  // a launch whose marker line never arrived.
+  // Windows has had its tree taken above, and asks nothing more.
+  if (!isWindows && (!group || !gone)) await freeSitePorts(pid);
   sitePortInUse = null;
   siteDir = null;
   showToast("MyST site stopped.", "success", 4000);
