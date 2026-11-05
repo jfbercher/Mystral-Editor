@@ -322,3 +322,18 @@ html-chunk[data-float] h3,
 html-chunk[data-float] h4 {
   clear: both;
 }
+
+/*
+ * The preview of a YAML document: its own source. Pre-wrap rather than a
+ * scrollbar, because a configuration is read whole, and the editor's own
+ * monospace stack so the two panes line up.
+ */
+pre.yaml-source {
+  margin: 0;
+  padding: 0.5em 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.95em;
+  line-height: 1.45;
+}

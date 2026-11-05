@@ -1,5 +1,5 @@
 import * as localUtils from "./utils/local_utils.js";
-import { mountEditor } from "./editor_factory.js";
+import { mountEditor , applyLanguageForFile } from "./editor_factory.js";
 import { clearCellCache } from "./markdown/pyodideRunner.js";
 import { config, getNewFileTemplate } from "./config.js";
 import { isTauri, currentFileDir, workingDirectory, parentDir, fileName as baseNameOf } from "./utils/local_utils/fs.js";
@@ -273,6 +273,11 @@ export class TabManager {
   label.textContent = name;
   tabInfo.buttonEl.classList.toggle("active", editorId === this.activeTabId);
   
+  // The file decides the language, and this is the one place every change of
+  // file goes through -- opening, restoring a session, saving under a new
+  // name. A no-op unless the language actually changes.
+  applyLanguageForFile(editorId, name);
+
   // Tooltip with complete path (Tauri)
     if (isTauri()) {
       const handle = tabInfo.tabState.currentFileHandle;

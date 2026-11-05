@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "schemas": "node scripts/generate-yaml-schemas.mjs",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 vite build",
     "tauri": "tauri",
     "preview": "vite preview",
@@ -77,6 +78,8 @@
     "eslint-plugin-jsdoc": "^50.6.3",
     "playwright": "^1.45.1",
     "prettier": "^3.2.5",
+    "myst-config": "^1.6.1",
+    "myst-frontmatter": "^1.8.2",
     "vite": "^8.2.2",
     "vite-plugin-babel-macros": "^1.0.6",
     "vite-plugin-node-polyfills": "^0.28.0"

@@ -11,6 +11,23 @@ export const subEditorId = Facet.define();
 
 const getContentFrom = (doc, startLine) => Math.min(doc.length, startLine.to + 1);
 
+/**
+ * The blocks a sub-editor is opened on, and the language each one is in.
+ *
+ * `FencedCode` reads its language off the opening fence; a document's
+ * frontmatter is YAML by construction and says so nowhere, hence the table
+ * rather than a test on the node name alone. The node taken for the
+ * frontmatter is `Frontmatter`, not the `FrontmatterContent` inside it,
+ * because everything below -- the content slice, the position mapping for
+ * hover, completion and diagnostics -- is written for a block whose first line
+ * is a delimiter and whose content starts on the next one. Which is exactly
+ * what `--- ... ---` is, so it costs nothing to say so.
+ */
+const SUB_EDITOR_BLOCKS = { FencedCode: null, Frontmatter: "yaml" };
+
+/** The node that closes such a block: a fence, or a frontmatter's dashes. */
+const CLOSING_MARKS = new Set(["CodeMark", "DashLine"]);
+
 const getCodeBlockContent = (doc, startLine, endLine, closed) => {
   const contentFrom = getContentFrom(doc, startLine);
   const contentTo = Math.max(contentFrom, Math.min(doc.length, closed ? endLine.from - 1 : endLine.to));
@@ -45,7 +62,7 @@ const codeBlocksSubeditors = (extensions, editorView, tooltipSources = {}, compl
       value.editors.forEach((e) => {
         const startLine = tr.state.doc.lineAt(e.from);
         const endLine = tr.state.doc.lineAt(e.to);
-        const { contentFrom, contentTo } = getCodeBlockContent(tr.state.doc, startLine, endLine, tree.resolve(e.to, -1).name === "CodeMark");
+        const { contentFrom, contentTo } = getCodeBlockContent(tr.state.doc, startLine, endLine, CLOSING_MARKS.has(tree.resolve(e.to, -1).name));
         const contents = tr.state.doc.slice(contentFrom, contentTo).toString();
         if (contents != e.editor.state.doc.toString()) {
           linter.value = { ...linter.peek(), status: "pending" };
@@ -56,21 +73,25 @@ const codeBlocksSubeditors = (extensions, editorView, tooltipSources = {}, compl
       // detect new editors
       tree.iterate({
         enter(ref) {
-          if (ref.name !== "FencedCode") return true;
+          const declared = SUB_EDITOR_BLOCKS[ref.name];
+          if (declared === undefined) return true;
 
           if (value.editors.some((e) => e.from == ref.from && e.to == ref.to)) return false;
           const startLine = tr.state.doc.lineAt(ref.from);
-          let lang = startLine.text.trim().replace(/^[`~:]+/, "");
-          // Normalize directive syntax: {code-cell} python → code-cell
-          lang = lang.replace(/^\{([^}]+)\}.*$/, "$1").trim();
-          // Take first word only (e.g. "python myfile.py" → "python")
-          lang = lang.split(/\s+/)[0];
+          let lang = declared;
+          if (lang == null) {
+            lang = startLine.text.trim().replace(/^[`~:]+/, "");
+            // Normalize directive syntax: {code-cell} python → code-cell
+            lang = lang.replace(/^\{([^}]+)\}.*$/, "$1").trim();
+            // Take first word only (e.g. "python myfile.py" → "python")
+            lang = lang.split(/\s+/)[0];
+          }
           if (!(lang in value.extensions)) return false;
           // console.log("lang extrait:", JSON.stringify(lang), "extensions disponibles:", Object.keys(value.extensions), "match:", lang in value.extensions);
 
 
           const endLine = tr.state.doc.lineAt(ref.to);
-          const closed = ref.node.lastChild?.name === "CodeMark" && ref.node.lastChild.from > ref.from;
+          const closed = CLOSING_MARKS.has(ref.node.lastChild?.name) && ref.node.lastChild.from > ref.from;
           const { contentFrom, contentTo } = getCodeBlockContent(tr.state.doc, startLine, endLine, closed);
           const contents = tr.state.doc.slice(contentFrom, contentTo).toString();
 

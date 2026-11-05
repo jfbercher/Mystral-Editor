@@ -1,0 +1,624 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mystral-editor.local/schemas/myst.schema.json",
+  "title": "MyST project configuration (myst.yml)",
+  "type": "object",
+  "properties": {
+    "version": {
+      "description": "Config format version.",
+      "type": [
+        "number",
+        "string"
+      ]
+    },
+    "extends": {
+      "description": "Another configuration this one inherits from.",
+      "type": [
+        "string",
+        "array"
+      ]
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "description": "The date of the work, as `YYYY-MM-DD`."
+        },
+        "doi": {
+          "description": "The DOI of the published version."
+        },
+        "identifiers": {
+          "description": "Other identifiers for this work, keyed by scheme."
+        },
+        "open_access": {
+          "description": "Whether the published work is open access."
+        },
+        "license": {
+          "description": "The licence, as an SPDX identifier -- `CC-BY-4.0` -- or a map with `content` and `code`."
+        },
+        "binder": {
+          "description": "A binder URL the live site offers."
+        },
+        "source": {
+          "description": "Where this document comes from."
+        },
+        "subject": {
+          "description": "The subject or section the work belongs to."
+        },
+        "volume": {
+          "description": "Volume of the venue."
+        },
+        "issue": {
+          "description": "Issue of the venue."
+        },
+        "first_page": {
+          "description": "First page in the printed venue."
+        },
+        "last_page": {
+          "description": "Last page in the printed venue."
+        },
+        "oxa": {
+          "description": "Curvenote (oxa) identifier."
+        },
+        "numbering": {
+          "description": "What gets numbered and how: headings, figures, equations, and their formats."
+        },
+        "bibliography": {
+          "description": "The `.bib` files the citations are resolved against."
+        },
+        "math": {
+          "description": "Macros available to every equation, as `{ \"\\\\macro\": \"definition\" }`."
+        },
+        "abbreviations": {
+          "description": "Abbreviations expanded on first use, as `{ SHORT: \"the long form\" }`."
+        },
+        "exports": {
+          "description": "The documents built from this one: `pdf`, `tex`, `docx`, `typst`, each with its own options."
+        },
+        "downloads": {
+          "description": "Files offered for download beside the page."
+        },
+        "settings": {
+          "description": "Per-document build settings."
+        },
+        "edit_url": {
+          "description": "A link that opens this page for editing."
+        },
+        "source_url": {
+          "description": "A link to the source of this page."
+        },
+        "arxiv": {
+          "description": "arXiv identifier or URL."
+        },
+        "pmid": {
+          "description": "PubMed identifier."
+        },
+        "pmcid": {
+          "description": "PubMed Central identifier."
+        },
+        "zenodo": {
+          "description": "Zenodo record URL."
+        },
+        "title": {
+          "description": "The document's title."
+        },
+        "subtitle": {
+          "description": "A second line under the title."
+        },
+        "short_title": {
+          "description": "A shortened title, for running heads and navigation."
+        },
+        "description": {
+          "description": "One or two sentences describing the document, used in listings and link previews."
+        },
+        "thumbnail": {
+          "description": "The image that stands for the document in listings."
+        },
+        "thumbnailOptimized": {
+          "description": "The optimized thumbnail, written by the build. Not usually set by hand."
+        },
+        "banner": {
+          "description": "A wide image shown at the head of the page."
+        },
+        "bannerOptimized": {
+          "description": "The optimized banner, written by the build. Not usually set by hand."
+        },
+        "tags": {
+          "description": "Tags attached to the document."
+        },
+        "authors": {
+          "description": "The authors, as a list of names or of objects with `name`, `email`, `orcid`, `affiliations`."
+        },
+        "reviewers": {
+          "description": "The reviewers of the work."
+        },
+        "editors": {
+          "description": "The editors of the work."
+        },
+        "contributors": {
+          "description": "People credited without being authors."
+        },
+        "venue": {
+          "description": "Where the work appeared: a journal, a conference, a series."
+        },
+        "github": {
+          "description": "The repository the work lives in."
+        },
+        "keywords": {
+          "description": "Keywords describing the work."
+        },
+        "affiliations": {
+          "description": "Institutions the people above belong to, declared once and referenced by id."
+        },
+        "funding": {
+          "description": "Funding and awards behind the work."
+        },
+        "copyright": {
+          "description": "Copyright line."
+        },
+        "options": {
+          "description": "Template options, passed through to the site or export template."
+        },
+        "parts": {
+          "description": "Named parts of the document -- `abstract`, `acknowledgments`, and any part a template asks for."
+        },
+        "social": {
+          "description": "Social accounts shown with the work: `twitter`, `mastodon`, and the like."
+        },
+        "abstract": {
+          "description": "The abstract, inline or as a path to a file holding it."
+        },
+        "summary": {
+          "description": "A plain-language summary."
+        },
+        "keypoints": {
+          "description": "The key points of the work."
+        },
+        "dedication": {
+          "description": "The dedication."
+        },
+        "epigraph": {
+          "description": "An epigraph printed at the head of the work."
+        },
+        "data_availability": {
+          "description": "The data-availability statement."
+        },
+        "acknowledgments": {
+          "description": "The acknowledgments section."
+        },
+        "id": {
+          "description": "The project's identifier."
+        },
+        "references": {
+          "description": "External MyST projects whose labels this one may cross-reference, keyed by name."
+        },
+        "requirements": {
+          "description": "Files listing the environment the project needs -- `requirements.txt`, an `environment.yml`."
+        },
+        "resources": {
+          "description": "Extra files the build should carry along."
+        },
+        "static_files": {
+          "description": "Folders copied into the built site as they are."
+        },
+        "thebe": {
+          "description": "Live-execution settings for the built site: the binder or server the page connects to."
+        },
+        "toc": {
+          "description": "The table of contents: the files and folders, in order. Omit it and the folder is walked."
+        },
+        "remote": {
+          "description": "The remote project this one is linked to."
+        },
+        "index": {
+          "description": "The file that serves as the project's landing page."
+        },
+        "exclude": {
+          "description": "Files and folders the build ignores."
+        },
+        "plugins": {
+          "description": "The plugins the build loads, as paths to `.mjs` files or as `{ type, path }` entries."
+        },
+        "error_rules": {
+          "description": "Rules that silence or re-rank particular build warnings."
+        },
+        "author": {
+          "description": "Alias of `authors`. The authors, as a list of names or of objects with `name`, `email`, `orcid`, `affiliations`."
+        },
+        "reviewer": {
+          "description": "Alias of `reviewers`. The reviewers of the work."
+        },
+        "editor": {
+          "description": "Alias of `editors`. The editors of the work."
+        },
+        "contributor": {
+          "description": "Alias of `contributors`. People credited without being authors."
+        },
+        "affiliation": {
+          "description": "Alias of `affiliations`. Institutions the people above belong to, declared once and referenced by id."
+        },
+        "export": {
+          "description": "Alias of `exports`. The documents built from this one: `pdf`, `tex`, `docx`, `typst`, each with its own options."
+        },
+        "download": {
+          "description": "Alias of `downloads`. Files offered for download beside the page."
+        },
+        "jupyter": {
+          "description": "Alias of `thebe`. Live-execution settings for the built site: the binder or server the page connects to."
+        },
+        "part": {
+          "description": "Alias of `parts`. Named parts of the document -- `abstract`, `acknowledgments`, and any part a template asks for."
+        },
+        "ack": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgements": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgment": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgement": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "availability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "dataAvailability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "data-availability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "quote": {
+          "description": "Alias of `epigraph`. An epigraph printed at the head of the work."
+        },
+        "plain_language_summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "plain-language-summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "plainLanguageSummary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "lay_summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "lay-summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "keyPoints": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "key_points": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "key-points": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "image": {
+          "description": "Alias of `thumbnail`. The image that stands for the document in listings."
+        },
+        "identifier": {
+          "description": "Alias of `identifiers`. Other identifiers for this work, keyed by scheme."
+        },
+        "socials": {
+          "description": "Alias of `social`. Social accounts shown with the work: `twitter`, `mastodon`, and the like."
+        },
+        "python": {
+          "description": "Which Python namespace this document's code cells run in: `shared` (the default), `isolated` for one of its own, or any name for a namespace shared by the documents that give the same one.",
+          "anyOf": [
+            {
+              "enum": [
+                "shared",
+                "isolated"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "language": {
+          "description": "The dictionary the spell checker uses, as a language tag -- `fr`, `en-GB`.",
+          "type": "string"
+        },
+        "shortCaptions": {
+          "description": "How a short caption is derived for the lists of figures and tables when a figure declares none: `sentence`, or a number of characters (10 or more). `false` prints captions in full.",
+          "anyOf": [
+            {
+              "enum": [
+                "sentence",
+                false
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 10
+            }
+          ]
+        },
+        "citation-style": {
+          "description": "How a citation is rendered in the text: `author-year`, or `numeric` (the default).",
+          "enum": [
+            "author-year",
+            "numeric"
+          ]
+        },
+        "citation-template": {
+          "description": "How one entry of the bibliography is rendered. A pattern over the fields of the entry: `{authors} ({year}). *{title}*. {container}{volume}{pages}.{doilink}`.",
+          "type": "string"
+        },
+        "css": {
+          "description": "A style sheet, relative to the document, applied to the preview and to the exports.",
+          "type": "string"
+        },
+        "slides": {
+          "description": "How this document is cut into slides and how a deck is drawn.",
+          "type": "object",
+          "properties": {
+            "marker": {
+              "description": "What separates two slides.",
+              "type": "string"
+            },
+            "cutAtHeading": {
+              "description": "Start a new slide at every heading of this level or above.",
+              "type": [
+                "integer",
+                "boolean"
+              ]
+            },
+            "width": {
+              "description": "Slide width in pixels.",
+              "type": "number"
+            },
+            "height": {
+              "description": "Slide height in pixels.",
+              "type": "number"
+            },
+            "fontSize": {
+              "description": "Base type size of a slide, in pixels. A slide is read from the back of a room.",
+              "type": "number"
+            },
+            "cellFontSize": {
+              "description": "Type size of the code cells on a slide.",
+              "type": "number"
+            },
+            "padding": {
+              "description": "Inner margin of a slide, as a CSS length.",
+              "type": "string"
+            },
+            "verticalAlign": {
+              "description": "Where the content sits in the slide box.",
+              "enum": [
+                "flex-start",
+                "center",
+                "flex-end"
+              ]
+            },
+            "transition": {
+              "description": "How one slide gives way to the next.",
+              "type": "string"
+            },
+            "transitionMs": {
+              "description": "How long that takes, in milliseconds.",
+              "type": "number"
+            },
+            "background": {
+              "description": "Slide background, as a CSS colour.",
+              "type": "string"
+            },
+            "header": {
+              "description": "Header line. Three parts separated by `|`.",
+              "type": "string"
+            },
+            "footer": {
+              "description": "Footer line. Three parts separated by `|`.",
+              "type": "string"
+            },
+            "headerStyle": {
+              "description": "CSS applied to the header line.",
+              "type": "string"
+            },
+            "footerStyle": {
+              "description": "CSS applied to the footer line.",
+              "type": "string"
+            },
+            "furniture": {
+              "description": "Show the header and footer.",
+              "type": "boolean"
+            },
+            "align": {
+              "description": "Horizontal alignment inside a slide.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "site": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "description": "The document's title."
+        },
+        "subtitle": {
+          "description": "A second line under the title."
+        },
+        "short_title": {
+          "description": "A shortened title, for running heads and navigation."
+        },
+        "description": {
+          "description": "One or two sentences describing the document, used in listings and link previews."
+        },
+        "thumbnail": {
+          "description": "The image that stands for the document in listings."
+        },
+        "thumbnailOptimized": {
+          "description": "The optimized thumbnail, written by the build. Not usually set by hand."
+        },
+        "banner": {
+          "description": "A wide image shown at the head of the page."
+        },
+        "bannerOptimized": {
+          "description": "The optimized banner, written by the build. Not usually set by hand."
+        },
+        "tags": {
+          "description": "Tags attached to the document."
+        },
+        "authors": {
+          "description": "The authors, as a list of names or of objects with `name`, `email`, `orcid`, `affiliations`."
+        },
+        "reviewers": {
+          "description": "The reviewers of the work."
+        },
+        "editors": {
+          "description": "The editors of the work."
+        },
+        "contributors": {
+          "description": "People credited without being authors."
+        },
+        "venue": {
+          "description": "Where the work appeared: a journal, a conference, a series."
+        },
+        "github": {
+          "description": "The repository the work lives in."
+        },
+        "keywords": {
+          "description": "Keywords describing the work."
+        },
+        "affiliations": {
+          "description": "Institutions the people above belong to, declared once and referenced by id."
+        },
+        "funding": {
+          "description": "Funding and awards behind the work."
+        },
+        "copyright": {
+          "description": "Copyright line."
+        },
+        "options": {
+          "description": "Template options, passed through to the site or export template."
+        },
+        "parts": {
+          "description": "Named parts of the document -- `abstract`, `acknowledgments`, and any part a template asks for."
+        },
+        "social": {
+          "description": "Social accounts shown with the work: `twitter`, `mastodon`, and the like."
+        },
+        "abstract": {
+          "description": "The abstract, inline or as a path to a file holding it."
+        },
+        "summary": {
+          "description": "A plain-language summary."
+        },
+        "keypoints": {
+          "description": "The key points of the work."
+        },
+        "dedication": {
+          "description": "The dedication."
+        },
+        "epigraph": {
+          "description": "An epigraph printed at the head of the work."
+        },
+        "data_availability": {
+          "description": "The data-availability statement."
+        },
+        "acknowledgments": {
+          "description": "The acknowledgments section."
+        },
+        "projects": {
+          "description": "The projects this site is built from, each with a path and a slug."
+        },
+        "nav": {
+          "description": "The site's navigation bar."
+        },
+        "actions": {
+          "description": "The buttons in the site header, each with a title and a URL."
+        },
+        "domains": {
+          "description": "The domains the site is served at."
+        },
+        "template": {
+          "description": "The site template, by name or path."
+        },
+        "author": {
+          "description": "Alias of `authors`. The authors, as a list of names or of objects with `name`, `email`, `orcid`, `affiliations`."
+        },
+        "reviewer": {
+          "description": "Alias of `reviewers`. The reviewers of the work."
+        },
+        "editor": {
+          "description": "Alias of `editors`. The editors of the work."
+        },
+        "contributor": {
+          "description": "Alias of `contributors`. People credited without being authors."
+        },
+        "affiliation": {
+          "description": "Alias of `affiliations`. Institutions the people above belong to, declared once and referenced by id."
+        },
+        "part": {
+          "description": "Alias of `parts`. Named parts of the document -- `abstract`, `acknowledgments`, and any part a template asks for."
+        },
+        "ack": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgements": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgment": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "acknowledgement": {
+          "description": "Alias of `acknowledgments`. The acknowledgments section."
+        },
+        "availability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "dataAvailability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "data-availability": {
+          "description": "Alias of `data_availability`. The data-availability statement."
+        },
+        "quote": {
+          "description": "Alias of `epigraph`. An epigraph printed at the head of the work."
+        },
+        "plain_language_summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "plain-language-summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "plainLanguageSummary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "lay_summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "lay-summary": {
+          "description": "Alias of `summary`. A plain-language summary."
+        },
+        "keyPoints": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "key_points": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "key-points": {
+          "description": "Alias of `keypoints`. The key points of the work."
+        },
+        "image": {
+          "description": "Alias of `thumbnail`. The image that stands for the document in listings."
+        },
+        "socials": {
+          "description": "Alias of `social`. Social accounts shown with the work: `twitter`, `mastodon`, and the like."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

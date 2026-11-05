@@ -308,12 +308,31 @@ const CodeEditor = styled.div`
     border-left: 5px solid var(--error-bg);
   }
 
+  /*
+   * A tooltip follows the theme, which it did not: CodeMirror's base theme
+   * paints .cm-tooltip a light grey and that rule knows nothing about the
+   * editor being in dark mode, while the text inside inherits --char-col and
+   * turns white. White on light grey, which is how this was noticed. The
+   * colours are named here for the panel itself and for the documentation
+   * pane beside a completion list; the completion list's own rule already
+   * carries them, in MystStyles.js, and is left alone.
+   */
   .cm-editor .cm-tooltip {
     max-width: min(90vw, 600px);
+    background-color: var(--panel-bg);
+    color: var(--char-col);
+    border: 1px solid var(--border);
 
     a {
       color: var(--accent-dark);
     }
+  }
+
+  /* The documentation panel beside the completion list, same treatment. */
+  .cm-editor .cm-completionInfo {
+    background-color: var(--panel-bg);
+    color: var(--char-col);
+    border: 1px solid var(--border);
   }
 
   .cm-critic-widget {

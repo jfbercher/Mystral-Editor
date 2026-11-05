@@ -96,4 +96,12 @@ It is installed at start-up, at the same time as the interpreter. If that instal
 
 Completion reads the text of the cell rather than the running interpreter as in IPython. It therefore works before anything has been run, it is the same whichever Python namespace the document uses, and, in exchange, it knows nothing of a variable that exists only because a cell was executed. To look at what is actually defined in the interpreter, use the variable inspector, the **Vars** button  described in [executable-content](executable-content.md).
 
+## YAML: frontmatter and configuration files
+
+A YAML frontmatter block, and a `.yml` or `.yaml` file opened in its own tab, are handled by a YAML language server rather than by the completions above. Its proposals come from a JSON schema bundled with the application: the keys that may appear at that point, with on hover what each one is for, and an underline on a key that does not exist -- which, for a frontmatter of a hundred possible keys, is most of the help.
+
+Two schemas, chosen from the text itself: a document frontmatter is validated against the mystmd page frontmatter, a `myst.yml` against the project configuration, `project:`, `site:` and everything underneath. Both carry the spellings mystmd accepts as aliases (`jupyter` for `thebe`, `image` for `thumbnail`) and the keys this editor adds of its own -- `python`, `language`, `slides`, `css`, `shortCaptions`, `citation-style`, `citation-template`.
+
+The schemas are generated from the installed version of mystmd, so they follow it; see the Contributing page if you are upgrading it.
+
 See also [keyboard_shortcuts_en](keyboard_shortcuts_en.md) for the keys, and [directives-and-roles](directives-and-roles.md) for what each directive and role does.

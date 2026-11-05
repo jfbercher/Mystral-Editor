@@ -301,6 +301,40 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
   ]);
 }
 
+/**
+ * The editor language a file name asks for.
+ *
+ * Everything is markdown unless the extension says otherwise, which is what
+ * the editor is for. YAML is the exception that earns its place: a `myst.yml`
+ * opened as markdown has no YAML region at all, so it gets neither colouring
+ * nor the language server -- the schema work is wasted on precisely the file
+ * it was written for. The map is the place to add `.py` the day there is
+ * something to gain from it.
+ */
+const LANGUAGE_BY_EXTENSION = { yml: "yaml", yaml: "yaml" };
+
+export function languageForFile(name) {
+  const ext = String(name || "").split(".").pop()?.toLowerCase();
+  return LANGUAGE_BY_EXTENSION[ext] ?? "markdown";
+}
+
+/**
+ * Put a tab in the language its file asks for.
+ *
+ * Reached through the window registry rather than through a closure, because
+ * the caller is the tab manager: the file a tab holds changes after the editor
+ * is mounted -- on open, and on save-as -- and the name is known there. The
+ * language is a signal the editor's set-up reads, so assigning it rebuilds the
+ * editor state over the same text; the guard keeps that from happening on
+ * every label refresh, which is most of them.
+ */
+export function applyLanguageForFile(editorId, name) {
+  const opts = window.myst_editor?.[editorId]?.state?.options;
+  if (!opts?.language) return;
+  const language = languageForFile(name);
+  if (opts.language.value !== language) opts.language.value = language;
+}
+
 export function mountEditor(mnt_options) {
   const { 
     editorId, 
@@ -552,6 +586,30 @@ export function mountEditor(mnt_options) {
         dict: config.spellcheck?.language || "en_US",
         dictionaryPath: `${window.location.pathname}dictionaries`,
       },
+      // The schema the YAML language server validates against: completion of
+      // the frontmatter keys, and a diagnostic on one that does not exist.
+      //
+      // Only the frontmatter schema is named. Its sibling `myst.schema.json`
+      // is reached by the extension itself, which switches to it for a
+      // document that reads like a project configuration -- see
+      // extensions/yamlLSPExtension.js. Which of the two applies is a property
+      // of the text, not of the editor, so it is not a setting.
+      //
+      // Same shape as `dictionaryPath` above, and for the same reason: a path
+      // relative to where the application is served answers for the desktop
+      // build and for the web one alike. `yamlSchema: false` in config.json
+      // turns the whole thing off.
+      //
+      // A path, not a full URL, and deliberately: the worker turns the
+      // document's `file:///` uri into `self.location.origin` before fetching
+      // (see lsp/yamlLSPWorker.js), so what it needs is something that
+      // resolves against the origin. `new URL(...).pathname` is how a page
+      // served from `/index.html` still yields `/schemas/...` rather than
+      // `/index.htmlschemas/...`.
+      yamlSchema:
+        config.yamlSchema === undefined
+          ? new URL("schemas/frontmatter.schema.json", window.location.href).pathname
+          : config.yamlSchema,
       syncScroll: true,
     },
     container,

@@ -136,7 +136,11 @@ Inserting equations in Mystral - supports standard LaTeX as well as `math`direct
 
 ### YAML Frontmatter
 
-A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor. A YAML language server can be activated via an external JSON schema for tooltips and autocompletion.
+A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor.
+
+The block is also checked as you type. A YAML language server validates it against a JSON schema bundled with the application: a key that does not exist is underlined, hovering over one shows what it is for, and completion proposes the keys that may appear at that point. The schema knows the whole of the mystmd frontmatter, the spellings mystmd accepts as aliases (`jupyter` for `thebe`, `author` for `authors`, `image` for `thumbnail`), and the keys this editor adds of its own -- `python`, `language`, `slides`, `css`, `shortCaptions`, `citation-style`, `citation-template`.
+
+The same applies to a configuration file. A `.yml` or `.yaml` file opened in a tab is edited as YAML rather than as markdown -- coloured as YAML, with the same validation, hover and completion -- and a `myst.yml` is recognised for what it is and checked against the project schema, down to `project:`, `site:` and the keys underneath them. Its preview is its own source: a configuration file is already its own best presentation.
 
 An `extends:` key lets a document inherit its frontmatter from one or more shared YAML files, so that the settings common to a set of documents -- numbering, citation style, math macros, export entries -- are written once. Lists are combined, objects deep-merged, and the document's own values win. See [frontmatter-extends](frontmatter-extends.md).
 
@@ -311,6 +315,8 @@ An included file is read once per session, so editing it while the host document
 ### Suggestions and Completion
 
 The editor proposes what can come next as soon as it can tell what is being written. A `:::` fence opens the list of directives, and accepting one inserts its whole skeleton: opening line, argument, the usual options, closing fence, with `Tab` moving from placeholder to placeholder. A line starting with `:` inside a directive proposes that directive's options, and those whose values form a closed set then propose the values themselves. A `{` opens the list of roles.
+
+YAML gets the same treatment, from a different source: inside a frontmatter block, and in a `.yml` file opened in its own tab, the proposals come from a JSON schema bundled with the application, which also underlines a key that does not exist and explains on hover what each one is for. See [YAML frontmatter](scientific-authoring.md).
 
 The proposals that matter most for a scientific document are the ones read from the document rather than from a list. `{ref}`, `{numref}`, `{eq}` and the link form `[](#label)` propose the labels the document defines -- sections, figures, tables, equations, exercises, theorems, including those brought in by an `{include}` -- each with its family, its current number and its caption, and matching runs over the caption as well as the key, so a figure can be found by what it shows when its label has been forgotten. Citations work the same way: after an `@` inside brackets, the entries of the attached `.bib` file are proposed with their author, year and title. Inside a code cell, completion comes from `jedi` running in Pyodide.
 
@@ -614,6 +620,18 @@ Mystral Editor requires a few additional packages beyond the upstream baseline:
 ```bash
 npm install katex markdown-it-texmath js-yaml @codemirror/lang-python
 ```
+
+### Regenerating the YAML schemas
+
+The JSON schemas the YAML language server validates against -- `src/public/schemas/frontmatter.schema.json` for a document's frontmatter, `myst.schema.json` for a project configuration -- are generated, not written:
+
+```bash
+npm run schemas
+```
+
+mystmd publishes no schema of its own; it validates by hand, in TypeScript. But it exports the key lists and the alias map, so `scripts/generate-yaml-schemas.mjs` reads them from the installed `myst-frontmatter` and `myst-config` and builds the schemas from the version actually in `node_modules`. Upgrade mystmd, run the command again, and the editor stops offering keys that version no longer knows.
+
+Nothing runs it for you: neither `npm run dev` nor `npm run build` calls it, and the build only copies `src/public/` into `dist/`. So run it in two cases -- after bumping mystmd, and after adding or changing one of this editor's own keys in the `OURS` block of the generator, which is also where their hover descriptions are written. The generated files are sources like any other and are committed as such, since they are what the application serves.
 
 ### Development
 

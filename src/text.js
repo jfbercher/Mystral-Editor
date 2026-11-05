@@ -676,7 +676,33 @@ export class TextManager {
   }
 
   splitTextIntoChunks(chunkLookup = {}) {
-    
+
+    // A YAML document has no preview to render: it is configuration, not
+    // prose. Rendering it as markdown would turn `site:` into a paragraph and
+    // swallow the indentation, which is the one thing worth seeing. So the
+    // source is shown as it is -- the honest preview of a file that is already
+    // its own best presentation -- and the whole chunking machinery below,
+    // which exists to re-render only what changed in a long document, is
+    // skipped along with it.
+    if (this.options.language?.value === "yaml") {
+      const text = this.text.value;
+      const hash = `yaml-${new IMurMurHash(text, 42).result()}`;
+      return [
+        {
+          text,
+          hash,
+          id: 0,
+          html: chunkLookup[hash]?.html ?? `<pre class="yaml-source">${this.md.value.utils.escapeHtml(text)}</pre>`,
+          oldId: chunkLookup[hash]?.oldId,
+          startLine: 1,
+          endLine: this.text.value.split("\n").length,
+          slideStyle: "",
+          slideData: {},
+          hasFloat: false,
+        },
+      ];
+    }
+
     if (timing_debug) {const _t0 = performance.now();}
     // Effective: the project's myst.yml with this document's own frontmatter on
     // top. A document with no block of its own still belongs to its project.

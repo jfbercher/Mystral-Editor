@@ -9,14 +9,34 @@ import { setDiagnostics } from "@codemirror/lint";
 import { CompletionItemKind } from "vscode-languageserver-protocol";
 
 export const newLspClient = () => {
-  const yamlTransport = new PostMessageWorkerTransport(new YamlLSPWorker());
-  return new LanguageServerClient({
+  const worker = new YamlLSPWorker();
+
+  // A worker that dies while loading posts nothing, so the client's
+  // `initializePromise` never settles and everything waiting on it waits for
+  // ever -- silently. That is exactly how this went unnoticed: the colouring
+  // kept working, because it comes from @codemirror/lang-yaml and needs no
+  // server at all. These two listeners are what turn that silence into a line
+  // in the console, and they stay for that reason.
+  worker.addEventListener("error", (ev) => {
+    console.error("[yaml-lsp] the worker failed:", ev.message || ev, ev.filename ? `${ev.filename}:${ev.lineno}` : "");
+  });
+  worker.addEventListener("messageerror", (ev) => {
+    console.error("[yaml-lsp] a message could not be read:", ev);
+  });
+  const yamlTransport = new PostMessageWorkerTransport(worker);
+  const client = new LanguageServerClient({
     transport: yamlTransport,
     rootUri: "file:///",
     workspaceFolders: null,
     languageId: "yaml",
     autoClose: true,
   });
+
+  client.initializePromise?.catch((err) => {
+    console.error("[yaml-lsp] initialisation refused:", err);
+  });
+
+  return client;
 };
 
 export const buildYamlLspPlugin = (lspClient, schema) =>
@@ -28,11 +48,12 @@ export const buildYamlLspPlugin = (lspClient, schema) =>
         this.version = 0;
         lspClient.attachPlugin(this);
         lspClient.initializePromise.then(() => {
+          const text = stateToYamlDoc(schema, view.state);
           lspClient.textDocumentDidOpen({
             textDocument: {
               uri: getUri(this.id),
               languageId: "yaml",
-              text: stateToYamlDoc(schema, view.state),
+              text,
               version: this.version,
             },
           });
@@ -128,7 +149,30 @@ const buildYamlCompletionSource = (lspClient) => ({
   },
 });
 
+/**
+ * Say so when the schema cannot be read.
+ *
+ * The language server fetches it itself, inside the worker, and says nothing
+ * when the fetch fails or brings back something that is not a schema: hover
+ * and completion simply stay empty, which is indistinguishable from a working
+ * chain with nothing to say. A dev server answers an unknown path with
+ * `index.html` and a 200, so "not JSON" is as likely a failure as a 404 --
+ * both are checked here, once, and only a failure is printed.
+ */
+const checkSchema = (schema) => {
+  fetch(schema)
+    .then(async (res) => {
+      const body = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      JSON.parse(body);
+    })
+    .catch((err) => {
+      console.warn(`[yaml-lsp] the schema at ${schema} could not be read, so there will be no hover or completion:`, err.message || err);
+    });
+};
+
 export const yamlLSPExtension = (schema, editorView, linter, language) => {
+  checkSchema(schema);
   const lspClient = newLspClient();
   const tooltipSource = buildYamlTooltipSource(lspClient);
   const completionSource = buildYamlCompletionSource(lspClient);
@@ -157,8 +201,36 @@ export const yamlLSPExtension = (schema, editorView, linter, language) => {
 const tooltipRenderer = markdownIt();
 const CompletionItemKindMap = Object.fromEntries(Object.entries(CompletionItemKind).map(([key, value]) => [value, key]));
 
+/**
+ * A project configuration, as opposed to a document frontmatter.
+ *
+ * The two are both YAML and both ours to validate, against two different
+ * schemas, and which one applies cannot be read from the editor: a tab holds
+ * whatever file was opened in it, and the YAML region of a markdown document
+ * is reached through the same code path as a whole `myst.yml`. So the document
+ * says it itself. `version` and `project` are top-level keys of a `myst.yml`
+ * and of nothing else -- neither is a page frontmatter key -- which makes
+ * either of them, at column zero, a safe tell.
+ */
+const LOOKS_LIKE_MYST_YML = /^(?:version|project)\s*:/m;
+
+/**
+ * The schema the language server validates this document against.
+ *
+ * `schema` is the configured URL, and it names the frontmatter schema; a
+ * project configuration is validated against its sibling. Swapping the file
+ * name rather than carrying two options keeps the editor's configuration a
+ * single value, and keeps the two schemas where they already live, side by
+ * side.
+ */
+const schemaFor = (schema, text) =>
+  LOOKS_LIKE_MYST_YML.test(text) ? String(schema).replace(/[^/]+$/, "myst.schema.json") : schema;
+
 /** This is a workaround to pass the schema to the language server. The server schema file association options do not seem to work. */
-const stateToYamlDoc = (schema, state) => `# yaml-language-server: $schema=${schema}\n${state.doc.toString()}`;
+const stateToYamlDoc = (schema, state) => {
+  const text = state.doc.toString();
+  return `# yaml-language-server: $schema=${schemaFor(schema, text)}\n${text}`;
+};
 
 const cmPosToLspPos = (state, pos) => {
   const line = state.doc.lineAt(pos);

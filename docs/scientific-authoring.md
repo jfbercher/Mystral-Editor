@@ -18,7 +18,11 @@ Inserting equations in Mystral - supports standard LaTeX as well as `math`direct
 
 ### YAML Frontmatter
 
-A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor. A YAML language server can be activated via an external JSON schema for tooltips and autocompletion.
+A YAML metadata block at the head of the document (title, authors, date, DOI, venue, license, GitHub link) is rendered as a formatted bibliographic header. The block is displayed as a collapsible section in the editor.
+
+The block is also checked as you type. A YAML language server validates it against a JSON schema bundled with the application: a key that does not exist is underlined, hovering over one shows what it is for, and completion proposes the keys that may appear at that point. The schema knows the whole of the mystmd frontmatter, the spellings mystmd accepts as aliases (`jupyter` for `thebe`, `author` for `authors`, `image` for `thumbnail`), and the keys this editor adds of its own -- `python`, `language`, `slides`, `css`, `shortCaptions`, `citation-style`, `citation-template`.
+
+The same applies to a configuration file. A `.yml` or `.yaml` file opened in a tab is edited as YAML rather than as markdown -- coloured as YAML, with the same validation, hover and completion -- and a `myst.yml` is recognised for what it is and checked against the project schema, down to `project:`, `site:` and the keys underneath them. Its preview is its own source: a configuration file is already its own best presentation.
 
 An `extends:` key lets a document inherit its frontmatter from one or more shared YAML files, so that the settings common to a set of documents -- numbering, citation style, math macros, export entries -- are written once. Lists are combined, objects deep-merged, and the document's own values win. See [frontmatter-extends](frontmatter-extends.md).
 
