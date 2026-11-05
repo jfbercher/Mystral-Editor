@@ -85,14 +85,57 @@ import { scanReferenceLinks, markdownItRefLinks } from "./markdown/markdownRefLi
  *   codeEnd   : position du \n qui fait partie du match de fermeture
  *   blockEnd  : fin du match de fermeture
  */
+/**
+ * The indentation of a directive, taken off its content and put back on.
+ *
+ * A directive opened with leading spaces -- inside a list item, where it is
+ * required, or by an author's slip -- sets its own base column, and MyST strips
+ * that much from every line of its body. The widget therefore holds code that
+ * no longer matches the source, and `findFenceBlock` compares the two for
+ * equality: nothing matched, so editing a cell wrote nothing back, deleting it
+ * removed nothing, and inserting below it landed at the end of the document --
+ * all three without a word, since the only one of them with a fallback used it.
+ *
+ * Two functions rather than one each way, and used as a pair: the dedent says
+ * what the parser did, the indent undoes it, and anything written back has to
+ * go through the second or it leaves the container it was in.
+ *
+ * A line shorter than the indentation loses what it has and no more, which is
+ * what the parser does too.
+ */
+const dedentBody = (text, indent) => {
+  if (!indent) return text;
+  return String(text)
+    .split("\n")
+    .map((line) => {
+      let i = 0;
+      while (i < indent.length && (line[i] === " " || line[i] === "\t")) i += 1;
+      return line.slice(i);
+    })
+    .join("\n");
+};
+
+/** Put `indent` back on every line that has something on it. */
+const indentBody = (text, indent) => {
+  if (!indent) return text;
+  return String(text)
+    .split("\n")
+    .map((line) => (line.trim() === "" ? line : indent + line))
+    .join("\n");
+};
+
 function listFenceBlocks(src) {
+  // The closing marker, not a whole pattern: it has to be built per block,
+  // because a directive opened with indentation closes with the same -- and a
+  // regex anchored on `\n:::` ran straight past it to the next cell's closing
+  // marker in the first column, swallowing everything in between.
   const patterns = [
-    { open: ":::{code-cell}", closeSource: "\\n:::[^\\S\\n]*(?:\\n|$)" },
-    { open: "```{code-cell}", closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
-    { open: "```code-cell",   closeSource: "\\n```[^\\S\\n]*(?:\\n|$)" },
+    { open: ":::{code-cell}", close: ":::" },
+    { open: "```{code-cell}", close: "```" },
+    { open: "```code-cell", close: "```" },
   ];
   const blocks = [];
-  for (const { open, closeSource } of patterns) {
+  for (const { open, close } of patterns) {
     let pos = 0;
     while (pos < src.length) {
       const openIdx = src.indexOf(open, pos);
@@ -102,7 +145,20 @@ function listFenceBlocks(src) {
       // the language ends up counted as the first line of code.
       const codeStart = src.indexOf("\n", openIdx + open.length);
       if (codeStart === -1) break;
-      const closeRe = new RegExp(closeSource, "g");
+
+      const lineStart = openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1;
+      // What sits before the marker on its own line. Whitespace means an
+      // indented directive; anything else means this is not the opening of one
+      // at all, and it is left alone.
+      const before = src.slice(lineStart, openIdx);
+      const indent = /^[ \t]*$/.test(before) ? before : "";
+
+      // Up to the opening indentation, and no more: a closing marker further
+      // in belongs to a directive nested inside this one, and one further out
+      // closes something that encloses it. `{0,n}` rather than exactly n, so a
+      // body closed in the first column -- which is what an author writes by
+      // mistake, and what markdown still accepts -- is found as well.
+      const closeRe = new RegExp(`\\n[ \\t]{0,${indent.length}}${close}[^\\S\\n]*(?:\\n|$)`, "g");
       closeRe.lastIndex = codeStart;
       const closeM = closeRe.exec(src);
       if (!closeM) { pos = openIdx + 1; continue; }
@@ -133,11 +189,12 @@ function listFenceBlocks(src) {
       }
 
       blocks.push({
-        lineStart: openIdx === 0 ? 0 : src.lastIndexOf("\n", openIdx - 1) + 1,
+        lineStart,
+        indent,
         codeStart: bodyStart,
         codeEnd,
         blockEnd: codeEnd + closeM[0].length,
-        inside: src.slice(bodyStart, codeEnd).trim(),
+        inside: dedentBody(src.slice(bodyStart, codeEnd), indent).trim(),
       });
       pos = closeM.index + closeM[0].length;
     }
@@ -356,7 +413,12 @@ export class TextManager {
       const found = findFenceBlock(src, originalCode.trim(), this._posFromLineId(lineId));
       if (!found) return;
       // Remplace uniquement le contenu interne (codeStart→codeEnd) en conservant les marqueurs.
-      view.dispatch({ changes: { from: found.codeStart, to: found.codeEnd, insert: "\n" + newCode } });
+      // Ré-indenté : l'éditeur de cellule rend le code tel que le parseur l'a
+      // donné, c'est-à-dire désindenté, et le réécrire ainsi sortirait la
+      // cellule du conteneur qui la porte.
+      view.dispatch({
+        changes: { from: found.codeStart, to: found.codeEnd, insert: "\n" + indentBody(newCode, found.indent) },
+      });
     };
     document.addEventListener("pyodide-code-edit", this._pyodideEditHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-code-edit", this._pyodideEditHandler));
@@ -371,12 +433,19 @@ export class TextManager {
       const src = view.state.doc.toString();
 
       let insertPos = src.length; // défaut : fin de document
+      let indent = "";
 
       const found = findFenceBlock(src, (currentCode ?? "").trim(), this._posFromLineId(lineId));
-      if (found) insertPos = found.blockEnd;
+      if (found) {
+        insertPos = found.blockEnd;
+        // The new cell is born where the old one lives: a cell inside a list
+        // item whose neighbour starts in the first column is no longer in the
+        // list.
+        indent = found.indent;
+      }
 
       view.dispatch({
-        changes: { from: insertPos, to: insertPos, insert: "\n\n:::{code-cell}\n\n:::" },
+        changes: { from: insertPos, to: insertPos, insert: "\n\n" + indentBody(":::{code-cell}\n\n:::", indent) },
       });
     };
     document.addEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler);

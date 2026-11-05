@@ -330,27 +330,28 @@ One subtlety about restored functions. `cloudpickle` rebuilds a function with it
 
 ## Cells that stay alive on the published site  
 
-A cell is not only alive in the editor. When a document is published as a MyST
-site, what its cells computed here is carried across and shown as it is, so a
-reader sees the figures straight away, without waiting and without running
-anything.  
+A cell is not only alive in the editor. When a document is published as a MyST site, what its cells computed here is carried across and shown as it is, so a reader sees the figures straight away, without waiting and without running anything.  
 
-And if the document declares a `kernelspec` in its frontmatter, those same
-cells can be **re-run by the reader**, in their own browser, the new result
-replacing the figure in place. The kernel is JupyterLite — Python compiled to
-WebAssembly, like the one running here — fetched only when someone actually
-presses Run, so a reader who never does pays nothing for it. Nothing is
-installed on their machine, and nothing on yours: no Jupyter server is
-involved.  
+And if the document declares a `kernelspec` in its frontmatter, those same cells can be **re-run by the reader**, in their own browser, the new result replacing the figure in place. The kernel is JupyterLite — Python compiled to WebAssembly, like the one running here — fetched only when someone actually presses Run, so a reader who never does pays nothing for it. Nothing is installed on their machine, and nothing on yours: no Jupyter server is involved.
 
-The two states coexist on purpose: the figures you computed are the document's
-initial condition, and a kernel, when the reader starts one, takes over from
-there. A document without `kernelspec` is simply never executed on the site and
-keeps your figures — which is the right choice for notes meant to be read
-rather than played with.  
+If you want to mark your content as being executable (and able to execute it at build with `--execute`) and replay it on site, specify a kernel in the document frontmatter, like
 
-The keys that enable this, and where each belongs, are in
-[export](export.md#cells-that-stay-executable-on-the-site).  
+```yaml
+kernelspec:
+  name: python3
+  display_name: 'Python 3+'
+```
+
+In your `myst.yml`, put, if not already in place:
+```yaml
+project:
+  jupyter:
+    lite: true
+```
+
+The two states coexist on purpose: the figures you computed are the document's initial condition, and a kernel, when the reader starts one, takes over from there. A document without `kernelspec` is simply never executed on the site and keeps your figures — which is the right choice for notes meant to be read rather than played with.  
+
+The keys that enable this, and where each belongs, are in [export](export.md#cells-that-stay-executable-on-the-site).  
 
 ## The variable inspector  
 
