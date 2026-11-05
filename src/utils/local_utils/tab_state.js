@@ -282,11 +282,27 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
     onFileChanged?.();
   };
 
+  /**
+   * Forget everything stored under this tab's id.
+   *
+   * Both stores, whatever the mode: `setStoredFileHandle` writes a string to
+   * `localStorage` *and* the value to the database, so clearing one left the
+   * other behind. That mattered little while ids were reused -- the next tab
+   * with the same name overwrote them -- and matters now that they are not:
+   * an id is used once, so what it leaves is never claimed again, and would
+   * simply accumulate against the quota.
+   */
   tab.delKeyFromDB = async () => {
-    if (isTauri) {
-      localStorage.removeItem(`storedFileHandle:${editorId}`);
-    } else {
-      await del(`storedFileHandle:${editorId}`);
+    const key = `storedFileHandle:${editorId}`;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* no localStorage here; the database below is the one that matters */
+    }
+    try {
+      await del(key);
+    } catch (err) {
+      console.warn("[tabs] could not forget", key, err);
     }
   };
 

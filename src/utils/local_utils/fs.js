@@ -418,9 +418,15 @@ export async function setStoredFileHandle(editorId, handleOrPath) {
   // null means "this tab no longer has a file". Without this branch the
   // localStorage entry survived, so a Tauri tab kept its old path: the helper
   // could set a handle but not clear one.
+  //
+  // Deleted rather than set to null. `getStoredFileHandle` tests the value and
+  // not the presence of the key, so the two read the same -- but a null left
+  // one entry per tab that ever lost its file, and ids are no longer reused, so
+  // nothing would ever overwrite it. A tombstone that no one can read is just
+  // something growing against the quota.
   if (handleOrPath == null) {
     localStorage.removeItem(key);
-    await set(key, null);
+    await del(key);
     return;
   }
   if (typeof handleOrPath === 'string') {

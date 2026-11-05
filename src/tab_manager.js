@@ -61,6 +61,11 @@ function setEditorMode(editorId, mode) {
 export class TabManager {
   constructor(editorOptions = {}) {
     this.openTabs = new Map();
+    /**
+     * The highest tab number ever handed out. See `nextAvailableEditorId`.
+     * Seeded by `seedEditorIds()` before any tab is created.
+     */
+    this.idFloor = 0;
     this.activeTabId = null;
     this.editorOptions = editorOptions;
     this.tabsBarEl = document.getElementById("tabs-bar");
@@ -459,6 +464,9 @@ export class TabManager {
   }
 
   async restoreTabs() {
+    // Before any tab exists, so that a restored id is counted as used rather
+    // than handed out again.
+    await this.seedEditorIds();
     const savedOrder = await localUtils.getOpenTabsOrder();
     const lastActiveTabId = await localUtils.getActiveTabId();
     console.log("Restoring tabs:", savedOrder);
@@ -524,10 +532,67 @@ export class TabManager {
     this.updateTabLabel(editorId);
   }
 
+  /**
+   * The highest number already used, read from what the previous sessions left.
+   *
+   * Derived rather than stored. A persisted counter is a thing that can be lost
+   * -- cleared storage, another machine, a corrupted entry -- and losing it
+   * would hand out an id that is already in use somewhere, which is the whole
+   * defect this is meant to end. What exists cannot be lost without the ids
+   * themselves going with it.
+   *
+   * It also means there is nothing to migrate: the ids of the current session
+   * simply become the floor, and the next ones start above them.
+   */
+  async seedEditorIds() {
+    let max = 0;
+    const note = (id) => {
+      const m = /^myst-(\d+)$/.exec(String(id ?? ""));
+      if (m) max = Math.max(max, Number(m[1]));
+    };
+    try {
+      (await localUtils.getOpenTabsOrder())?.forEach?.(note);
+    } catch (err) {
+      console.warn("[tabs] the saved order could not be read:", err);
+    }
+    try {
+      const PREFIX = "storedFileHandle:";
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(PREFIX)) note(key.slice(PREFIX.length));
+      }
+    } catch {
+      /* no localStorage: the open tabs below are then the only floor */
+    }
+    [...this.openTabs.keys()].forEach(note);
+    this.idFloor = max;
+    console.log("[tabs] ids start above", max);
+  }
+
+  /**
+   * A new id, never one that has been used before.
+   *
+   * This used to return the lowest free one, so closing `myst-2` and opening a
+   * tab gave `myst-2` back. Anything of the first tab's that outlived it -- a
+   * listener, a timer, a cache entry, an id noted somewhere -- then answered
+   * for the second, silently. That cost two files on 23 October: a document
+   * listener still holding the closed tab wrote the new tab's text into the old
+   * tab's file.
+   *
+   * A counter that never goes down turns that whole class of bug into a
+   * non-event: whatever still holds a dead id now matches nothing, for ever.
+   *
+   * No upper bound, deliberately. `Number.MAX_SAFE_INTEGER` is some nine
+   * thousand million million; at one new tab per second it takes a few hundred
+   * million years. What does grow is the storage each id leaves behind, and
+   * that is answered by removing it when the tab closes, not by reusing names.
+   */
   nextAvailableEditorId() {
-    let n = 1;
-    while (this.openTabs.has(`myst-${n}`)) n++;
-    return `myst-${n}`;
+    this.idFloor += 1;
+    // Belt and braces: a floor read before a tab existed must not collide with
+    // one that does.
+    while (this.openTabs.has(`myst-${this.idFloor}`)) this.idFloor += 1;
+    return `myst-${this.idFloor}`;
   }
 
   async findTabForHandle(fileHandle) {
