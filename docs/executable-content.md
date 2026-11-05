@@ -62,7 +62,7 @@ The options understood are:
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
 - `:tags: hide-input` opens the cell with its code folded away, showing the toolbar and the output alone. Other tags are stored and round-tripped but not otherwise interpreted.  
-- `:params: n = 1..100 step 1` puts a control under the cell, and `:params: auto, n = 1..100 step 1` makes it run on its own when the control is released. See *Parameters*, below.
+- `:params: n = 1..100 step 1` puts a control under the cell -- a slider for a range, a checkbox for `name = true`, a dropdown for `name = ['a', 'b']` -- and `:params: auto, …` makes the cell run on its own when a control is released. See *Parameters*, below.
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 
 A figure opens full screen when clicked: the wheel zooms about the pointer, dragging moves it, a double-click returns to the initial view, and `Escape` or a click beside the figure closes it. Figures are captured as SVG, with their text converted to outlines so that the result does not depend on the fonts available wherever it is later shown or exported; a zoom therefore stays sharp however far it goes. A figure too dense for that -- a scatter plot of a hundred thousand points -- falls back to a PNG capture at 120 dpi, which zooms as a picture does.  
@@ -184,6 +184,20 @@ Whatever the declaration says, the code wins when it says anything: the initial 
 The range is declared in the option; the *value* is read from the code and written back to it. Pressing Apply rewrites the cell's assignment -- `n = 12` becomes `n = 37` -- and then runs the cell. Reopening the document therefore shows what it will actually run, and there is no second place to keep in step.
 
 That is the point of the feature, and the reason it is not `ipywidgets`. The cell stays plain Python: it reads an `n` that its own first line sets, so it runs the same way under `myst build --execute`, in Jupyter, or for a reader who copies it out. A value injected into the namespace by a widget would work here and raise `NameError` everywhere else. The cost is one line rewritten per apply; the gain is a document that is still a document.
+
+### Choosing from a list
+
+A declaration written as a list gives a dropdown instead of a slider:
+
+```
+:params: P = 1..20 step 1, B = true, C = ['a', 'b', 'c', 'd']
+```
+
+Each item keeps the text you wrote, and that text is what is written back into the cell: a quoted string stays a quoted string, a number stays a number, and nothing has to guess what Python should see. `N = [1, 2, 5]` therefore writes `N = 2` and `C = ['a', 'b']` writes `C = 'a'`. The menu shows the item without its quotes, since `'b'` in a dropdown is noise.
+
+An item may hold a comma of its own -- `['un, deux', 'trois']` -- and the cell's current value is recognised whichever quotes it uses, so a cell saying `C = "b"` is matched by a declaration saying `'b'`.
+
+As everywhere else here, the code wins when it says anything: the first item is only where the cell starts when it does not already assign the name. A value the list does not contain is left alone and the menu falls back to the first item, rather than silently rewriting what you put there.
 
 ### Running without pressing Apply
 

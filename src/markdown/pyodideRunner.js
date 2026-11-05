@@ -23,7 +23,17 @@ import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirro
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { pythonHighlightStyle as pythonHighlight } from "../extensions/pythonHighlightStyle";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { parseParams, parseParamsOptions, readValue, readFlag, writeValue, quantise, formatValue, formatFlag } from "./cellParams.js";
+import {
+  parseParams,
+  parseParamsOptions,
+  readValue,
+  readFlag,
+  readChoice,
+  writeValue,
+  quantise,
+  formatValue,
+  formatFlag,
+} from "./cellParams.js";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -1913,6 +1923,27 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         continue;
       }
 
+      if (spec.type === "choice") {
+        const menu = document.createElement("select");
+        menu.className = "pyodide-param-choice";
+        for (const item of spec.items) {
+          const option = document.createElement("option");
+          // The literal is the value, the label is what is read: the code gets
+          // `'b'` and the author sees b.
+          option.value = item.literal;
+          option.textContent = item.label;
+          menu.append(option);
+        }
+        // The code wins when it says anything; the declaration is only what to
+        // start from when it does not.
+        menu.value = readChoice(editorContainer.value, spec.name, spec.items) ?? spec.initial;
+        field.title = `${spec.name} — ${spec.items.map((i) => i.label).join(", ")}`;
+        field.append(name, menu);
+        paramsBar.append(field);
+        controls.push({ spec, input: menu });
+        continue;
+      }
+
       const slider = document.createElement("input");
       slider.type = "range";
       slider.min = String(spec.min);
@@ -1956,7 +1987,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         const written =
           spec.type === "bool"
             ? formatFlag(input.checked)
-            : formatValue(spec, quantise(spec, Number(input.value)));
+            : spec.type === "choice"
+              ? input.value
+              : formatValue(spec, quantise(spec, Number(input.value)));
         next = writeValue(next, spec.name, written);
       }
       // Setting .value dispatches a CM change; _syncToEditor then moves the

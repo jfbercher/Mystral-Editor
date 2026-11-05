@@ -64,9 +64,46 @@ const niceStep = (span) => {
  * that does not parse is skipped rather than guessed at: a malformed
  * declaration should cost its own control, not the whole cell.
  */
+/**
+ * Cut a `:params:` line into its declarations.
+ *
+ * Not `split(",")`: a choice is written `C = ['a', 'b']`, whose commas belong
+ * to the list and not to the line. Splitting first tore it into four pieces
+ * before anything could recognise it, and quotes have the same claim -- an
+ * item may hold a comma of its own.
+ */
+function splitDeclarations(spec) {
+  const pieces = [];
+  let current = "";
+  let depth = 0;
+  let quote = null;
+  for (const ch of String(spec ?? "")) {
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "[") depth += 1;
+    if (ch === "]") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) {
+      pieces.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  pieces.push(current);
+  return pieces;
+}
+
 export function parseParams(spec) {
   const out = [];
-  for (const piece of String(spec ?? "").split(",")) {
+  for (const piece of splitDeclarations(spec)) {
     // A flag. No range to give, so it is matched first and separately rather
     // than squeezed into the interval form.
     //
@@ -81,6 +118,30 @@ export function parseParams(spec) {
     if (flag) {
       const declared = flag[2].toLowerCase();
       out.push({ name: flag[1], type: "bool", initial: declared === "true" });
+      continue;
+    }
+
+    // A choice among listed values: `C = ['a', 'b', 'c']`. Matched before the
+    // interval form, which would make nothing of it.
+    //
+    // Each item keeps the text the author wrote, and that text is what is
+    // written back into the code: a quoted string stays a quoted string, a
+    // number stays a number, and nothing has to guess what Python should see.
+    // The label shown in the menu is the same text without its quotes, since
+    // `'b'` in a dropdown is noise.
+    const list = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[(.*)\]\s*$/.exec(piece);
+    if (list) {
+      const items = [];
+      // Quoted strings first, so an item holding a comma survives the split
+      // that a plain `split(",")` would not.
+      const ITEM = /\s*('[^'\n]*'|"[^"\n]*"|[^,]+?)\s*(?:,|$)/g;
+      let found;
+      while ((found = ITEM.exec(list[2])) !== null) {
+        const literal = found[1].trim();
+        if (literal) items.push({ literal, label: labelOf(literal) });
+        if (ITEM.lastIndex >= list[2].length) break;
+      }
+      if (items.length) out.push({ name: list[1], type: "choice", items, initial: items[0].literal });
       continue;
     }
 
@@ -118,23 +179,46 @@ export function parseParams(spec) {
  * which it is, only the author knows.
  */
 export function parseParamsOptions(spec) {
-  const words = String(spec ?? "")
-    .split(",")
-    .map((piece) => piece.trim().toLowerCase());
+  const words = splitDeclarations(spec).map((piece) => piece.trim().toLowerCase());
   return { auto: words.includes("auto") || words.includes("autorun") };
 }
 
 const NUMBER = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?";
 const BOOL = "True|False";
+const STRING = "'[^'\\n]*'|\"[^\"\\n]*\"";
 
-/** The line that assigns `name`, as a RegExp with the value as group 2. */
-const assignment = (name, pattern = `${NUMBER}|${BOOL}`) =>
+/** A literal without its quotes: what a menu shows rather than what Python reads. */
+export const labelOf = (literal) => String(literal ?? "").replace(/^(['"])(.*)\1$/, "$2");
+
+/**
+ * The line that assigns `name`, as a RegExp with the value as group 2.
+ *
+ * The default covers every kind a control can write, strings included: it is
+ * what `writeValue` matches on, and a pattern that did not know about strings
+ * found no line to replace for a choice -- so a new assignment was put at the
+ * top of the cell and the old one left below it, where it won.
+ */
+const assignment = (name, pattern = `${STRING}|${NUMBER}|${BOOL}`) =>
   new RegExp(`^([ \\t]*${name}[ \\t]*=[ \\t]*)(${pattern})[ \\t]*$`, "m");
 
 /** The value the code currently gives `name`, or null when it gives none. */
 export function readValue(code, name) {
   const m = assignment(name, NUMBER).exec(String(code ?? ""));
   return m ? num(m[2]) : null;
+}
+
+/**
+ * The choice the code currently gives `name`, as the text it is written with.
+ *
+ * Compared by label rather than by literal, so a cell that says `C = "b"` is
+ * recognised by a declaration that says `'b'`: Python does not distinguish the
+ * two and neither should a menu.
+ */
+export function readChoice(code, name, items = []) {
+  const m = assignment(name, `${STRING}|${NUMBER}`).exec(String(code ?? ""));
+  if (!m) return null;
+  const label = labelOf(m[2].trim());
+  return items.find((it) => it.label === label)?.literal ?? null;
 }
 
 /** The flag the code currently gives `name`, or null when it gives none. */
