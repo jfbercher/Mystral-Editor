@@ -32,63 +32,104 @@ math:
   '\sha': 'ш'
   '\dr': '\mathrm{d}#1'
   '\wb': '\mathbf{w}' 
+abbreviations:
+  RHR: Resting Heart Rate
+  HR: Human Resources
+  AS: Academy of Sciences
+slides:
+  fontSize: 30
+  cellFontSize: 14
+  width: 1229
+  height: 768
+  cutAtHeading: 2
+  verticalAlign: "top"
+  header: Example of slides |{section} | Slide {n}/{total}
+  footer: J.-F. Bercher | | Slide {n}/{total}
+  background: "#f7f7f5"
+  padding: 16px 46px
+  headerStyle: "font-size: 22px; padding-bottom:8px; color: #333; background-color:lightskyblue; border-bottom: 1px solid #ddd"
+  footerStyle: "font-size: 16px; padding-bottom:4px;  border-top: 1px solid #ddd"
+  transition: slide 3s
 ---
-
+ 
 ::::{note} Fourier
-:class: dropdown
+:class: dropdowns
 :label: noteFourier
 
-:::{image} https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg
-:width: 40%
-:align: left
+:::{figure} https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg
+:class: float-left
+:width: 10%
 :::
 
-(from [Wikipedia](https://en.wikipedia.org/wiki/Joseph_Fourier)) - Jean-Baptiste Joseph **Fourier**,  (21 March 1768 – 16 May 1830) was a French mathematician and physicist. Fourier accompanied Napoleon Bonaparte on his Egyptian expedition in 1798. In 1801, Napoleon appointed Fourier Prefect (Governor) of the Department of Isère in Grenoble. In 1822, Fourier succeeded Jean Baptiste Joseph Delambre as Permanent Secretary of the French Academy of Sciences. In 1822, Fourier published his treatise on heat flow in "*Théorie analytique de la chaleur*".
+
+(from [Wikipedia](https://en.wikipedia.org/wiki/Joseph_Fourier)) - Jean-Baptiste Joseph **{index}`Fourier`**,  (21 March 1768 – 16 May 1830) was a French  mathematician and physicist. Fourier accompanied Napoleon Bonaparte on his Egyptian expedition in 1798. In 1801, Napoleon appointed Fourier Prefect (Governor) of the Department of Isère in Grenoble. In 1822, Fourier succeeded Jean Baptiste Joseph Delambre as Permanent Secretary of the French AS Academy of Sciences. In 1822, Fourier published his treatise on heat flow in "*Théorie analytique de la chaleur*".
 ::::
 
++++
 
 :::{toc} Contents
 :context: page
 :::
 
++++
+
 ## {sc}`Fourier` Series
 
-In 1822, Joseph {sc}`Fourier`, see [Note Fourier](#noteFourier), introduced a decomposition of perodic functions into a sum of harmonics with frequencies multiple of the fundamental frequency of the periodic function. Such decomposition (and its extension) now hold his name and are known as Fourier Series 
+In 1822, Joseph {sc}`Fourier`, see [Note Fourier](#noteFourier), introduced a decomposition of periodic functions into a sum of harmonics with frequencies multiple of the fundamental frequency of the periodic function. Such decomposition (and its extension) now hold his name and are known as {index}`Fourier Series <pair: Fourier Series; ; Série de Fourier>`.
+
 % Check the year ! 1822 ?
 
-
++++
 :::{proof:proposition} Fourier series pair
 :icon: false
 :label: fsp
 
-\
+
 Let $x_T(t)$ be a periodic function with period $T$. Then, under some regularity conditions, we have
 $$
 \label{FT}
 x_T(t) = \sum_{k=-\infty}^{+\infty} c_k \exp(j2\pi \frac{k}{T} t)
 $$
-with 
- $$c_k = \frac{1}{T} \int_{[T]} x_T(t) \exp(-j2\pi \frac{k}{T} t) \dr{t}
+
+$$
+\label{iFT}
+\text{with} \hspace{1cm} c_k = \frac{1}{T} \int_{[T]} x_T(t) \exp(-j2\pi \frac{k}{T} t) \dr{t}
  $$
 :::
 
-
 References are plentiful, let us cite  e.g. [@oppenheim1999dtsp; @oppenheim2010signals]
+
++++
 
 :::{exercise} Rectangular Pulse Train
 :label: rectPulse
 :enumerated: true
 
-Using formulas
+Using formulas [](#FT) and [](#iFT), compute the Fourier series of the train pulse defined as:
 
 :::
 
-## Second section
+:::{solution} rectPulse
+:label: 
+:class: dropdown
+The solutions is ...
 
-
-
+:::
+ 
+%## Second section
++++
+%slides:
+%  header: Slides demo | Demo | Slide {n}/{total}
+  
 :::{code-cell} 
 :figwidth: 40%
+:params: auto, P = 1..20 step 1, G = true, Choix = [1, 2, 3]
+Q = 12
+Choix = 1
+P = 3
+G = True
+
+print(Choix+1)
 import numpy as np
 N = 1000
 fo = 50
@@ -96,17 +137,36 @@ T = 1/fo
 t = np.linspace(-T, T, N)
 s = np.zeros_like(t)
 
-P = 8
-for p in range(0,P):
-  cp = 1/(2*p+1)*np.sin((2*p+1)*2*np.pi*fo*t)
-  s = s + cp
+if G:
+  for p in range(0,P):
+    cp = 1/(2*p+1)*np.sin((2*p+1)*2*np.pi*fo*t)
+    s = s + cp   
 
 plt.plot(t, s)
 plt.xlabel("Time (s)")
 plt.grid()
 :::
 
+une cellule dans un liste
 
+- aaa
+- ff
+  :::{code-cell}
+  if True:
+    if False: 
+      fdf
+  :::
+- dd
+  
+aa
+  :::{code-cell} python
+if x: 
+  if y:
+:::
+bb
+%{index}`pair: transform; Fourier` 
+
++++
 And the Fourier transform: 
 
 :::{code-cell}
@@ -118,6 +178,12 @@ M = 10
 plt.stem(f[0:M], abs(Sf)[0:M])
 _ = plt.xlabel("Frequency (Hz)")
 :::
+
+
+## Index
+:::{show-index}
+:::
+
 
 
 
