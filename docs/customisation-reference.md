@@ -92,7 +92,7 @@ language: fr
 ---
 ```
 
-The value is the dictionary's name. `fr` is accepted and looked up as `fr_FR`, which is what the folder is called, so you rarely need the long form. The language is also inherited from the project, being read from the effective frontmatter.
+The value is the dictionary's name. A bare language tag is enough: `fr` is looked up as `fr_FR`, which is what the folder is called, and `en` as `en_US`, since there is no `en_EN`. In the desktop application, a bare tag also finds whichever region is in fact installed for it, so `en` will pick up an `en_GB` if that is the only English dictionary there; when several are, the usual region wins. The language is also inherited from the project, being read from the effective frontmatter.
 
 **Adding a language.** `en_US` ships with the application. Any other is a folder in the configuration directory, see [](#Where-they-live), beside `config.json` and holding the two files of a hunspell dictionary:
 

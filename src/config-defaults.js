@@ -137,6 +137,8 @@ export const DEFAULT_CONFIG = {
   // this is what applies when it declares none.
   //
   // The name is the dictionary's: `fr` is accepted and looked up as `fr_FR`,
+  // and `en` as `en_US`, since there is no `en_EN`; on the desktop build, a
+  // bare tag also finds whichever region is actually installed for it,
   // which is what the folder is called. en_US ships with the application;
   // any other language is a folder <name>/<name>.aff + <name>.dic placed in
   // the configuration directory, beside config.json -- which also lets a

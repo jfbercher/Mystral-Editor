@@ -84,17 +84,72 @@ const spellcheckExtension = ViewPlugin.fromClass(
 const loaded = new Map();
 
 /**
- * The names to try for a declared language.
+ * The region a bare language tag means, when doubling it is not the answer.
+ *
+ * `fr` finds `fr_FR` by doubling the tag, and most languages are like that.
+ * English is not -- there is no `en_EN` -- and neither are the few below, so
+ * a document declaring `en` found nothing at all. This is the one usual
+ * spelling, not a preference: a document that wants another region says so,
+ * `en_GB`, and gets it.
+ */
+const USUAL_REGION = {
+  en: "en_US",
+  cs: "cs_CZ",
+  da: "da_DK",
+  el: "el_GR",
+  ja: "ja_JP",
+  ko: "ko_KR",
+  nb: "nb_NO",
+  sv: "sv_SE",
+  uk: "uk_UA",
+  vi: "vi_VN",
+  zh: "zh_CN",
+};
+
+/**
+ * The names to try for a declared language, best first.
  *
  * `fr` is what one writes in a frontmatter; `fr_FR` is what the dictionary
- * folder is called. Trying both saves everyone from having to know that.
+ * folder is called. Trying both saves everyone from having to know that. The
+ * list is tried in order and the first dictionary that loads wins, so a name
+ * that does not exist costs one failed read and nothing else.
  */
 function candidates(language) {
   const name = String(language ?? "").trim().replace("-", "_");
   if (!name) return [];
   const out = [name];
-  if (!name.includes("_")) out.push(`${name.toLowerCase()}_${name.toUpperCase()}`);
-  return out;
+  if (!name.includes("_")) {
+    const bare = name.toLowerCase();
+    out.push(`${bare}_${bare.toUpperCase()}`);
+    if (USUAL_REGION[bare]) out.push(USUAL_REGION[bare]);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * The regional dictionaries installed for a bare tag, on the desktop build.
+ *
+ * The table above covers what is usual; this covers what is actually there.
+ * A folder can be listed on the desktop and nowhere else, so this is the one
+ * place where "there is only one `en_*` installed, take it" can be answered
+ * rather than guessed. Several, and the usual region decides; failing that,
+ * the first in alphabetical order, which at least is stable.
+ */
+async function installedRegions(bare) {
+  if (!("__TAURI_INTERNALS__" in window)) return [];
+  try {
+    const { appConfigDir, join } = await import("@tauri-apps/api/path");
+    const { readDir } = await import("@tauri-apps/plugin-fs");
+    const entries = await readDir(await join(await appConfigDir(), "dictionaries"));
+    const found = entries
+      .filter((e) => e.isDirectory && e.name.toLowerCase().startsWith(`${bare}_`))
+      .map((e) => e.name)
+      .sort();
+    const usual = USUAL_REGION[bare];
+    return usual && found.includes(usual) ? [usual, ...found.filter((n) => n !== usual)] : found;
+  } catch {
+    return [];
+  }
 }
 
 /** The two files of a hunspell dictionary, from wherever they are. */
@@ -152,7 +207,15 @@ function looksLikeDictionary(aff, dic) {
  * dictionary to be noticed later by `dictReady`.
  */
 export async function loadDictionary(language, dictionaryPath) {
-  for (const name of candidates(language)) {
+  const names = candidates(language);
+  const bare = names[0]?.includes("_") ? null : names[0]?.toLowerCase();
+  // Asked only when the usual names are not already the answer: listing a
+  // folder is cheap, but it is a round trip through the desktop bridge, and
+  // the common case does not need it.
+  if (bare) {
+    for (const name of await installedRegions(bare)) if (!names.includes(name)) names.push(name);
+  }
+  for (const name of names) {
     if (loaded.has(name)) return loaded.get(name);
     try {
       const [aff, dic] = await readPair(name, dictionaryPath);
