@@ -129,15 +129,30 @@ const buildYamlCompletionSource = (lspClient) => ({
     const completionStart = token ? tokenSplit[tokenSplit.length - 1] : null;
     const property = !token || tokenSplit.length === 1;
     const options = items
-      .map(({ detail, label, kind, textEdit, documentation }) => ({
+      .map(({ detail, label, kind, textEdit, insertText, documentation }) => ({
         label,
         detail,
         type: kind && CompletionItemKindMap[kind]?.toLowerCase(),
         info: documentation?.toString(),
         apply(view, _, from, to) {
-          const start = lspPosToCmPos(ctx.state, textEdit.range.start) + from - ctx.pos;
+          // What the server wants written, and where -- neither of which it is
+          // obliged to say. A completion item may carry a `TextEdit` (with a
+          // `range`), an `InsertReplaceEdit` (with `insert` and `replace` and
+          // no `range`), or neither, in which case the text is `insertText` or
+          // the label itself and the client decides the range. Reading
+          // `textEdit.range` unconditionally is what crashed the editor on
+          // `Tab`, since that is exactly the item yaml-language-server returns
+          // for a plain key.
+          const range = textEdit?.range ?? textEdit?.replace ?? textEdit?.insert;
+          // Without a range, replace what has been typed so far: `completionStart`
+          // is that prefix, and leaving it in place would insert the key after
+          // it ("langu" + "language").
+          const start = range
+            ? lspPosToCmPos(ctx.state, range.start) + from - ctx.pos
+            : Math.max(view.state.doc.lineAt(from).from, from - (completionStart?.length ?? 0));
           const startLine = view.state.doc.lineAt(start);
-          const text = textEdit.newText.replace("\n", "\n" + " ".repeat(start - startLine.from)).replace(/\${[0-9]+}/g, "");
+          const newText = textEdit?.newText ?? insertText ?? label;
+          const text = newText.replace("\n", "\n" + " ".repeat(start - startLine.from)).replace(/\${[0-9]+}/g, "");
           view.dispatch({
             changes: { from: start, to, insert: text },
             selection: { anchor: start + text.length, head: start + text.length },
