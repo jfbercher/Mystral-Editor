@@ -250,6 +250,9 @@ function warnDocumentExtends(value) {
   );
 }
 
+/** The last frontmatter parse error printed, so a repeat stays quiet. */
+let lastFrontmatterError = null;
+
 /**
  * Parse le bloc frontmatter YAML (---...---) en tête d'un texte.
  *
@@ -284,9 +287,20 @@ export function extractFrontmatter(fullText) {
     if (!isPlainObject(parsed)) return { frontmatter: parsed, endLine };
     const { extends: ignored, ...own } = parsed;
     if (ignored !== undefined) warnDocumentExtends(ignored);
+    // Parsed: the next failure is news again, even if it is the same message.
+    lastFrontmatterError = null;
     return { frontmatter: mergeFrontmatter(projectFrontmatter(), own), endLine };
   } catch (e) {
-    console.error("Failed to parse frontmatter YAML:", e);
+    // A block being typed is invalid most of the time -- a key half written,
+    // a value not yet there -- and this runs on every render, so the same
+    // exception would be printed over and over while someone is simply
+    // editing. Only a message that changes is worth a line; the editor's own
+    // underlining is what reports the error where it matters.
+    const message = String(e?.message ?? e);
+    if (message !== lastFrontmatterError) {
+      lastFrontmatterError = message;
+      console.warn("Failed to parse frontmatter YAML:", e);
+    }
     return null;
   }
 }
