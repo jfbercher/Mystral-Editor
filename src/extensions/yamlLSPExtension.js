@@ -7,6 +7,7 @@ import { codeBlockExtensions, subEditorId } from "./codeBlockExtensions";
 import { EditorView, ViewPlugin, hoverTooltip } from "@codemirror/view";
 import { setDiagnostics } from "@codemirror/lint";
 import { CompletionItemKind } from "vscode-languageserver-protocol";
+import { cmPosToLspPos, lspPosToCmPos, lspSeverityToCm } from "../lsp/positions.js";
 
 export const newLspClient = () => {
   const worker = new YamlLSPWorker();
@@ -245,23 +246,6 @@ const schemaFor = (schema, text) =>
 const stateToYamlDoc = (schema, state) => {
   const text = state.doc.toString();
   return `# yaml-language-server: $schema=${schemaFor(schema, text)}\n${text}`;
-};
-
-const cmPosToLspPos = (state, pos) => {
-  const line = state.doc.lineAt(pos);
-  return { line: line.number, character: pos - line.from };
-};
-
-const lspPosToCmPos = (state, pos) => {
-  const line = state.doc.line(pos.line);
-  return line.from + pos.character;
-};
-
-const lspSeverityToCm = (severityLevel) => {
-  if (severityLevel === 2) return "error";
-  if (severityLevel === 1) return "warning";
-  if (severityLevel === 0) return "info";
-  return "hint";
 };
 
 const getUri = (filename) => `file:///${filename}.yaml`;
