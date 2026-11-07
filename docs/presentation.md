@@ -316,7 +316,7 @@ An included file is read once per session, so editing it while the host document
 
 The editor proposes what can come next as soon as it can tell what is being written. A `:::` fence opens the list of directives, and accepting one inserts its whole skeleton: opening line, argument, the usual options, closing fence, with `Tab` moving from placeholder to placeholder. A line starting with `:` inside a directive proposes that directive's options, and those whose values form a closed set then propose the values themselves. A `{` opens the list of roles.
 
-YAML gets the same treatment, from a different source: inside a frontmatter block, and in a `.yml` file opened in its own tab, the proposals come from a JSON schema bundled with the application, which also underlines a key that does not exist and explains on hover what each one is for. See [YAML frontmatter](scientific-authoring.md).
+Configuration files get the same treatment, from a different source: inside a frontmatter block, in a `.yml` file opened in its own tab, and in the editor's own `config.json`, the proposals come from a JSON schema bundled with the application, which also underlines a key that does not exist and explains on hover what each one is for. See [YAML frontmatter](scientific-authoring.md) and [completion](completion.md).
 
 The proposals that matter most for a scientific document are the ones read from the document rather than from a list. `{ref}`, `{numref}`, `{eq}` and the link form `[](#label)` propose the labels the document defines -- sections, figures, tables, equations, exercises, theorems, including those brought in by an `{include}` -- each with its family, its current number and its caption, and matching runs over the caption as well as the key, so a figure can be found by what it shows when its label has been forgotten. Citations work the same way: after an `@` inside brackets, the entries of the attached `.bib` file are proposed with their author, year and title. Inside a code cell, completion comes from `jedi` running in Pyodide.
 
@@ -621,9 +621,9 @@ Mystral Editor requires a few additional packages beyond the upstream baseline:
 npm install katex markdown-it-texmath js-yaml @codemirror/lang-python
 ```
 
-### Regenerating the YAML schemas
+### Regenerating the schemas
 
-The JSON schemas the YAML language server validates against -- `src/public/schemas/frontmatter.schema.json` for a document's frontmatter, `myst.schema.json` for a project configuration -- are generated, not written:
+The JSON schemas the language servers validate against -- `src/public/schemas/frontmatter.schema.json` for a document's frontmatter, `myst.schema.json` for a project configuration, `config.schema.json` for the editor's own `config.json` -- are generated, not written:
 
 ```bash
 npm run schemas
@@ -631,7 +631,9 @@ npm run schemas
 
 mystmd publishes no schema of its own; it validates by hand, in TypeScript. But it exports the key lists and the alias map, so `scripts/generate-yaml-schemas.mjs` reads them from the installed `myst-frontmatter` and `myst-config` and builds the schemas from the version actually in `node_modules`. Upgrade mystmd, run the command again, and the editor stops offering keys that version no longer knows.
 
-Nothing runs it for you: neither `npm run dev` nor `npm run build` calls it, and the build only copies `src/public/` into `dist/`. So run it in two cases -- after bumping mystmd, and after adding or changing one of this editor's own keys in the `OURS` block of the generator, which is also where their hover descriptions are written. The generated files are sources like any other and are committed as such, since they are what the application serves.
+`config.schema.json` is generated the same way, by `scripts/generate-config-schema.mjs`, from `src/config-defaults.js`: the shape of each key is read off its default value, and **its description is the comment written above it**. So documenting a setting and documenting the editor are the same act -- write the comment, run the command, and the explanation appears on hover in anyone's `config.json`. Two things a default value cannot express stay in the script by hand: the closed sets of values (`editorMode`, `pyodide.offline`, `slides.verticalAlign`), in `OVERRIDES`, and the keys the configuration file accepts without holding them in `DEFAULT_CONFIG`, in `EXTRA` -- `data_directives` is one.
+
+Nothing runs any of it for you: neither `npm run dev` nor `npm run build` calls `npm run schemas`, and the build only copies `src/public/` into `dist/`. So run it after bumping mystmd, after adding or changing one of this editor's own keys in the `OURS` block of the YAML generator, and after editing the comments in `config-defaults.js`. The generated files are sources like any other and are committed as such, since they are what the application serves.
 
 ### Development
 

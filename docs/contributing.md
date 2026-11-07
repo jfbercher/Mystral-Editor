@@ -24,9 +24,9 @@ Mystral Editor requires a few additional packages beyond the upstream baseline:
 npm install katex markdown-it-texmath js-yaml @codemirror/lang-python
 ```
 
-### Regenerating the YAML schemas
+### Regenerating the schemas
 
-The JSON schemas the YAML language server validates against -- `src/public/schemas/frontmatter.schema.json` for a document's frontmatter, `myst.schema.json` for a project configuration -- are generated, not written:
+The JSON schemas the language servers validate against -- `src/public/schemas/frontmatter.schema.json` for a document's frontmatter, `myst.schema.json` for a project configuration, `config.schema.json` for the editor's own `config.json` -- are generated, not written:
 
 ```bash
 npm run schemas
@@ -34,7 +34,9 @@ npm run schemas
 
 mystmd publishes no schema of its own; it validates by hand, in TypeScript. But it exports the key lists and the alias map, so `scripts/generate-yaml-schemas.mjs` reads them from the installed `myst-frontmatter` and `myst-config` and builds the schemas from the version actually in `node_modules`. Upgrade mystmd, run the command again, and the editor stops offering keys that version no longer knows.
 
-Nothing runs it for you: neither `npm run dev` nor `npm run build` calls it, and the build only copies `src/public/` into `dist/`. So run it in two cases -- after bumping mystmd, and after adding or changing one of this editor's own keys in the `OURS` block of the generator, which is also where their hover descriptions are written. The generated files are sources like any other and are committed as such, since they are what the application serves.
+`config.schema.json` is generated the same way, by `scripts/generate-config-schema.mjs`, from `src/config-defaults.js`: the shape of each key is read off its default value, and **its description is the comment written above it**. So documenting a setting and documenting the editor are the same act -- write the comment, run the command, and the explanation appears on hover in anyone's `config.json`. Two things a default value cannot express stay in the script by hand: the closed sets of values (`editorMode`, `pyodide.offline`, `slides.verticalAlign`), in `OVERRIDES`, and the keys the configuration file accepts without holding them in `DEFAULT_CONFIG`, in `EXTRA` -- `data_directives` is one.
+
+Nothing runs any of it for you: neither `npm run dev` nor `npm run build` calls `npm run schemas`, and the build only copies `src/public/` into `dist/`. So run it after bumping mystmd, after adding or changing one of this editor's own keys in the `OURS` block of the YAML generator, and after editing the comments in `config-defaults.js`. The generated files are sources like any other and are committed as such, since they are what the application serves.
 
 ### Development
 
