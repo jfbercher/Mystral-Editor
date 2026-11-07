@@ -337,3 +337,130 @@ pre.data-source {
   font-size: 0.95em;
   line-height: 1.45;
 }
+
+/* ── Cards and grids ──────────────────────────────────────────────────────
+ *
+ * The markup carries no meaning of its own -- a card is not an admonition,
+ * nothing here says "warning" -- so everything visible is decided below.
+ *
+ * The grid's column counts arrive as custom properties set on the element,
+ * one per breakpoint, and the breakpoints live here: an inline style cannot
+ * express a media query, and four queries written once are cheaper than a
+ * class per combination. The widths are the ones the MyST specification
+ * names, which are Tailwind's, so that a document laid out in this preview
+ * falls the same way on a built site.
+ */
+.myst-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-xs, 1), minmax(0, 1fr));
+  gap: 1em;
+  margin: 1em 0;
+  align-items: start;
+}
+
+@media (min-width: 768px) {
+  .myst-grid {
+    grid-template-columns: repeat(var(--grid-md, 1), minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .myst-grid {
+    grid-template-columns: repeat(var(--grid-lg, 1), minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .myst-grid {
+    grid-template-columns: repeat(var(--grid-xl, 1), minmax(0, 1fr));
+  }
+}
+
+/* A span, when the item declares one. `min-width: 0` because a grid track
+   refuses to shrink below its content otherwise, and a long line of code in
+   one card would push the whole row wider than the pane. */
+.myst-grid-item {
+  min-width: 0;
+  grid-column: span var(--span, 1);
+}
+
+.myst-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius, 6px);
+  background: var(--panel-bg);
+  overflow: hidden;
+}
+
+/* A card inside a grid fills its cell, so a row of cards has a flat top and
+   a flat bottom whatever each one holds. */
+.myst-grid > .myst-card {
+  height: 100%;
+}
+
+/* A card outside a grid is a block of its own, and wants the space around it
+   that a paragraph has. */
+.myst-card:not(.myst-grid > *) {
+  margin: 1em 0;
+}
+
+.myst-card > .card-header,
+.myst-card > .card-footer {
+  padding: 0.5em 0.9em;
+  background: var(--navbar-bg);
+  font-size: 0.9em;
+}
+
+.myst-card > .card-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.myst-card > .card-footer {
+  border-top: 1px solid var(--border);
+}
+
+.myst-card > .card-title {
+  padding: 0.6em 0.9em 0;
+  font-weight: 700;
+}
+
+.myst-card > .card-body {
+  padding: 0.6em 0.9em;
+  flex: 1 1 auto;
+}
+
+/* The first and last blocks of a part should not add their own margin to the
+   padding: a card whose body is one paragraph would otherwise look loose. */
+.myst-card > * > :first-child {
+  margin-top: 0;
+}
+
+.myst-card > * > :last-child {
+  margin-bottom: 0;
+}
+
+/* A card that is a link stays a card: no underline, no link colour, and the
+   whole surface answers to the pointer. */
+a.myst-card {
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+a.myst-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 6px var(--box-shadow);
+}
+
+/* A directive the editor refuses, said where it is written rather than left
+   to be discovered by an export that fails three steps later. */
+.myst-directive-error {
+  margin: 1em 0;
+  padding: 0.5em 0.9em;
+  border-left: 4px solid var(--error-bg, #b00);
+  background: var(--panel-bg);
+  color: var(--char-col);
+  font-size: 0.9em;
+}

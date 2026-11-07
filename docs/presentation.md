@@ -398,6 +398,8 @@ Demo of `{eval}`directive (2 of 2)
 
 What `{eval}` inserts is a result and not a string: an object that knows how to draw itself -- a DataFrame, a figure -- is drawn, through the `_repr_html_` / `_repr_svg_` / `_repr_png_` protocol Jupyter made standard. A plotting call is the one case that protocol does not cover, since `plt.plot(x)` returns a list of `Line2D` and draws into the current figure; the role therefore shows what the expression drew, as a notebook does. Two limits are worth knowing: a *live* widget cannot be inserted this way, since it would need a host surviving the re-render of its chunk, and on an HTML site `{eval}` is never re-evaluated -- its value is the one the editor computed, and a document exported without a run carries none.
 
+🃏 **Cards and grids** -- `{card}`, `{grid}` and `{grid-item}`, as mystmd defines them: a titled block with an optional header, footer and link, and a responsive row whose argument gives the number of columns at four screen widths (`1 1 2 3` is one column on a phone, three on a large screen). mystmd drops all three in a LaTeX, PDF or Word export, *with their content*; the editor's own plugin retypes a card as an admonition and a grid as a row of `minipage`s, so what is composed is what is printed. See [directives and roles](directives-and-roles.md).
+
 🧪 **Quizzes** -- A `{quiz}` directive integrates the **[labquiz](https://github.com/jfbercher/labquiz)** package: `:::{quiz} qz quiz7` shows a button that, pressed, displays the quiz in the preview and grades it there.
 
 ```

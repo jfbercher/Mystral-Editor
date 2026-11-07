@@ -65,6 +65,18 @@ export const admonitionKindToTitle = (kind) => KIND_TITLES[kind] ?? null;
  */
 export const EXERCISE_NAMES = ["exercise", "solution"];
 
+/**
+ * Directives the cards plugin turns into admonitions -- `{dropdown}` among
+ * them, which mystmd writes as a `details` node and the LaTeX writer drops.
+ *
+ * Counted on the same terms as the exercises: only when that plugin is in
+ * use, since otherwise mystmd drops them and they occupy no rank in the
+ * `.tex`. Forgetting them is not a near miss -- the pairing fails, the whole
+ * post-processing gives up, and the `.tex` comes out as mystmd wrote it,
+ * markers and all.
+ */
+export const CARD_NAMES = ["card", "grid-item-card", "dropdown"];
+
 /** The kinds GitHub-style blockquote callouts can produce. */
 const GITHUB_KINDS = ["note", "tip", "important", "warning", "caution"];
 
@@ -99,7 +111,7 @@ const QUOTE_BRACKET = /^\s{0,3}>\s*\[!([A-Za-z]+)\]/;
  * @param {string} text the document, includes already expanded if that is wanted
  * @returns {{ items: ScannedAdmonition[], warnings: string[] }}
  */
-export function scanAdmonitions(text, { withExercises = false } = {}) {
+export function scanAdmonitions(text, { withExercises = false, withCards = false } = {}) {
   const lines = String(text ?? "").split("\n");
   const items = [];
   const warnings = [];
@@ -164,7 +176,8 @@ export function scanAdmonitions(text, { withExercises = false } = {}) {
       const directive = DIRECTIVE_INFO.exec(info);
       const name = directive?.[1];
       const isExercise = withExercises && EXERCISE_NAMES.includes(name);
-      const isAdmonition = name === "admonition" || ADMONITION_KINDS.includes(name) || isExercise;
+      const isCard = withCards && CARD_NAMES.includes(name);
+      const isAdmonition = name === "admonition" || ADMONITION_KINDS.includes(name) || isExercise || isCard;
       // A backtick or tilde fence with no `{name}` is code: its content is not
       // a document and nothing in it reaches the .tex as an admonition.
       const opaque = !directive && marker[0] !== ":";
@@ -188,12 +201,18 @@ export function scanAdmonitions(text, { withExercises = false } = {}) {
         // of which this scan computes. The title of an exercise can still be
         // required to appear in the box, which keeps most of the safety; a
         // solution can only be counted.
-        const titleMatch = !isExercise ? "exact" : name === "exercise" && arg ? "contains" : "none";
+        // A card's title is its argument when it has one, and the text of its
+        // `:header:` when it has not -- which this scan does not compute. So
+        // a titled card can still be checked, loosely, and an untitled one is
+        // only counted.
+        const titleMatch = isCard ? (arg ? "contains" : "none") : !isExercise ? "exact" : name === "exercise" && arg ? "contains" : "none";
         pending = {
           name,
           // `exercise` and `solution` get colours of their own rather than
           // borrowing an admonition kind.
-          kind: name === "admonition" ? null : name,
+          // A card becomes a `note`, which is what the plugin gives it; the
+          // others keep their own name so that a colour can be attached to it.
+          kind: name === "admonition" ? null : isCard ? "note" : name,
           // The argument is the title when there is one; otherwise it is
           // decided later, from the kind or from the first body block.
           title: arg || null,

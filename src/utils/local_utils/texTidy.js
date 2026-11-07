@@ -29,18 +29,33 @@ const GLUED_END = /(\\end\{[^}]+\})(?=\S)/g;
  *
  * Verbatim regions are set aside first: inside one, a newline is content, and
  * adding it would change the page rather than the file.
+ *
+ * The preamble is set aside too, and that one was learned the hard way. This
+ * pass tidies the *body*: a blank line there ends a paragraph, which is what
+ * is wanted between two environments. In a preamble the same blank line lands
+ * inside a macro definition, where it is a `\par` in the macro's own body --
+ * `\newcommand{\mystgridendcell}{\end{minipage}` followed by an empty line
+ * meant every grid cell ended with a paragraph break, and a row of boxes came
+ * out as a column of them. A pass that reformats the body has no business
+ * before `\begin{document}`.
  */
 export function separateEnvironments(tex) {
   const text = String(tex ?? "");
+  const at = text.indexOf("\\begin{document}");
+  // No `\begin{document}` at all: a body fragment of a multi-file export, which
+  // is all body.
+  const head = at === -1 ? "" : text.slice(0, at);
+  const body = at === -1 ? text : text.slice(at);
+
   const kept = [];
   // Replace each verbatim region by a placeholder that cannot occur in LaTeX,
   // tidy what is left, then put them back.
-  const masked = text.replace(VERBATIM, (match) => {
+  const masked = body.replace(VERBATIM, (match) => {
     kept.push(match);
     return `\u0000VERBATIM${kept.length - 1}\u0000`;
   });
   const tidied = masked.replace(GLUED_END, "$1\n\n");
-  return tidied.replace(/\u0000VERBATIM(\d+)\u0000/g, (_, i) => kept[Number(i)]);
+  return head + tidied.replace(/\u0000VERBATIM(\d+)\u0000/g, (_, i) => kept[Number(i)]);
 }
 
 /**

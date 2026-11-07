@@ -79,6 +79,12 @@ const DIRECTIVES = [
   //{ name: "iframe", group: "Media", arg: "https://" },
   //{ name: "mermaid", group: "Media" },
 
+  // Layout
+
+  { name: "card", group: "Layout", arg: "Card title", opts: ["header", "footer", "link"] },
+  { name: "grid", group: "Layout", arg: "1 1 2 3", opts: ["class"] },
+  { name: "grid-item", group: "Layout", opts: ["columns"] },
+
   // Mathematics and proofs
 
   { name: "math", group: "Math", opts: ["label"] },
@@ -157,6 +163,12 @@ const DIRECTIVE_OPTIONS = {
   // figure a cell produced into a figure of the document.
   "code-cell": ["tags", "linenos", "packages", "params", "figwidth", "align", "caption", "label"],
   "quiz": ["button", "dropdown", "label", "caption"],
+  // `url` is the specification's own name and `link` its alias; the alias is
+  // what its examples use, and what is proposed here.
+  card: ["header", "footer", "link", "url", "class", "label"],
+  grid: ["class", "label"],
+  "grid-item": ["columns", "class", "label"],
+  "grid-item-card": ["header", "footer", "link", "url", "class", "label"],
   literalinclude: ["lines", "language", "linenos", "start-at", "end-at"],
   admonition: ADMONITION_OPTIONS,
   dropdown: ["open", "icon"],

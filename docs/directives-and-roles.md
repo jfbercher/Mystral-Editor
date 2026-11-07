@@ -303,6 +303,68 @@ In a LaTeX or PDF export, nothing. The same node makes the LaTeX writer print th
 
 **A property worth knowing**: that filter identifies the block by its content, which is the only handle left once the writer has dropped everything else. So `obj.show('key')` appears nowhere in a `.tex` or a PDF -- including in a code block an author wrote on purpose, to show how a quiz is displayed.
 
+### Cards and grids
+
+A **card** is a titled block, with an optional header and footer, which may as a whole be a link:
+
+```
+:::{card} Card title
+:header: A header
+:footer: A footer
+:link: https://mystmd.org
+
+The body of the card.
+:::
+```
+
+`:url:` is the specification's own name for the link and `:link:` its alias; both are read. The sphinx-design spelling works too, and means the same thing: a line of `^^^` closes the header, a line of `+++` opens the footer, the rest is the body.
+
+A **card must have a body**. mystmd refuses one that has none -- *required body not provided for directive: card* -- and produces no card at all, so the editor refuses it in the same terms rather than showing something an export would drop.
+
+A **grid** is a responsive row, and its argument is the part that puzzles everyone:
+
+```
+::::{grid} 1 1 2 3
+:::{card} First
+Its body.
+:::
+:::{card} Second
+Its body.
+:::
+::::
+```
+
+Those four numbers are **counts of columns, not widths**, one per screen size: under 768 px, then 768–1024, 1024–1280, and beyond 1280. So `1 1 2 3` means one column on a phone, one still on a small tablet, two on a medium screen and three on a large one. Items fill the columns by themselves -- six cards in a three-column grid make two rows of three. A single number is enough when the layout does not change: `{grid} 2` is two columns everywhere, the last number being repeated for the sizes left unnamed.
+
+`{grid-item}` is how an item takes more than one column, through `:columns:`, counted in the same columns the grid declares:
+
+```
+::::{grid} 1 1 12 12
+:::{grid-item}
+:columns: 4
+One third.
+:::
+:::{grid-item}
+:columns: 8
+Two thirds.
+:::
+::::
+```
+
+Hence the idiom of declaring twelve columns and using them as a ruler. `grid-item-card` is an alias of `card`: a card placed in a grid is already one.
+
+The breakpoints are measured on the **window**, not on the pane, which is mystmd's own rule and is kept here so that a layout seen in the preview falls the same way on a built site. In dual-pane mode the preview is half the window, so a grid may draw three columns in a panel that is only half as wide as the screen it is sizing itself for.
+
+**In a LaTeX, PDF or Word export**, these are among the directives mystmd itself drops -- `Unhandled LaTeX conversion for node of "card"`, and the node goes *with its children*, so a document whose content lives in cards exports a hole rather than a plainer box. The editor's `cards-grids.mjs` plugin therefore retypes a card as an admonition, which every writer knows, and a grid as a row of LaTeX `minipage`s whose widths come from the grid's column counts and each item's `:columns:`. The same plugin rescues `{dropdown}`, which mystmd writes as an HTML `details` element and the LaTeX writer drops as well: paper does not fold, so what was hidden is simply shown under its title.
+
+A figure inside a grid stops floating: a `figure` inside a `minipage` is not a degraded layout but a failed build (*Not in outer par mode*), so the `.tex` post-processing turns it into a centred block with a `\captionof`, which keeps the number, the cross-references and the entry in the list of figures.
+
+The conversion is asked for rather than automatic. A mystmd transform is told nothing about the format being built, and a plugin cannot teach the LaTeX writer a node type, so converting unconditionally would flatten the cards and lose the grid layout **on the site as well** -- in the editor's own "MyST site" pane and in any build of yours. The editor therefore sets `MYSTRAL_STATIC=1` on its export commands and on nothing else. To get the same treatment from your own command line:
+
+```bash
+MYSTRAL_STATIC=1 myst build --pdf
+```
+
 (Roles)=
 ## Roles
 

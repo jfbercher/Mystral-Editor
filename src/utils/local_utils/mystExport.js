@@ -28,6 +28,7 @@ import { separateEnvironments, restoreShortCaptions, stripQuizListings } from ".
 import { readRule } from "../shortCaption.js";
 import { LOGIN_SHELL, WINDOWS_SHELL, windowsScript, shq, q, runShell as runShellWithEnv } from "./shell.js";
 import { rewriteFloats } from "./texFloats.js";
+import { rewriteGrids } from "./texGrids.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
 // as files: `?raw` means they travel with the application, always of the same
@@ -37,6 +38,7 @@ import exerciseAdmonitionSource from "../../../extras/myst-plugins/exercise-admo
 import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.mjs?raw";
 import floatListsSource from "../../../extras/myst-plugins/float-lists.mjs?raw";
 import quizSource from "../../../extras/myst-plugins/quiz.mjs?raw";
+import cardsGridsSource from "../../../extras/myst-plugins/cards-grids.mjs?raw";
 import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
 
 /**
@@ -51,6 +53,17 @@ import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
  * server works under. Harmless everywhere else, since no other build reads it.
  */
 const MYST_ENV = { MYSTMD_ALLOW_NODEENV: "no" };
+
+/**
+ * What tells `cards-grids.mjs` that this build is a static one.
+ *
+ * A mystmd transform is told nothing about the format being built, and a
+ * plugin cannot teach the LaTeX writer a node type, so the one plugin that
+ * has to behave differently for a `.pdf` than for the site is told through
+ * the environment. Carried by the export commands below and by nothing else:
+ * `myst start` runs without it, so the site keeps its cards and its grids.
+ */
+const STATIC_ENV = { MYSTRAL_STATIC: "1" };
 
 /**
  * Every myst command carries `MYST_ENV`; `shell.js` knows nothing of myst, so
@@ -616,7 +629,7 @@ export async function hasMystYml(tab) {
  * and walks all of it -- failing on TCC-protected paths such as
  * ~/Library/Accounts. The explicit `cd` runs after the profile and wins.
  */
-async function runMyst(argline, cwd) {
+async function runMyst(argline, cwd, env = {}) {
   // The directory is changed inside the line on POSIX only, where a login
   // shell's profile can move it after the fact. `cmd /d` cannot be moved, so
   // there the `cwd` option is enough -- and it spares the line two quoted
@@ -629,7 +642,7 @@ async function runMyst(argline, cwd) {
   // nothing to keep both.
   const run = (cmd) => {
     const call = `${pathPrefix(cmd)}${mystInvocation(cmd)} ${argline}`;
-    return runShell(isWindows ? call : `cd ${shq(cwd)} && ${call} < /dev/null`, cwd);
+    return runShellWithEnv(isWindows ? call : `cd ${shq(cwd)} && ${call} < /dev/null`, cwd, { ...MYST_ENV, ...env });
   };
 
   // Before the first command: myst asked for an interpreter it may well find
@@ -898,6 +911,7 @@ const PROJECT_PLUGINS = [
   ["pyodide-outputs.mjs", pyodideOutputsSource],
   ["float-lists.mjs", floatListsSource],
   ["quiz.mjs", quizSource],
+  ["cards-grids.mjs", cardsGridsSource],
 ];
 
 /** The site's style sheet, kept in the same folder as the plugins. */
@@ -1270,7 +1284,7 @@ async function runExport(tab, kind) {
   // Noted before the command, to tell what it wrote from what was already
   // there; see `resolveExport`.
   const builtAt = Date.now();
-  const res = await runMyst(`build ${q(file)} --${buildKind}`, dir);
+  const res = await runMyst(`build ${q(file)} --${buildKind}`, dir, STATIC_ENV);
   if (res.code !== 0) return reportFailure(`myst build --${buildKind}`, res);
 
   // Do not guess the name: myst slugifies it, and its exact rules are its own.
@@ -1533,15 +1547,31 @@ async function postProcessTexFile(texPath, sourcePath) {
   const tex = captions.text;
 
   const blocks = framedBlocks(tex);
-  // Whether {exercise} and {solution} occupy a rank depends on whether the
-  // exercise plugin was in use for this build. Rather than require a setting,
-  // try both readings and keep the one that verifies.
-  const attempts = [true, false].map((withExercises) => {
-    const { items } = scanAdmonitions(expansion.text, { withExercises });
-    console.debug(`[export] scan with${withExercises ? "" : "out"} exercises: ${items.length} admonition(s)`);
-    return pairAdmonitions(items, blocks);
+  // Two plugins now add boxes the source does not call admonitions --
+  // exercises and cards -- and whether each was in use for this build is not
+  // recorded anywhere. Rather than ask for a setting, every reading is tried
+  // and the one that verifies is kept, which is what this did for the
+  // exercises alone.
+  const readings = [
+    { withExercises: true, withCards: true },
+    { withExercises: true, withCards: false },
+    { withExercises: false, withCards: true },
+    { withExercises: false, withCards: false },
+  ];
+  const attempts = readings.map((reading) => {
+    const { items } = scanAdmonitions(expansion.text, reading);
+    console.debug(
+      `[export] scan with${reading.withExercises ? "" : "out"} exercises and with${reading.withCards ? "" : "out"} cards: ${items.length} admonition(s)`,
+    );
+    // The count travels with the result: `pairAdmonitions` reports the
+    // mismatch in a sentence, and choosing between readings needs the number.
+    return { ...pairAdmonitions(items, blocks), counted: items.length };
   });
-  const paired = attempts.find((a) => a.ok) ?? attempts[0];
+  // Failing that, the one that came closest: reporting the first reading's
+  // complaint said "5 against 4" while another reading was off by one in the
+  // other direction, which sends the reader looking in the wrong place.
+  const distance = (a) => Math.abs((a.counted ?? 0) - blocks.length);
+  const paired = attempts.find((a) => a.ok) ?? [...attempts].sort((x, y) => distance(x) - distance(y))[0];
 
   if (!paired.ok) {
     console.warn("[export] .tex left as mystmd wrote it:", paired.reason);
@@ -1555,10 +1585,15 @@ async function postProcessTexFile(texPath, sourcePath) {
   }
 
   const proof = repairProofLabels(styled.text, findProofLabels(expansion.text.split("\n")));
+  // Before the floats, and not after: inside a grid a figure stops floating
+  // altogether, so it must no longer look like one by the time `rewriteFloats`
+  // goes looking for the figures to wrap. A marker left behind on a figure
+  // that became a centred block is stripped by that same pass.
+  const grids = rewriteGrids(proof.text);
   // After the admonitions: both rewrite environments, and a floated figure
   // inside an admonition should become a wrapfigure inside the box that is
   // already there, not the other way round.
-  const floats = rewriteFloats(proof.text);
+  const floats = rewriteFloats(grids.text);
   // Last, and after the floats: what it removes is a whole block, and taking
   // it out earlier would shift every pairing the passes above counted on.
   const quizzes = stripQuizListings(floats.text);
@@ -1568,7 +1603,9 @@ async function postProcessTexFile(texPath, sourcePath) {
   // In a multi-file export the body carries no preamble; the packages and the
   // box definitions have to go in the file that has `\begin{document}`.
   const pendingPreamble =
-    (styled.preambleWritten ? "" : styled.preamble ?? "") + (floats.preambleWritten ? "" : floats.preamble ?? "");
+    (styled.preambleWritten ? "" : styled.preamble ?? "") +
+    (floats.preambleWritten ? "" : floats.preamble ?? "") +
+    (grids.preambleWritten ? "" : grids.preamble ?? "");
   if (split && pendingPreamble) {
     const at = main.indexOf("\\begin{document}");
     if (at === -1) {
@@ -1585,6 +1622,7 @@ async function postProcessTexFile(texPath, sourcePath) {
   }
 
   const parts = [`${styled.rewritten} admonition${styled.rewritten === 1 ? "" : "s"} styled`];
+  if (grids.grids) parts.push(`${grids.grids} grid${grids.grids === 1 ? "" : "s"} laid out`);
   if (captions.fixed) parts.push(`${captions.fixed} caption${captions.fixed === 1 ? "" : "s"} restored to the lists of figures`);
   if (captions.declared) parts.push(`${captions.declared} short caption${captions.declared === 1 ? "" : "s"} as declared`);
   if (captions.shortened) parts.push(`${captions.shortened} shortened`);
@@ -2120,7 +2158,7 @@ export async function mystBuild(tab) {
   }
 
   showToast("Running myst build…", "success", 4000);
-  const res = await runMyst("build", dir);
+  const res = await runMyst("build", dir, STATIC_ENV);
   if (res.code !== 0) return reportFailure("myst build", res);
   showToast("myst build finished.", "success", 5000);
 }
