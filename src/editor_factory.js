@@ -292,12 +292,9 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
         tooltip: "Select working directory",
         action: async () => localUtils.selectWorkingFolder(),
       } : {}),
-    {
-      id: "stats",
-      text: "📊",
-      tooltip: "Text statistics",
-      action: () => tab.showStatsPopup(),
-    },
+    // The statistics button used to be here. The status bar shows the word and
+    // character counts permanently and opens the full table when clicked, so
+    // the button had nothing left to say and the toolbar is the shorter for it.
   ]);
 }
 
@@ -328,19 +325,25 @@ export function languageForFile(name) {
  * editor state over the same text; the guard keeps that from happening on
  * every label refresh, which is most of them.
  */
-export function applyLanguage(options, name) {
+export function applyLanguage(options, name, path = null) {
   if (!options?.language) return;
   const language = languageForFile(name);
   if (options.language.value !== language) options.language.value = language;
+  // The same funnel carries the path: both are facts about the file the tab
+  // holds, and both are known at exactly the same moments.
+  if (options.filePath) {
+    const shown = typeof path === "string" ? path : (path?.name ?? name ?? "");
+    if (options.filePath.value !== shown) options.filePath.value = shown;
+  }
 }
 
-export function applyLanguageForFile(editorId, name) {
+export function applyLanguageForFile(editorId, name, path = null) {
   const options = window.myst_editor?.[editorId]?.state?.options;
   // Nothing to set yet: the tab exists but its editor has not been registered.
   // Not an error and not worth retrying here -- the editor applies it itself
   // once its content is loaded, which is the moment the file is really known.
   if (!options) return;
-  applyLanguage(options, name);
+  applyLanguage(options, name, path);
 }
 
 export function mountEditor(mnt_options) {
@@ -512,7 +515,7 @@ export function mountEditor(mnt_options) {
             // content is read -- and the editor is certainly up here, since
             // this runs from its own onReady. The tab manager's call covers
             // what happens afterwards: an open, a save under another name.
-            applyLanguage(state.options, tab.currentFileName);
+            applyLanguage(state.options, tab.currentFileName, tab.currentFileHandle);
             tab.markSaved(rawContent);
             if (view && !commentsLoaded) {
               commentsLoaded = true;
@@ -623,6 +626,12 @@ export function mountEditor(mnt_options) {
         config.yamlSchema === undefined
           ? new URL("schemas/frontmatter.schema.json", window.location.href).pathname
           : config.yamlSchema,
+      // The foot of the window. A setting rather than a build test: the bar
+      // says what it can say on each platform -- the branch and the path are
+      // simply absent on the web -- and someone who wants the height back
+      // writes `statusBar: false` in config.json.
+      statusBar: config.statusBar !== false,
+      editorPadding: config.editorPadding ?? "0 20px",
       syncScroll: true,
     },
     container,

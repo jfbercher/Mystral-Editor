@@ -133,6 +133,18 @@ export const DEFAULT_CONFIG = {
     modeSlides:  "Mod-Shift-m",
   },
 
+  // The space between the window and the editing and preview panes, as a CSS
+  // padding shorthand: one value for all four sides, two for vertical and
+  // horizontal, four for top, right, bottom, left. Nothing above and below by
+  // default -- that band of background reads as a frame around the panes --
+  // and a little on the sides, where the text would otherwise touch the edge.
+  editorPadding: "0 20px",
+
+  // The bar at the foot of the window: the branch, the counts, the dictionary
+  // in use and the file's path. Clicking the counts opens the full table of
+  // statistics. `false` removes it and gives its height back to the panes.
+  statusBar: true,
+
   // Spell checking. The language a document declares in its frontmatter wins;
   // this is what applies when it declares none.
   //

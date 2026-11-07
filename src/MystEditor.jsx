@@ -5,6 +5,7 @@ import CodeMirror from "./components/CodeMirror";
 import Preview, { PreviewFocusHighlight } from "./components/Preview";
 import Diff from "./components/Diff";
 import { EditorTopbar } from "./components/Topbar";
+import StatusBar from "./components/StatusBar";
 import ResolvedComments from "./components/Resolved";
 import { handlePreviewClickToScroll } from "./extensions/syncDualPane";
 import { createMystState, MystState, predefinedButtons, defaultButtons } from "./mystState";
@@ -23,6 +24,8 @@ import { attachSlideView } from "./markdown/slidesView";
 
 
 const EditorParent = styled.div`
+  ${(props) => props.$status && "--status-bar-h: 25px;"}
+  ${(props) => props.$padding && `--editor-padding: ${props.$padding};`}
   font-family: "Lato";
   display: flex;
   flex-flow: row wrap;
@@ -102,14 +105,19 @@ const ResizeHandle = styled.div`
 `;
 
 const MystWrapper = styled.div`
-  padding: 20px;
+  /* A CSS padding shorthand, from "editorPadding" in config.json. None above
+     and below by default: that band of panel background, read as a frame
+     around the panes, is what it is for. */
+  padding: var(--editor-padding, 0 20px);
   display: flex;
   box-sizing: border-box;
-  height: calc(100% - 60px);
+  /* 60px of topbar, and the status bar when it is drawn -- a height the bar
+     itself declares, so the two cannot disagree about it. */
+  height: calc(100% - 60px - var(--status-bar-h, 0px));
   width: 100%;
   position: relative;
   background-color: var(--panel-bg);
-  ${(props) => props.$fullscreen && "box-sizing:border-box; height: calc(100vh - 60px);"}
+  ${(props) => props.$fullscreen && "box-sizing:border-box; height: calc(100vh - 60px - var(--status-bar-h, 0px));"}
 `;
 
 const StatusBanner = styled.div`
@@ -242,7 +250,12 @@ function stopResize() {
         <ErrorModal />
         <GitModal />
         <ErrorBoundary>
-          <EditorParent mode={options.mode.value} $fullscreen={fullscreen.value}>
+          <EditorParent
+            mode={options.mode.value}
+            $fullscreen={fullscreen.value}
+            $status={options.statusBar.value}
+            $padding={options.editorPadding.value}
+          >
             {options.topbar.value && <EditorTopbar alert={alert} buttons={buttons} />}
             {options.collaboration.value.enabled && !collab.value.ready.value && (
               <StatusBanner>Connecting to the collaboration server ...</StatusBanner>
@@ -323,6 +336,7 @@ function stopResize() {
                 </FlexWrapper>
               )}
             </MystWrapper>
+            {options.statusBar.value && <StatusBar />}
           </EditorParent>
         </ErrorBoundary>
       </MystContainer>

@@ -1,6 +1,7 @@
 import { Decoration, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { Compartment, Facet, RangeSetBuilder } from "@codemirror/state";
 import Typo from "typo-js";
+import { signal } from "@preact/signals";
 
 // Defines a configurable field in the CodeMirror
 const dictionary = Facet.define({
@@ -9,6 +10,17 @@ const dictionary = Facet.define({
 
 /** Holds the dictionary, so the language can change without rebuilding the editor. */
 const spellcheckCompartment = new Compartment();
+
+/**
+ * The name of the dictionary actually in use, or null when none could be
+ * loaded.
+ *
+ * Which candidate won is decided here and was said nowhere: the resolution
+ * from a declared `fr` to an installed `fr_FR` is invisible, and a language
+ * silently unchecked looked exactly like a language with no mistakes. The
+ * status bar shows it.
+ */
+export const activeDictionary = signal(null);
 
 // Class which will be applied to misspelled words
 const errorHighlight = Decoration.mark({ class: "cm-error" });
@@ -257,9 +269,11 @@ export async function useSpellcheckLanguage(view, languages, dictionaryPath) {
     if (view.destroyed) return;
     if (dict) {
       view.dispatch({ effects: spellcheckCompartment.reconfigure(dictionary.of(dict)) });
+      activeDictionary.value = dict.dictionary ?? language;
       return;
     }
   }
+  activeDictionary.value = null;
   console.warn(`[spellcheck] no dictionary found for ${wanted.join(", ") || "(nothing asked for)"}; spelling is not checked`);
 }
 

@@ -41,6 +41,18 @@ import { showToast } from "../utils/utils_ui.js";
 const repoState = signal(null);
 
 /**
+ * What a reader outside the panel may know of the repository.
+ *
+ * A computed rather than the signal itself: the status bar shows the branch
+ * and how far it is from its upstream, and has no business writing any of it.
+ */
+export const gitSummary = computed(() => {
+  const st = repoState.value;
+  if (!st?.available || !st.repo || !st.branch) return null;
+  return { branch: st.branch, changed: st.count ?? 0, ahead: st.counts?.ahead ?? 0, behind: st.counts?.behind ?? 0 };
+});
+
+/**
  * A diff the panel has asked for, carrying the editor that asked.
  *
  * Every open editor mounts a `GitModal`, and they all see this signal; the

@@ -269,6 +269,17 @@ const defaults = {
   collapsibleHeadingMarker: false,
   mapUrl: (tag, url) => url,
   yamlSchema: null,
+  /**
+   * The file this tab holds, as a path, for the status bar to show.
+   *
+   * Set by the tab manager, which is the only place that knows it, and empty
+   * for a document that has never been saved.
+   */
+  filePath: "",
+  /** Whether the status bar is drawn at the foot of the editor. */
+  statusBar: true,
+  /** The padding around the editing and preview panes, as a CSS shorthand. */
+  editorPadding: "0 20px",
   onPreviewClick: () => {},
   onSubtitleClick: () => false,
   onDiscardChanges: () => {},

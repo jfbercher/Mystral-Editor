@@ -276,7 +276,7 @@ export class TabManager {
   // The file decides the language, and this is the one place every change of
   // file goes through -- opening, restoring a session, saving under a new
   // name. A no-op unless the language actually changes.
-  applyLanguageForFile(editorId, name);
+  applyLanguageForFile(editorId, name, tabInfo.tabState.currentFileHandle);
 
   // Tooltip with complete path (Tauri)
     if (isTauri()) {
