@@ -38,6 +38,15 @@ import { markdownItMapUrls, overloadMapUrl } from "./markdown/markdownUrlMapping
 import { backslashLineBreakPlugin } from "./markdown/markdownLineBreak";
 import IMurMurHash from "imurmurhash";
 
+/**
+ * The languages whose preview is the source itself.
+ *
+ * A configuration file is already its own best presentation: rendering YAML or
+ * JSON as markdown turns a key into a paragraph and loses the indentation,
+ * which is the one thing worth seeing.
+ */
+const SOURCE_IS_THE_PREVIEW = new Set(["yaml", "json"]);
+
 import purify from "dompurify";
 import { StateEffect } from "@codemirror/state";
 import hljs from "highlight.js/lib/core";
@@ -677,14 +686,14 @@ export class TextManager {
 
   splitTextIntoChunks(chunkLookup = {}) {
 
-    // A YAML document has no preview to render: it is configuration, not
+    // A data document has no preview to render: it is configuration, not
     // prose. Rendering it as markdown would turn `site:` into a paragraph and
     // swallow the indentation, which is the one thing worth seeing. So the
     // source is shown as it is -- the honest preview of a file that is already
     // its own best presentation -- and the whole chunking machinery below,
     // which exists to re-render only what changed in a long document, is
     // skipped along with it.
-    if (this.options.language?.value === "yaml") {
+    if (SOURCE_IS_THE_PREVIEW.has(this.options.language?.value)) {
       const text = this.text.value;
       const hash = `yaml-${new IMurMurHash(text, 42).result()}`;
       return [
@@ -692,7 +701,7 @@ export class TextManager {
           text,
           hash,
           id: 0,
-          html: chunkLookup[hash]?.html ?? `<pre class="yaml-source">${this.md.value.utils.escapeHtml(text)}</pre>`,
+          html: chunkLookup[hash]?.html ?? `<pre class="data-source">${this.md.value.utils.escapeHtml(text)}</pre>`,
           oldId: chunkLookup[hash]?.oldId,
           startLine: 1,
           endLine: this.text.value.split("\n").length,

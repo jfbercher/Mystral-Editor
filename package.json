@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "schemas": "node scripts/generate-yaml-schemas.mjs",
+    "schemas": "node scripts/generate-yaml-schemas.mjs && node scripts/generate-config-schema.mjs",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 vite build",
     "tauri": "tauri",
     "preview": "vite preview",
@@ -64,7 +64,9 @@
     "y-protocols": "^1.0.5",
     "y-websocket": "^3.0.0",
     "yaml-language-server": "github:antmicro/yaml-language-server",
-    "yjs": "^13.5.44"
+    "yjs": "^13.5.44",
+    "@codemirror/lang-json": "^6.0.1",
+    "vscode-json-languageservice": "^4.1.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.45.1",
@@ -78,6 +80,7 @@
     "eslint-plugin-jsdoc": "^50.6.3",
     "playwright": "^1.45.1",
     "prettier": "^3.2.5",
+    "acorn": "^8.11.0",
     "myst-config": "^1.6.1",
     "myst-frontmatter": "^1.8.2",
     "vite": "^8.2.2",

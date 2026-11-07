@@ -29,6 +29,8 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
 import { yamlLSPExtension } from "./yamlLSPExtension";
+import { jsonLSPExtension } from "./jsonLSPExtension";
+import { json } from "@codemirror/lang-json";
 import { orphanFence, orphanFenceTheme } from "./orphanFence";
 import { proofLabelCase, proofLabelCaseTheme } from "./proofLabelCase";
 import { CollaborationClient } from "../collaboration";
@@ -196,6 +198,8 @@ export class ExtensionBuilder {
       });
       this.extensions.push(yamlFrontmatter({ content: md.language }), md);
       // this.extensions.push(md.language.data.of({ commentTokens: { line: "%" } }));
+    } else if (lang === "json") {
+      this.extensions.push(json());
     } else if (lang === "yaml") {
       this.extensions.push(
         yaml({
@@ -418,6 +422,11 @@ export class ExtensionBuilder {
     }
 
     this.extensions.push(yamlLSPExtension(schema, editorView, linter, lang));
+    return this;
+  }
+
+  useJsonLSPExtension(schema, editorView, linter) {
+    this.extensions.push(jsonLSPExtension(schema, editorView, linter));
     return this;
   }
 

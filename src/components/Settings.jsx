@@ -268,7 +268,7 @@ const Settings = () => {
           title="Open the configuration file of this installation"
           onClick={async () => {
             try {
-              const { path, created, editable } = await openConfigFile();
+              const { path, created, editable } = await openConfigFile(options.openFileInTab.value);
               if (created) showToast(`Created ${path} — it holds the current defaults, edit and reload.`, "success", 8000);
               else if (!editable) showToast("config.json is served with the application; this tab shows it read-only.", "success", 6000);
             } catch (err) {

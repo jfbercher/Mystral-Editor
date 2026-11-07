@@ -311,7 +311,7 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
  * it was written for. The map is the place to add `.py` the day there is
  * something to gain from it.
  */
-const LANGUAGE_BY_EXTENSION = { yml: "yaml", yaml: "yaml" };
+const LANGUAGE_BY_EXTENSION = { yml: "yaml", yaml: "yaml", json: "json" };
 
 export function languageForFile(name) {
   const ext = String(name || "").split(".").pop()?.toLowerCase();
@@ -328,11 +328,19 @@ export function languageForFile(name) {
  * editor state over the same text; the guard keeps that from happening on
  * every label refresh, which is most of them.
  */
-export function applyLanguageForFile(editorId, name) {
-  const opts = window.myst_editor?.[editorId]?.state?.options;
-  if (!opts?.language) return;
+export function applyLanguage(options, name) {
+  if (!options?.language) return;
   const language = languageForFile(name);
-  if (opts.language.value !== language) opts.language.value = language;
+  if (options.language.value !== language) options.language.value = language;
+}
+
+export function applyLanguageForFile(editorId, name) {
+  const options = window.myst_editor?.[editorId]?.state?.options;
+  // Nothing to set yet: the tab exists but its editor has not been registered.
+  // Not an error and not worth retrying here -- the editor applies it itself
+  // once its content is loaded, which is the moment the file is really known.
+  if (!options) return;
+  applyLanguage(options, name);
 }
 
 export function mountEditor(mnt_options) {
@@ -500,6 +508,11 @@ export function mountEditor(mnt_options) {
 
             tab.setEditorText(rawContent);
             updateTabLabel(editorId);
+            // The file is only known now -- a tab is mounted before its
+            // content is read -- and the editor is certainly up here, since
+            // this runs from its own onReady. The tab manager's call covers
+            // what happens afterwards: an open, a save under another name.
+            applyLanguage(state.options, tab.currentFileName);
             tab.markSaved(rawContent);
             if (view && !commentsLoaded) {
               commentsLoaded = true;

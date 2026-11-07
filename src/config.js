@@ -195,7 +195,7 @@ const starterConfig = () => ({
  *
  * @returns {Promise<{path: string, created: boolean, editable: boolean}>}
  */
-export async function openConfigFile() {
+export async function openConfigFile(openInTab = null) {
   if (!isTauri) {
     const url = new URL("config.json", import.meta.url).href;
     window.open(url, "_blank", "noopener");
@@ -214,7 +214,13 @@ export async function openConfigFile() {
     await writeTextFile(path, JSON.stringify(starterConfig(), null, 2) + "\n");
     created = true;
   }
-  await openPath(path);
+  // Opened here rather than handed to whatever the system associates with
+  // .json: the editor now knows this file -- it validates it against a schema,
+  // explains each key on hover and completes the ones that may follow -- which
+  // no general-purpose opener does. `openPath` remains the fallback for a
+  // caller that has no tab to open into.
+  if (openInTab) await openInTab(path);
+  else await openPath(path);
   return { path, created, editable: true };
 }
 

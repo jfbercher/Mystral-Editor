@@ -9,6 +9,16 @@ import { setDiagnostics } from "@codemirror/lint";
 import { CompletionItemKind } from "vscode-languageserver-protocol";
 import { cmPosToLspPos, lspPosToCmPos, lspSeverityToCm } from "../lsp/positions.js";
 
+/**
+ * The one line this extension adds in front of the document it sends.
+ *
+ * `stateToYamlDoc` prepends `# yaml-language-server: $schema=...`, so every
+ * position the server speaks of is one line below the editor's own. Stated
+ * here rather than left to cancel itself out silently, which is how it was,
+ * and which held only as long as nobody sent an unprefixed document.
+ */
+const SCHEMA_LINE = 1;
+
 export const newLspClient = () => {
   const worker = new YamlLSPWorker();
 
@@ -78,8 +88,8 @@ export const buildYamlLspPlugin = (lspClient, schema) =>
         const diag = notification.params.diagnostics.map((d) => ({
           message: d.message,
           source: d.source,
-          from: lspPosToCmPos(this.view.state, d.range.start),
-          to: lspPosToCmPos(this.view.state, d.range.end),
+          from: lspPosToCmPos(this.view.state, d.range.start, SCHEMA_LINE),
+          to: lspPosToCmPos(this.view.state, d.range.end, SCHEMA_LINE),
           severity: lspSeverityToCm(d.severity),
         }));
         this.view.dispatch(setDiagnostics(this.view.state, diag));
@@ -94,7 +104,7 @@ const buildYamlTooltipSource = (lspClient) => ({
     const id = view.state.facet(subEditorId)[0];
     const result = await lspClient.textDocumentHover({
       textDocument: { uri: getUri(id) },
-      position: cmPosToLspPos(view.state, pos),
+      position: cmPosToLspPos(view.state, pos, SCHEMA_LINE),
     });
     if (!result) return null;
 
@@ -102,8 +112,8 @@ const buildYamlTooltipSource = (lspClient) => ({
     dom.innerHTML = tooltipRenderer.render(result.contents.value);
 
     return {
-      pos: lspPosToCmPos(view.state, result.range.start),
-      end: lspPosToCmPos(view.state, result.range.end),
+      pos: lspPosToCmPos(view.state, result.range.start, SCHEMA_LINE),
+      end: lspPosToCmPos(view.state, result.range.end, SCHEMA_LINE),
       create: () => ({ dom }),
       above: true,
     };
@@ -116,7 +126,7 @@ const buildYamlCompletionSource = (lspClient) => ({
     const id = ctx.state.facet(subEditorId)[0];
     const completions = await lspClient.textDocumentCompletion({
       textDocument: { uri: getUri(id) },
-      position: cmPosToLspPos(ctx.state, ctx.pos),
+      position: cmPosToLspPos(ctx.state, ctx.pos, SCHEMA_LINE),
     });
     const items = completions?.items ?? completions;
     if (!items?.length) return;
@@ -149,7 +159,7 @@ const buildYamlCompletionSource = (lspClient) => ({
           // is that prefix, and leaving it in place would insert the key after
           // it ("langu" + "language").
           const start = range
-            ? lspPosToCmPos(ctx.state, range.start) + from - ctx.pos
+            ? lspPosToCmPos(ctx.state, range.start, SCHEMA_LINE) + from - ctx.pos
             : Math.max(view.state.doc.lineAt(from).from, from - (completionStart?.length ?? 0));
           const startLine = view.state.doc.lineAt(start);
           const newText = textEdit?.newText ?? insertText ?? label;

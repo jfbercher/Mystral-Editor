@@ -450,7 +450,10 @@ const tA = performance.now();
         .useLanguage(options.language.value, options.transforms.value)
         .useLineNumbers()
         .useCompartment(userExtensionsCompartment, [])
-        .useSpellcheck(options.spellcheckOpts.value)
+        // Prose only: a configuration file has no prose to check, and underlining
+        // every key as a misspelling is noise in the one place where a red line
+        // ought to mean the key does not exist.
+        .if(options.language.value === "markdown", (b) => b.useSpellcheck(options.spellcheckOpts.value))
         .if(options.collaboration.value.enabled, (b) => {
           return b.useCollaboration({ collabClient: collab.value, editorView });
         })
@@ -474,17 +477,28 @@ const tA = performance.now();
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))
         .if(options.syncScroll.value && options.mode.value === "Both", (b) => b.useSyncPreviewWithCursor({ text, lastTyped }))
-        .if(options.yamlSchema.value, (b) => b.useYamlLSPExtension(options.yamlSchema.value, editorView, linter, options.language.value))
-        .useCodeBlockLanguages(editorView, linter)
-        .if(options.mode.value === "Inline", (b) => b.useInlinePreview(text, options))
-        .useTrackHeadings(headings)
-        .useMystCompletions({
-          getRefMap: () => text.refMap,
-          getBibEntries: () => text.bibArray,
-        })
-        .useMystComments()
-        .useOrphanFenceCheck()
-        .useProofLabelCaseCheck()
+        .if(options.yamlSchema.value && options.language.value !== "json", (b) =>
+          b.useYamlLSPExtension(options.yamlSchema.value, editorView, linter, options.language.value),
+        )
+        .if(options.language.value === "json", (b) => b.useJsonLSPExtension(null, editorView, linter))
+        // Everything from here to the end of the block is about MyST, and a
+        // configuration file is not a MyST document: the directive and role
+        // completions were being offered inside `slides: {}` beside the keys
+        // the schema proposes, and the fence and label checks have nothing to
+        // read. They are installed for a markdown document only.
+        .if(options.language.value === "markdown", (b) =>
+          b
+            .useCodeBlockLanguages(editorView, linter)
+            .if(options.mode.value === "Inline", (c) => c.useInlinePreview(text, options))
+            .useTrackHeadings(headings)
+            .useMystCompletions({
+              getRefMap: () => text.refMap,
+              getBibEntries: () => text.bibArray,
+            })
+            .useMystComments()
+            .useOrphanFenceCheck()
+            .useProofLabelCaseCheck(),
+        )
         .useFoldKeys()
         .useExceptionSink(error)
         .useLogger(logger)

@@ -1,0 +1,391 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mystral-editor.local/schemas/config.schema.json",
+  "title": "Mystral Editor configuration (config.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "The schema this file is validated against.",
+      "type": "string"
+    },
+    "suspendAfterMs": {
+      "description": "1 hour",
+      "type": "number"
+    },
+    "checkIntervalMs": {
+      "description": "1 hour",
+      "type": "number"
+    },
+    "autoSaveEnabled": {
+      "description": "5 minutes",
+      "type": "boolean"
+    },
+    "autosaveIntervalMs": {
+      "description": "1 minute",
+      "type": "number"
+    },
+    "editorMode": {
+      "description": "1 minute",
+      "enum": [
+        "Source",
+        "Preview",
+        "Both",
+        "Diff",
+        "Resolved",
+        "Outline",
+        "Inline"
+      ]
+    },
+    "foldFrontmatterOnOpen": {
+      "description": "How a document opens for a reader who has never said otherwise. As soon as one folds or unfolds a frontmatter, that choice is remembered and outranks this setting, exactly as the view mode remembers the last button pressed.",
+      "type": "boolean"
+    },
+    "recentFilesMax": {
+      "type": "number"
+    },
+    "defaultFileName": {
+      "type": "string"
+    },
+    "fallbackImage": {
+      "type": "string"
+    },
+    "shortcuts": {
+      "type": "object",
+      "properties": {
+        "save": {
+          "type": "string"
+        },
+        "open": {
+          "type": "string"
+        },
+        "newTab": {
+          "type": "string"
+        },
+        "modeDual": {
+          "description": "Switch the view. `l` rather than the `i` of \"inline\": Ctrl-Shift-I opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works on the three platforms is worth more than a mnemonic that works on one -- and it keeps config.json portable between them. Firefox also keeps Ctrl-Shift-P (private window) for itself, which is one of the reasons these are configurable.",
+          "type": "string"
+        },
+        "modePreview": {
+          "type": "string"
+        },
+        "modeInline": {
+          "type": "string"
+        },
+        "modeSlides": {
+          "description": "`m` for want of anything better: the initials that would be mnemonic here are all spoken for. Worth knowing if this one ever seems dead: in a browser tab, Firefox keeps Mod-Shift-M for its responsive design view and Chrome for switching profile, so the editor never sees it there. The desktop build has no such claim on it. Mod-Shift-F is the roomiest alternative, being a shortcut of neither; Mod-Shift-J is not, it opens the console in both. This is a setting precisely because that varies.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "spellcheck": {
+      "description": "Spell checking. The language a document declares in its frontmatter wins; this is what applies when it declares none.\n The name is the dictionary's: `fr` is accepted and looked up as `fr_FR`, and `en` as `en_US`, since there is no `en_EN`; on the desktop build, a bare tag also finds whichever region is actually installed for it, which is what the folder is called. en_US ships with the application; any other language is a folder <name>/<name>.aff + <name>.dic placed in the configuration directory, beside config.json -- which also lets a bundled language be replaced by a better dictionary.",
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pyodide": {
+      "type": "object",
+      "properties": {
+        "offline": {
+          "description": "Where the Pyodide runtime and its packages are loaded from. \"auto\" uses the copy installed from Settings when there is a complete one, and the CDN otherwise; \"never\" keeps the CDN whatever is on disk, which is what one wants while testing a new version. Whether a local copy *exists* is never recorded here: that is the state of a folder, and the folder itself answers it -- see pyodideInstall.js.",
+          "enum": [
+            "auto",
+            "never"
+          ]
+        },
+        "offlinePackages": {
+          "description": "Packages to add to the offline install, beyond numpy, matplotlib and the helpers. Dependencies are resolved from Pyodide's own lock, so naming \"pandas\" brings what pandas needs. This list matters: once a local copy is in use, Pyodide looks for every wheel in that folder and nowhere else, so a package absent from it fails even with a network. Name here whatever the documents ask for in a cell's `:packages:`.",
+          "type": "array"
+        },
+        "resetCwdOnRun": {
+          "description": "false = notebook behaviour: CWD persists across cells (option B) true  = resets os.chdir(\"/local\") before each cell  (option A)",
+          "type": "boolean"
+        },
+        "figureWidth": {
+          "description": "Default width of the matplotlib figures a cell produces, as a CSS length: \"60%\" of the output area, \"20em\", \"480px\". Empty means the figure keeps its natural size, bounded by the width of the cell. A cell overrides it with its own :figwidth: option.",
+          "type": "string"
+        },
+        "exportImageScale": {
+          "description": "How much larger than its natural size a figure is rasterised for an export. The figures are SVG, which LaTeX cannot include and which the web theme does not render directly, so they are turned into PNG when a document is exported; 2 keeps them sharp in print without weighing much.",
+          "type": "number"
+        },
+        "keys": {
+          "description": "Keyboard shortcuts of a code-cell editor, in CodeMirror notation: \"Mod\" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and a key name (\"Enter\", \"ArrowUp\", \"k\"). An empty string means no shortcut; a binding that CodeMirror does not understand is reported in the console and ignored, so a typo costs a shortcut rather than the whole cell. They apply inside a cell editor only, and win over the editor's own bindings, so rebinding one to a key the editor already uses (for instance \"Mod-s\") shadows it while the cursor is in a cell.",
+          "type": "object",
+          "properties": {
+            "run": {
+              "description": "run this cell",
+              "type": "string"
+            },
+            "insertBelow": {
+              "description": "run this cell",
+              "type": "string"
+            },
+            "inspect": {
+              "description": "insert an empty cell below",
+              "type": "string"
+            },
+            "clear": {
+              "description": "open the variable window",
+              "type": "string"
+            },
+            "runAll": {
+              "description": "clear this cell's output",
+              "type": "string"
+            },
+            "clearAll": {
+              "description": "run every cell of the document",
+              "type": "string"
+            },
+            "restart": {
+              "description": "clear every output",
+              "type": "string"
+            },
+            "deleteCell": {
+              "description": "restart the kernel (clears variables)",
+              "type": "string"
+            },
+            "editSource": {
+              "description": "delete this cell",
+              "type": "string"
+            },
+            "toggleInput": {
+              "description": "inline preview: edit this cell's source",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "slides": {
+      "description": "Slides: the view, the presentation and the export read the same settings, because a deck rehearsed in the editor has to be the deck that is projected. They are posted here as a set rather than added one at a time.",
+      "type": "object",
+      "properties": {
+        "width": {
+          "description": "Nominal size of a slide, in pixels. The slide is laid out at this size and then optically reduced to fit the panel, so what fits fits at any panel width -- a preview that reflowed to the panel would say a slide overflows when it does not, or the reverse, which is worse than having no preview at all. 1280x720 is 16:9; 1024x768 is 4:3.",
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "fontSize": {
+          "description": "How big the text of a slide is, in pixels *of the nominal slide*. It is the one setting of this section one actually fiddles with, so it is a plain number rather than a stylesheet to override: a slide is read from the back of a room, and 16px -- a document's size -- is far too small. Everything on a slide is sized in em, so this one value scales headings, lists, maths and code together. It is nominal, so it does not depend on the width of the pane: 28 looks the same in a half-width panel and on the projector. Roughly 15 lines of body text fit at 28, 11 at 36.",
+          "type": "number"
+        },
+        "padding": {
+          "description": "The margin inside a slide, as a CSS padding shorthand: one value for all four sides, two for vertical and horizontal, four for top, right, bottom, left. \"32px 56px\" keeps the sides and gives back a third of the height, which is where a dense slide runs out first -- and it is the space above the header and below the footer as much as around the body, since both sit inside it.",
+          "type": "string"
+        },
+        "header": {
+          "description": "A line across the top of every slide, and one across the foot, each in three parts separated by `|`: left, middle, right. An empty part takes no room, so `Course | | {n}` puts the title at one end and the number at the other, and `| {section} |` centres a section title on its own.\n Three placeholders are replaced: `{n}`, `{total}` and `{section}`. A part that mentions `{section}` is left out entirely on a slide that has no section, rather than leaving its punctuation stranded. Writing `{n}` anywhere takes the number out of the badge in the corner, so it cannot be shown twice. A literal pipe is written `\\\\|`.\n These are per deck far more often than per installation: a lecture title belongs in the document, not in the application. The frontmatter takes the same keys.",
+          "type": "string"
+        },
+        "footer": {
+          "type": "string"
+        },
+        "headerStyle": {
+          "description": "CSS declarations, applied to the header and footer as they stand -- \"font-size: 18px; color: #888; border-bottom: 1px solid #ddd\". The browser parses them and drops what it does not understand, and they cannot reach anything but the element they are given to.",
+          "type": "string"
+        },
+        "footerStyle": {
+          "type": "string"
+        },
+        "background": {
+          "description": "The slide's own background, as any CSS colour. Empty follows the theme.",
+          "type": "string"
+        },
+        "verticalAlign": {
+          "description": "Where the content of a slide sits in its box: \"top\" or \"center\". Centring suits a deck of short slides; a lecture whose slides are uneven reads better flush to the top, where the titles line up from one slide to the next instead of drifting up and down.",
+          "enum": [
+            "top",
+            "center"
+          ]
+        },
+        "cellFontSize": {
+          "description": "How big the code of a cell is on a slide, in pixels of the nominal slide, like fontSize.\n A separate setting because code cells cannot follow the prose: their stylesheet is written in rem, which is rooted at the document and not at the slide, so raising fontSize left them exactly as small as they are in an ordinary preview -- and code is the one thing on a slide that has to be readable from the back of the room. Smaller than the prose by default, because a cell carries more characters per line and because code read aloud is usually being pointed at rather than read.",
+          "type": "number"
+        },
+        "cutAtHeading": {
+          "description": "Also start a slide at every heading of this level or above, which makes a document that was never written as a deck presentable without touching it. 0 means only the explicit `---` markers cut.",
+          "type": "number"
+        },
+        "marker": {
+          "description": "How one slide gives way to the next, while presenting:\n none       the next slide is simply there fade       it appears slide      it comes in from the side the deck is moving towards slideUp    the same, vertically zoom       it grows the last few per cent into place\n Which spelling cuts a slide: \"both\", \"plus\" or \"dash\".\n The point of choosing is what it leaves free. Under \"plus\" only `+++` cuts, so `---` goes back to being the horizontal rule it looks like. Under \"dash\" only `---` cuts, which is what a document converted from a notebook wants -- its `+++` lines are cell boundaries nobody asked to see as sixty slides. \"both\" accepts either, and is the default because it is what was there before this setting existed.\n It governs slide cuts only. `----` and `++++` are always fragments: a four-dash rule is an odd thing to write on purpose, where a three-dash one is not. `***` and `___` are horizontal rules under every setting.",
+          "type": "string"
+        },
+        "transition": {
+          "description": "A duration may follow on the same line -- \"fade 700ms\", \"slideUp 1.2s\", or a bare number read as milliseconds -- because it is not a separate decision: one does not choose a transition and then, elsewhere, how long it lasts. Without one, 450ms.\n Deliberately few: a transition is there to say \"that was a slide, here is another\", and past that it becomes a thing the room watches instead of listening to you.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "export": {
+      "description": "Tauri-only export menu (myst build / myst start).",
+      "type": "object",
+      "properties": {
+        "mystPath": {
+          "description": "Command used to invoke mystmd. It is run through a login shell, so the plain name works as long as it is on the PATH of your shell profile; set an absolute path here if it is installed somewhere unusual.",
+          "type": "string"
+        },
+        "nodePath": {
+          "description": "Interpreter myst must run under. mystmd is a node script whose shebang resolves `node` through the PATH, and the PATH of a login shell is not the one your terminal shows: leave this empty and the editor looks for the newest node it can find the first time myst reports none, then records it here.",
+          "type": "string"
+        },
+        "pdfViaTex": {
+          "description": "Produce a PDF by exporting LaTeX, post-processing it, then running the LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a .tex the editor never sees, so the styled boxes, the restored proof labels and the injected \\label{} could not reach the PDF any other way. The cost is that the document must declare a \"tex\" export rather than a \"pdf\" one -- the editor offers to add it -- and that the LaTeX chain below has to be installed. Set to false to let mystmd build the PDF itself, unstyled.",
+          "type": "boolean"
+        },
+        "pdfCommand": {
+          "description": "The command run on the .tex to produce the PDF, with {file} replaced by the file name. The default is the one jtex uses, so a document that built under mystmd builds here the same way. {engine} is the engine the template asks for in its template.yml, as jtex reads it, and -xelatex when it asks for none -- jtex's own default.",
+          "type": "string"
+        },
+        "latexPath": {
+          "description": "Full path of the program pdfCommand names. Same blind spot as nodePath: a desktop application does not inherit a terminal's PATH, so latexmk is found in development and missing from a bundled build -- and a command that never ran writes no .log, so there is nothing to read afterwards either. Leave this empty and the editor looks where TeX distributions install -- MacTeX, MacPorts, Homebrew, TeX Live, the distribution's own packages -- then records what it found here. The directory is put at the head of the PATH rather than substituted into the command, because latexmk runs xelatex and kpsewhich by name and they are its neighbours.",
+          "type": "string"
+        },
+        "postProcessTex": {
+          "description": "Rewrite the .tex produced by a LaTeX export: admonitions become coloured boxes carrying their kind and their label, proof labels mangled by mystmd are put back as typed, and closing environments get a blank line after them. The rewrite only happens when the source and the .tex can be matched beyond doubt; otherwise the file is left exactly as mystmd wrote it and the reason is reported.",
+          "type": "boolean"
+        },
+        "shortCaptions": {
+          "description": "What goes into \\listoffigures and \\listoftables beside each number. mystmd writes every caption as \\caption[]{…} -- an explicit *empty* short caption -- so the lists come out as a column of numbers; the export removes the empty brackets and LaTeX falls back on the full caption. A figure or a table can declare its own short form with a `% shortcaption: …` comment, which always wins. This key asks for one to be computed for the others: \"sentence\" keeps the first sentence, a number is a budget in characters (the first sentence if it fits, otherwise the last whole word before the budget and an ellipsis), and false -- the default -- prints the caption in full. A caption offering no safe place to cut is left whole whatever the setting: a short caption is a separate argument and must stand on its own.",
+          "type": "boolean"
+        },
+        "admonitionColors": {
+          "description": "Colour of each admonition kind in a LaTeX or PDF export, as an RRGGBB hex string without the leading \"#\". mystmd draws every admonition as the same grey box, losing the kind the author chose; the export rewrites them as coloured boxes using this table. The frame takes the colour and the background a 6% tint of it. A kind absent from the table is drawn like \"plain\", which is also what a generic {admonition} with no title gets. Deliberately sober: a box that shouts on paper is a box the reader stops seeing.",
+          "type": "object",
+          "properties": {
+            "attention": {
+              "type": "string"
+            },
+            "caution": {
+              "type": "string"
+            },
+            "danger": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
+            "important": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "seealso": {
+              "type": "string"
+            },
+            "tip": {
+              "type": "string"
+            },
+            "warning": {
+              "type": "string"
+            },
+            "exercise": {
+              "description": "Not admonition kinds: `{exercise}` and `{solution}`, which a plugin turns into admonitions so that they survive a static export.",
+              "type": "string"
+            },
+            "solution": {
+              "type": "string"
+            },
+            "plain": {
+              "type": "string"
+            },
+            "titleLink": {
+              "description": "Not a box: the colour of a hyperlink inside a box's title bar. A solution's title carries a live reference to its exercise, and hyperref's default red is unreadable on a coloured bar.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "sitePort": {
+          "description": "Port used by \"myst start\" for the local site preview.",
+          "type": "number"
+        },
+        "siteContentPort": {
+          "description": "Port of myst's *content* server, which is not the one the site is read on: `myst start` runs two servers. Named explicitly so that stopping the site knows which ports to free; left to drift it climbed by one at each run. Defaults to sitePort + 100, which is myst's own convention.",
+          "type": "number"
+        },
+        "templates": {
+          "description": "Template written into the exports frontmatter when the editor creates the entry, per format. Empty means no `template:` line at all, which is what myst itself defaults to -- there is no built-in template for any format. Example: { \"pdf\": \"arxiv_nips\", \"docx\": \"curvenote\" }",
+          "type": "object",
+          "properties": {
+            "pdf": {
+              "type": "string"
+            },
+            "docx": {
+              "type": "string"
+            },
+            "tex": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "data_directives": {
+      "description": "Directive definitions, added to the built-in table or overriding it. Each key is the directive's name, and its value says how the labelling and numbering system treats it: `kind` (the counter it belongs to -- `fig`, `table`, `eq`, or one of the proof families -- `null` for a directive that is not labelled), `label` (what is printed before the number), `numbered`, and `caption` (`arg`, `body` or `both` -- where the caption is read from).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "The counter this directive belongs to, or null when it is not labelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "description": "What is printed before the number: Figure, Table, Exercise.",
+            "type": "string"
+          },
+          "numbered": {
+            "description": "Whether the directive takes a number.",
+            "type": "boolean"
+          },
+          "caption": {
+            "description": "Where the caption is read from.",
+            "enum": [
+              "arg",
+              "body",
+              "both"
+            ]
+          },
+          "argIsLabel": {
+            "description": "The directive's argument is its label, not its caption.",
+            "type": "boolean"
+          },
+          "reference": {
+            "description": "The directive refers to another rather than being counted on its own.",
+            "type": "boolean"
+          },
+          "refJoiner": {
+            "description": "What joins this directive to the one it refers to in a cross-reference.",
+            "type": "string"
+          },
+          "fmKey": {
+            "description": "The frontmatter key under which this directive's numbering is configured.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

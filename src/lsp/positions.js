@@ -8,16 +8,26 @@
  * cost more than the duplication it saves.
  */
 
-/** A CodeMirror offset as an LSP position. */
-export const cmPosToLspPos = (state, pos) => {
+/**
+ * A CodeMirror offset as an LSP position.
+ *
+ * CodeMirror numbers its lines from one, the protocol from zero, hence the
+ * subtraction. `lineOffset` is for a caller that sends the server a document
+ * that is not exactly the editor's: the YAML extension prepends a line
+ * holding the schema comment, so everything it sends is one line further
+ * down, and it passes 1. Reading `line.number` straight across happened to be
+ * right for that one caller, and only for it -- which is why a document sent
+ * without a prefix pointed one line too far.
+ */
+export const cmPosToLspPos = (state, pos, lineOffset = 0) => {
   const line = state.doc.lineAt(pos);
-  return { line: line.number, character: pos - line.from };
+  return { line: line.number - 1 + lineOffset, character: pos - line.from };
 };
 
-/** An LSP position as a CodeMirror offset. */
-export const lspPosToCmPos = (state, pos) => {
-  const line = state.doc.line(pos.line);
-  return line.from + pos.character;
+/** An LSP position as a CodeMirror offset, undoing the same offset. */
+export const lspPosToCmPos = (state, pos, lineOffset = 0) => {
+  const line = state.doc.line(Math.min(state.doc.lines, Math.max(1, pos.line + 1 - lineOffset)));
+  return Math.min(line.to, line.from + pos.character);
 };
 
 /**

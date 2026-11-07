@@ -324,11 +324,11 @@ html-chunk[data-float] h4 {
 }
 
 /*
- * The preview of a YAML document: its own source. Pre-wrap rather than a
+ * The preview of a configuration document (YAML, JSON): its own source. Pre-wrap rather than a
  * scrollbar, because a configuration is read whole, and the editor's own
  * monospace stack so the two panes line up.
  */
-pre.yaml-source {
+pre.data-source {
   margin: 0;
   padding: 0.5em 0;
   white-space: pre-wrap;
