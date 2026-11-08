@@ -98,7 +98,7 @@ const projectDir = () => currentFileDir.value || workingDirectory.value || null;
  * measuring its own noise.
  */
 export async function refreshRepoState() {
-  if (!isTauri) return;
+  if (!isTauri()) return;
   try {
     if (!(await gitAvailable())) return (repoState.value = { available: false });
     const repo = await findRepo(projectDir());

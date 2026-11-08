@@ -161,13 +161,8 @@ function useCounts(text, options) {
   return { counts, tooLong, countNow: () => compute(text.text.peek()) };
 }
 
-/**
- * Whether this runs in the desktop build.
- *
- * Called, not tested: `isTauri` is a function, and a function is always
- * truthy -- the mistake is easy enough that `GitPanel.jsx` makes it too, on
- * the same import, where `if (!isTauri) return` never returns.
- */
+
+//Whether this runs in the desktop build.
 const onDesktop = isTauri();
 
 export const StatusBar = () => {
