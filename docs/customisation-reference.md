@@ -92,6 +92,10 @@ language: fr
 ---
 ```
 
+The language in use is decided in three steps, in this order: **what you chose in the status bar** for this document, else **what the document declares** in its frontmatter `language:`, else this setting. Clicking the dictionary's name at the foot of the window lists what is installed and lets you pick one; that choice is remembered per file in this browser, and *Forget this choice* returns to the document's own language. It is deliberately not written into the file: what belongs to the work is its `language:`, which travels with it and can be set once for a whole project in `myst.yml`.
+
+A dictionary shipped with the application must also be named in `dictionaries/index.json` beside the others, since an HTTP folder does not list itself; the ones you install yourself, in the configuration folder, are found by reading it.
+
 The value is the dictionary's name. A bare language tag is enough: `fr` is looked up as `fr_FR`, which is what the folder is called, and `en` as `en_US`, since there is no `en_EN`. In the desktop application, a bare tag also finds whichever region is in fact installed for it, so `en` will pick up an `en_GB` if that is the only English dictionary there; when several are, the usual region wins. The language is also inherited from the project, being read from the effective frontmatter.
 
 **Adding a language.** `en_US` ships with the application. Any other is a folder in the configuration directory, see [](#Where-they-live), beside `config.json` and holding the two files of a hunspell dictionary:

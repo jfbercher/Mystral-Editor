@@ -6,6 +6,7 @@ import { Decoration, ViewPlugin, WidgetType, keymap } from "@codemirror/view";
 import { EditorSelection, EditorState, RangeSet, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { handlePreviewInteraction } from "../utils/previewInteractions";
 import { SECTION_LABEL_RE } from "../utils/headingNumbering";
+import { dictionary, markMisspellings } from "./spellchecker.js";
 
 /**
  * Elements inside a rendered block that own their own click.
@@ -347,15 +348,34 @@ function computeBlocks() {
   }
 
   class ProjectedWidget extends WidgetType {
-    constructor(html, startLine, endLine) {
+    constructor(html, startLine, endLine, dict) {
       super();
       this.html = html;
       this.startLine = startLine;
       this.endLine = endLine;
+      // The dictionary is part of what this widget shows, because the
+      // misspellings are marked into its DOM when it is built.
+      this.dict = dict;
     }
 
+    /**
+     * Two widgets are the same when they would draw the same thing.
+     *
+     * The dictionary belongs in that comparison, and leaving it out was a
+     * defect with an odd symptom: rebuilding the decorations when the
+     * dictionary landed changed nothing on screen, because CodeMirror found
+     * the new widgets equal to the old ones and kept their DOM -- so `toDOM`
+     * never ran again and nothing was underlined. Scrolling away and back
+     * destroyed the widgets and rebuilt them, which is why a scroll
+     * "repainted" what a rebuild would not.
+     */
     eq(widget) {
-      return this.html === widget.html && this.startLine === widget.startLine && this.endLine === widget.endLine;
+      return (
+        this.html === widget.html &&
+        this.startLine === widget.startLine &&
+        this.endLine === widget.endLine &&
+        this.dict === widget.dict
+      );
     }
 
 
@@ -363,6 +383,13 @@ function computeBlocks() {
       const el = document.createElement("span");
       el.className = "cm-inline-rendered-md";
       el.innerHTML = this.html;
+      // The source this widget stands in for is not displayed, so the
+      // editor's own checker -- which decorates ranges of the document --
+      // has nothing to underline here. The rendered text is marked as a DOM
+      // instead, with the same class, so Inline mode is checked like the
+      // other views. A dictionary changed later reaches the widgets built
+      // after it: these are rebuilt whenever their chunk is re-rendered.
+      markMisspellings(el, this.dict ?? view.state.facet(dictionary));
 
       el.addEventListener("click", (ev) => {
         if (handlePreviewInteraction(ev, view.root, view, text.refMap, null)) {
@@ -415,6 +442,8 @@ function computeBlocks() {
   }
 
   function buildDecorations(state) {
+    // Read once per build and handed to every widget: see `ProjectedWidget.eq`.
+    const dict = state.facet(dictionary);
     const focused = state.field(focusedField);
     const decorations = [];
 
@@ -442,7 +471,7 @@ function computeBlocks() {
       if (block.synthetic) {
         decorations.push(
           Decoration.widget({
-            widget: new ProjectedWidget(block.html, block.startLine, block.endLine),
+            widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
             block: true,
             side: 1,
           }).range(block.from),
@@ -471,7 +500,7 @@ function computeBlocks() {
       }
       decorations.push(
         Decoration.replace({
-          widget: new ProjectedWidget(block.html, block.startLine, block.endLine),
+          widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
           block: block.startLine !== block.endLine,
         }).range(block.from, block.to),
       );
@@ -568,6 +597,12 @@ function computeBlocks() {
       // would drop every widget until the next render lands.
       if (!projectionMatches(tr.state)) return value;
       if (tr.effects.some((e) => e.is(inlineRefreshEffect) || e.is(focusEffect) || e.is(unlockEffect))) return buildDecorations(tr.state);
+      // The dictionary arrives seconds after the document is first drawn, and
+      // a widget is marked when it is built: without this, nothing was
+      // underlined until something else happened to rebuild it -- a keystroke
+      // for the prose, and later still for the text inside a card. The
+      // transaction that installs the dictionary rebuilds them all.
+      if (tr.startState.facet(dictionary) !== tr.state.facet(dictionary)) return buildDecorations(tr.state);
       if (!tr.selection) return value;
       if (tr.startState.field(unlockedField) !== tr.state.field(unlockedField)) return buildDecorations(tr.state);
       const from = blockAt(tr.startState, tr.startState.selection)?.from;

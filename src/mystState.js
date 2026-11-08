@@ -278,6 +278,20 @@ const defaults = {
   filePath: "",
   /** Whether the status bar is drawn at the foot of the editor. */
   statusBar: true,
+  /**
+   * The dictionary this editor is checking with: `{ name, loading }`.
+   *
+   * Per editor and not per application: two tabs in two languages have two
+   * dictionaries, and the status bar of each shows its own.
+   */
+  activeDictionary: { name: null, loading: false },
+  /**
+   * A dictionary chosen by hand for the document this tab holds, or null.
+   *
+   * Outranks the document's `language:` and the configured default, and is
+   * remembered per file in this browser. See `storedDictionary`.
+   */
+  dictionaryOverride: null,
   /** The padding around the editing and preview panes, as a CSS shorthand. */
   editorPadding: "0 20px",
   onPreviewClick: () => {},

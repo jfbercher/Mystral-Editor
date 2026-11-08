@@ -11,7 +11,7 @@ import { useSignalEffect } from "@preact/signals";
 import { FoldChevron, MdStyles } from "./Preview";
 import { Logger } from "../logger";
 import { foldFrontmatter, shouldFoldFrontmatter } from "../extensions/frontmatterFold.js";
-import { useSpellcheckLanguage } from "../extensions/spellchecker.js";
+import { useSpellcheckLanguage, storedDictionary } from "../extensions/spellchecker.js";
 
 let timing_debug = false;
 
@@ -383,15 +383,39 @@ const CodeMirror = () => {
   // than rebuilding it -- and a document that declares none falls back to the
   // configured default. Asked for again on every change, which is cheap: a
   // dictionary is loaded once and kept.
+  // The choice made in the status bar is remembered per file, so it has to be
+  // read again whenever the tab changes file -- on open, and on save-as.
+  useSignalEffect(() => {
+    options.dictionaryOverride.value = storedDictionary(options.filePath.value);
+  });
+
   useSignalEffect(() => {
     const view = editorView.value;
     const opts = options.spellcheckOpts.value;
     const declared = text.language.value;
+    const chosen = options.dictionaryOverride.value;
     if (!view || !opts) return;
     // The declared language first, the configured default behind it: a
     // document asking for a dictionary nobody installed is still checked,
     // rather than silently checked in nothing.
-    useSpellcheckLanguage(view, [declared, opts.dict], opts.dictionaryPath);
+    //
+    // Said while it happens: a dictionary is a megabyte to fetch and parse,
+    // seconds on a cold start, and until it lands nothing is underlined --
+    // which looks exactly like a document with no mistakes. The status bar
+    // shows the wait rather than an empty space.
+    options.activeDictionary.value = { name: options.activeDictionary.peek().name, loading: true };
+    // In order: what the reader chose here, what the document declares, what
+    // the configuration sets. Each is a fallback for the one before it, so a
+    // choice that names a dictionary nobody installed still ends up checked.
+    useSpellcheckLanguage(view, [chosen, declared, opts.dict], opts.dictionaryPath)
+      .then((name) => {
+        if (view.destroyed) return;
+        options.activeDictionary.value = { name, loading: false };
+      })
+      .catch((err) => {
+        console.warn("[spellcheck] the dictionary could not be loaded:", err?.message ?? err);
+        options.activeDictionary.value = { name: null, loading: false };
+      });
   });
 
   useSignalEffect(() => {

@@ -15,7 +15,7 @@ import { useSignalEffect } from "@preact/signals";
 import styled from "styled-components";
 import { MystState } from "../mystState";
 import { gitSummary } from "./GitPanel";
-import { activeDictionary } from "../extensions/spellchecker";
+import { availableDictionaries, storeDictionary } from "../extensions/spellchecker.js";
 import { computeStats, showStatsPopup } from "../utils/local_utils/stats";
 import { isTauri } from "../utils/local_utils/fs.js";
 
@@ -58,7 +58,10 @@ const Bar = styled.div`
   background: var(--navbar-bg);
   user-select: none;
   white-space: nowrap;
-  overflow: hidden;
+  /* Not "overflow: hidden", which is where the dictionary menu went: a popup
+     anchored inside a clipped box is clipped with it, and all that showed was
+     the two pixels of it that fitted in the bar's own height. What has to be
+     kept from overflowing is the path, and it says so itself below. */
 
   .spacer {
     flex: 1 1 auto;
@@ -101,6 +104,57 @@ const Bar = styled.div`
 
   .muted {
     opacity: 0.6;
+  }
+
+  /* Anchored to its item and opening upwards: the bar is at the foot of the
+     window, so a menu dropping down would fall off it. */
+  .menu-anchor {
+    position: relative;
+  }
+
+  .menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    z-index: 30;
+    min-width: 12em;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px 0;
+    background: var(--panel-bg);
+    color: var(--char-col);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius, 6px);
+    box-shadow: 0 2px 10px var(--box-shadow);
+    text-align: left;
+  }
+
+  .menu-title {
+    padding: 2px 10px 4px;
+    opacity: 0.6;
+  }
+
+  .menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 3px 10px;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--button-bg-hover);
+    }
+  }
+
+  .menu hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 0;
   }
 `;
 
@@ -165,12 +219,77 @@ function useCounts(text, options) {
 //Whether this runs in the desktop build.
 const onDesktop = isTauri();
 
+/**
+ * The menu of dictionaries, opened from the bar.
+ *
+ * The list is asked for when the menu opens rather than kept up to date: a
+ * dictionary is installed by dropping a folder beside the configuration file,
+ * which nothing notifies us of, so the only moment the answer is certainly
+ * fresh is the moment it is wanted.
+ */
+const DictionaryMenu = ({ options, declared, onClose }) => {
+  const [names, setNames] = useState(null);
+  const chosen = options.dictionaryOverride.value;
+  const active = options.activeDictionary.value.name;
+
+  useEffect(() => {
+    let alive = true;
+    availableDictionaries(options.spellcheckOpts.value?.dictionaryPath)
+      .then((found) => alive && setNames(found))
+      .catch(() => alive && setNames([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const pick = (name) => {
+    storeDictionary(options.filePath.value, name);
+    options.dictionaryOverride.value = name;
+    onClose();
+  };
+
+  // Where the language in use comes from, said rather than left to be
+  // guessed three weeks later.
+  const origin = chosen ? "chosen here" : declared ? "from this document" : "from your settings";
+
+  return (
+    <div className="menu" onClick={(ev) => ev.stopPropagation()}>
+      <div className="menu-title">Dictionary — {origin}</div>
+      {names === null && <div className="menu-title">looking…</div>}
+      {names?.length === 0 && <div className="menu-title">none found</div>}
+      {names?.map((name) => (
+        <button key={name} type="button" onClick={() => pick(name)}>
+          {name === active ? "• " : "\u00a0\u00a0"}
+          {name}
+        </button>
+      ))}
+      {chosen && (
+        <>
+          <hr />
+          <button type="button" onClick={() => pick(null)}>
+            Forget this choice
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
 export const StatusBar = () => {
   const { options, text } = useContext(MystState);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // A click anywhere else closes it, which is what a menu does.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpen]);
   const { counts, tooLong, countNow } = useCounts(text, options);
 
   const git = gitSummary.value;
-  const dict = activeDictionary.value;
+  const { name: dict, loading: dictLoading } = options.activeDictionary.value;
   const path = options.filePath.value;
 
   const stats = () => showStatsPopup(options.id.value);
@@ -197,8 +316,25 @@ export const StatusBar = () => {
         )}
       </button>
 
-      <span className="item" title={dict ? `Spelling checked with ${dict}` : "No dictionary loaded: spelling is not checked"}>
-        {dict ?? <span className="muted">no dictionary</span>}
+      <span className="menu-anchor">
+        <button
+          type="button"
+          className="item"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            setMenuOpen((open) => !open);
+          }}
+          title={
+            dictLoading
+              ? "Loading the dictionary…"
+              : dict
+                ? `Spelling checked with ${dict} — click to choose another`
+                : "No dictionary loaded: spelling is not checked — click to choose one"
+          }
+        >
+          {dictLoading ? <span className="muted">dictionary…</span> : (dict ?? <span className="muted">no dictionary</span>)}
+        </button>
+        {menuOpen && <DictionaryMenu options={options} declared={text.language.value} onClose={() => setMenuOpen(false)} />}
       </span>
 
       <span className="spacer" />

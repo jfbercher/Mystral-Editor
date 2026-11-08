@@ -1,7 +1,6 @@
 import { Decoration, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { Compartment, Facet, RangeSetBuilder } from "@codemirror/state";
 import Typo from "typo-js";
-import { signal } from "@preact/signals";
 
 // Defines a configurable field in the CodeMirror
 const dictionary = Facet.define({
@@ -12,15 +11,14 @@ const dictionary = Facet.define({
 const spellcheckCompartment = new Compartment();
 
 /**
- * The name of the dictionary actually in use, or null when none could be
- * loaded.
- *
- * Which candidate won is decided here and was said nowhere: the resolution
- * from a declared `fr` to an installed `fr_FR` is invisible, and a language
- * silently unchecked looked exactly like a language with no mistakes. The
- * status bar shows it.
+ * Which candidate won used to be said nowhere -- the resolution from a
+ * declared `fr` to an installed `fr_FR` is invisible, and a language silently
+ * unchecked looks exactly like a language with no mistakes. So
+ * `useSpellcheckLanguage` returns the name that loaded, and the caller puts
+ * it where it belongs: in that editor's own options, since two tabs holding
+ * documents in two languages have two dictionaries, and a module-level signal
+ * could only ever hold the last one loaded.
  */
-export const activeDictionary = signal(null);
 
 // Class which will be applied to misspelled words
 const errorHighlight = Decoration.mark({ class: "cm-error" });
@@ -90,6 +88,75 @@ const spellcheckExtension = ViewPlugin.fromClass(
   },
 );
 
+/**
+ * Elements whose text is not prose.
+ *
+ * Code and mathematics are the obvious ones -- a variable name is not a
+ * misspelling -- and KaTeX also builds a shadow copy of the formula in
+ * `.katex-mathml`, which would be checked twice and underlined in a place
+ * the reader cannot see.
+ */
+// `.cm-error` is in the list so that marking twice marks nothing twice: the
+// widgets are rebuilt rather than re-marked today, but a function that
+// damages what it has already done is a trap for whoever calls it next.
+const NOT_PROSE = "code, pre, kbd, samp, var, tt, math, .katex, .katex-mathml, script, style, textarea, .cm-editor, .cm-error";
+
+/**
+ * Underline the misspelled words of a rendered fragment, in place.
+ *
+ * The editor's own checker decorates ranges of the *document*, so it has
+ * nothing to say where the source is replaced by rendered HTML -- which is
+ * the whole of Inline mode. There the text the reader sees is a DOM, so it is
+ * marked as a DOM: the text nodes are walked, the words that the dictionary
+ * refuses are wrapped in a span carrying the same `cm-error` class, and the
+ * underline is the one from the source view.
+ *
+ * Text nodes are collected before any of them is replaced: a tree walker
+ * whose tree changes under it stops being a reliable way to see the tree.
+ *
+ * @param {Element|DocumentFragment} root the rendered fragment, modified in place
+ * @param {object} dict a Typo instance, or anything not ready, in which case nothing is done
+ * @returns {number} how many words were marked
+ */
+export function markMisspellings(root, dict) {
+  if (!root || !dictReady(dict)) return 0;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      return node.parentElement?.closest(NOT_PROSE) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  const texts = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n);
+
+  let marked = 0;
+  for (const node of texts) {
+    const text = node.nodeValue;
+    WORD_RE.lastIndex = 0;
+    let m;
+    let at = 0;
+    let fragment = null;
+    while ((m = WORD_RE.exec(text))) {
+      const word = m[0];
+      if (word.length < 2 || accepts(dict, word)) continue;
+      fragment ??= document.createDocumentFragment();
+      if (m.index > at) fragment.appendChild(document.createTextNode(text.slice(at, m.index)));
+      const span = document.createElement("span");
+      span.className = "cm-error";
+      span.textContent = word;
+      fragment.appendChild(span);
+      at = m.index + word.length;
+      marked += 1;
+    }
+    if (!fragment) continue;
+    if (at < text.length) fragment.appendChild(document.createTextNode(text.slice(at)));
+    node.parentNode?.replaceChild(fragment, node);
+  }
+  return marked;
+}
+
 // ─── Loading a dictionary ────────────────────────────────────────────────────
 
 /** One Typo per language name, for as long as the application runs. */
@@ -147,20 +214,77 @@ function candidates(language) {
  * rather than guessed. Several, and the usual region decides; failing that,
  * the first in alphabetical order, which at least is stable.
  */
-async function installedRegions(bare) {
+async function installedDictionaries() {
   if (!("__TAURI_INTERNALS__" in window)) return [];
   try {
     const { appConfigDir, join } = await import("@tauri-apps/api/path");
     const { readDir } = await import("@tauri-apps/plugin-fs");
     const entries = await readDir(await join(await appConfigDir(), "dictionaries"));
-    const found = entries
-      .filter((e) => e.isDirectory && e.name.toLowerCase().startsWith(`${bare}_`))
-      .map((e) => e.name)
-      .sort();
-    const usual = USUAL_REGION[bare];
-    return usual && found.includes(usual) ? [usual, ...found.filter((n) => n !== usual)] : found;
+    return entries.filter((e) => e.isDirectory).map((e) => e.name).sort();
   } catch {
     return [];
+  }
+}
+
+async function installedRegions(bare) {
+  const found = (await installedDictionaries()).filter((n) => n.toLowerCase().startsWith(`${bare}_`));
+  const usual = USUAL_REGION[bare];
+  return usual && found.includes(usual) ? [usual, ...found.filter((n) => n !== usual)] : found;
+}
+
+/**
+ * The dictionaries the user can choose from.
+ *
+ * Two sources, and neither can stand for the other. The ones installed in the
+ * configuration folder are listed by reading it, which only the desktop build
+ * can do. The ones shipped with the application are served over HTTP, and an
+ * HTTP folder does not list itself -- hence `dictionaries/index.json`, a
+ * manifest beside them naming what is there. A missing or unreadable manifest
+ * is not an error: it means the application ships none, which is exactly what
+ * a user who installed their own would expect to see.
+ */
+export async function availableDictionaries(dictionaryPath) {
+  const base = String(dictionaryPath ?? "/dictionaries").replace(/\/$/, "");
+  let bundled = [];
+  try {
+    const res = await fetch(`${base}/index.json`);
+    if (res.ok) {
+      const parsed = JSON.parse(await res.text());
+      if (Array.isArray(parsed)) bundled = parsed.filter((n) => typeof n === "string");
+    }
+  } catch {
+    /* no manifest: nothing is shipped, or it could not be read */
+  }
+  return [...new Set([...(await installedDictionaries()), ...bundled])].sort();
+}
+
+/** Where a per-document choice is remembered. One key per file. */
+const choiceKey = (path) => `myst/dictionary:${path || "untitled"}`;
+
+/**
+ * The dictionary chosen by hand for this document, if there is one.
+ *
+ * Per document and per machine, which is the point: it is a reader's choice
+ * about a file they have in front of them, not a property of the work. What
+ * belongs to the work is the frontmatter's `language:`, which this overrides
+ * and does not replace -- so a document opened elsewhere still says what it
+ * is written in.
+ */
+export function storedDictionary(path) {
+  try {
+    return localStorage.getItem(choiceKey(path)) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember a choice, or forget it when `name` is null. */
+export function storeDictionary(path, name) {
+  try {
+    if (name) localStorage.setItem(choiceKey(path), name);
+    else localStorage.removeItem(choiceKey(path));
+  } catch (err) {
+    console.warn("[spellcheck] the choice of dictionary could not be remembered:", err?.message ?? err);
   }
 }
 
@@ -227,12 +351,29 @@ export async function loadDictionary(language, dictionaryPath) {
   if (bare) {
     for (const name of await installedRegions(bare)) if (!names.includes(name)) names.push(name);
   }
+  // Printed once per attempt: when a language resolves to nothing, the list
+  // that was actually tried is the whole of the diagnosis, and reading it in
+  // the console beats guessing from the one failure that got reported.
+  console.debug(`[spellcheck] "${language}" -> trying ${names.join(", ")}`);
   for (const name of names) {
     if (loaded.has(name)) return loaded.get(name);
     try {
+      // Timed because the wait is the one thing a user notices about a
+      // dictionary, and because the remedy depends on which half costs: a
+      // slow read is a file or a protocol, a slow parse is typo-js building a
+      // table of a few hundred thousand entries. Measured here rather than
+      // guessed from a machine that is not yours.
+      const startedRead = performance.now();
       const [aff, dic] = await readPair(name, dictionaryPath);
+      const readMs = performance.now() - startedRead;
       if (!looksLikeDictionary(aff, dic)) throw new Error("not a hunspell dictionary");
+      const startedParse = performance.now();
       const dict = new Typo(name, aff, dic);
+      const parseMs = performance.now() - startedParse;
+      console.debug(
+        `[spellcheck] ${name}: read ${readMs.toFixed(0)} ms (${(dic.length / 1e6).toFixed(1)} MB), ` +
+          `parsed ${parseMs.toFixed(0)} ms, ${Object.keys(dict.dictionaryTable ?? {}).length} words`,
+      );
       // Verified rather than assumed, for the same reason: an empty table is
       // a dictionary that accepts nothing, which looks exactly like one that
       // is still loading.
@@ -240,7 +381,12 @@ export async function loadDictionary(language, dictionaryPath) {
       loaded.set(name, dict);
       return dict;
     } catch (err) {
-      console.warn(`[spellcheck] no dictionary for "${name}"`, err?.message ?? err);
+      // A failed candidate is a step, not a fault: `fr` is *expected* to find
+      // nothing before `fr_FR` does. Only the last one is worth a warning,
+      // and it is the loop's own message below that reports the real failure.
+      const last = name === names[names.length - 1];
+      const say = last ? console.warn : console.debug;
+      say(`[spellcheck] no dictionary for "${name}"`, err?.message ?? err);
     }
   }
   return null;
@@ -266,15 +412,14 @@ export async function useSpellcheckLanguage(view, languages, dictionaryPath) {
 
   for (const language of wanted) {
     const dict = await loadDictionary(language, dictionaryPath);
-    if (view.destroyed) return;
+    if (view.destroyed) return null;
     if (dict) {
       view.dispatch({ effects: spellcheckCompartment.reconfigure(dictionary.of(dict)) });
-      activeDictionary.value = dict.dictionary ?? language;
-      return;
+      return dict.dictionary ?? language;
     }
   }
-  activeDictionary.value = null;
   console.warn(`[spellcheck] no dictionary found for ${wanted.join(", ") || "(nothing asked for)"}; spelling is not checked`);
+  return null;
 }
 
 export { dictionary, spellcheckExtension, spellcheckCompartment };
