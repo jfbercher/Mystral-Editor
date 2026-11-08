@@ -1,6 +1,20 @@
-import { Transport } from "@open-rpc/client-js/src/transports/Transport";
-import { getNotifications } from "@open-rpc/client-js/src/Request";
-
+/**
+ * The transport between the language-server client and its worker.
+ *
+ * It imported two things from `@open-rpc/client-js/src/…` -- the `Transport`
+ * base class and `getNotifications` -- and uses neither since this was
+ * rewritten as a plain object: the client this fork uses expects the
+ * handler-list interface, not the inherited one. The imports stayed behind,
+ * and they were not harmless. They reach into that package's **TypeScript
+ * source**, which the bundler then has to parse; one of those files declares
+ * `public abstract async sendData(...)`, which TypeScript does not allow, and
+ * a stricter bundler refuses the whole dependency scan over it:
+ *
+ *   [PARSE_ERROR] 'async' modifier cannot be used with 'abstract' modifier.
+ *
+ * Importing another package's source rather than what it publishes is the
+ * actual mistake; the stricter bundler only revealed it.
+ */
 export default class PostMessageWorkerTransport {
   constructor(worker) {
     this.worker = worker;
