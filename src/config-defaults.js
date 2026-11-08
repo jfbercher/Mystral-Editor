@@ -91,46 +91,62 @@ export const BUILTIN_DIRECTIVES = {
  * These are the baseline settings before any user config.json is applied.
  */
 export const DEFAULT_CONFIG = {
-  suspendAfterMs:    60 * 60 * 1000,  // 1 hour
-  checkIntervalMs:    5 * 60 * 1000,  // 5 minutes
-  autoSaveEnabled:   true,
-  autosaveIntervalMs: 60 * 1000,      // 1 minute
 
-  editorMode: "Both",
+  // Initial display mode -- last state will be remembered by the editor afterward
+  editorMode: "Both", 
+
+  // Suspend a tab after (eg 60 * 60 * 1000 = 1 hour) of inactivity
+  suspendAfterMs:    60 * 60 * 1000,  
+  // Interval for inactivity check (eg 5 * 60 * 1000 = 5 minutes)
+  checkIntervalMs:    5 * 60 * 1000,  
+  // Automatically save modified tabs (true/false)
+  autoSaveEnabled:   true,  
+  // Autosave interval (if enabled), eg 60 * 1000 = 1 minute          
+  autosaveIntervalMs: 60 * 1000,      
+
 
   // How a document opens for a reader who has never said otherwise. As soon as
   // one folds or unfolds a frontmatter, that choice is remembered and outranks
   // this setting, exactly as the view mode remembers the last button pressed.
   foldFrontmatterOnOpen: true,
 
-  recentFilesMax:  10,
-  defaultFileName: "Untitled.md",
+  // Number of recent files showed in the Open menu
+  recentFilesMax:  10, 
+  // Default filename for new files
+  defaultFileName: "Untitled.md", 
 
+  // Image displayed if the image specified is not found
   fallbackImage:
     "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png",
 
+  // Keyboard shortcuts  
   shortcuts: {
-    save:   "Mod-Shift-s",
-    open:   "Mod-Shift-o",
-    newTab: "Mod-Shift-e",
-    // Switch the view. `l` rather than the `i` of "inline": Ctrl-Shift-I
+    // Save
+    save:   "Mod-Shift-s", 
+    // Open an existing file
+    open:   "Mod-Shift-o", 
+    // Open a new tab
+    newTab: "Mod-Shift-e", 
+    // Switch to dual mode (source+preview)
+    modeDual:    "Mod-Shift-d",
+    // Switch to preview mode
+    modePreview: "Mod-Shift-p",  
+    // Keyboard shortcut for inlinePreview - Default: "Mod-Shift-l", `l` rather than the `i` of "inline": Ctrl-Shift-I
     // opens the developer tools on Windows and Linux, in the webview as in a
     // browser, so the editor never sees it there. One binding that works on
     // the three platforms is worth more than a mnemonic that works on one --
     // and it keeps config.json portable between them. Firefox also keeps
     // Ctrl-Shift-P (private window) for itself, which is one of the reasons
     // these are configurable.
-    modeDual:    "Mod-Shift-d",
-    modePreview: "Mod-Shift-p",
-    modeInline:  "Mod-Shift-l",
-    // `m` for want of anything better: the initials that would be mnemonic
+    modeInline:  "Mod-Shift-l", 
+    // Switch to Slides mode - Default: "Mod-Shift-m" `m` for want of anything better: the initials that would be mnemonic
     // here are all spoken for. Worth knowing if this one ever seems dead: in
     // a browser tab, Firefox keeps Mod-Shift-M for its responsive design view
     // and Chrome for switching profile, so the editor never sees it there.
     // The desktop build has no such claim on it. Mod-Shift-F is the roomiest
     // alternative, being a shortcut of neither; Mod-Shift-J is not, it opens
     // the console in both. This is a setting precisely because that varies.
-    modeSlides:  "Mod-Shift-m",
+    modeSlides:  "Mod-Shift-m", // Switch to Slides mode
   },
 
   // The space between the window and the editing and preview panes, as a CSS
@@ -158,7 +174,8 @@ export const DEFAULT_CONFIG = {
   spellcheck: {
     language: "en_US",
   },
-
+  
+  // Python WASM runtime for executing code-cells
   pyodide: {
     // Where the Pyodide runtime and its packages are loaded from.
     // "auto" uses the copy installed from Settings when there is a complete
@@ -176,8 +193,8 @@ export const DEFAULT_CONFIG = {
     // whatever the documents ask for in a cell's `:packages:`.
     offlinePackages: [],
 
-    // false = notebook behaviour: CWD persists across cells (option B)
-    // true  = resets os.chdir("/local") before each cell  (option A)
+    // false = notebook behaviour: CWD persists across cells 
+    // true  = resets os.chdir("/local") before each cell 
     resetCwdOnRun: false,
 
     // Default width of the matplotlib figures a cell produces, as a CSS length:
@@ -200,16 +217,26 @@ export const DEFAULT_CONFIG = {
     // bindings, so rebinding one to a key the editor already uses (for
     // instance "Mod-s") shadows it while the cursor is in a cell.
     keys: {
-      run:         "Shift-Enter",       // run this cell
-      insertBelow: "Mod-Shift-Enter",   // insert an empty cell below
-      inspect:     "Alt-v",             // open the variable window
-      clear:       "",                  // clear this cell's output
-      runAll:      "",                  // run every cell of the document
-      clearAll:    "",                  // clear every output
-      restart:     "",                  // restart the kernel (clears variables)
-      deleteCell:  "",                  // delete this cell
-      editSource:  "",                  // inline preview: edit this cell's source
-      toggleInput: "",                  // fold this cell's code away, or back
+      // run this cell
+      run:         "Shift-Enter",       
+       // insert an empty cell below
+      insertBelow: "Mod-Shift-Enter",  
+      // open the variable inspector window
+      inspect:     "Alt-v",        
+      // clear this cell's output     
+      clear:       "",        
+      // run every cell of the document          
+      runAll:      "",     
+      // clear every output             
+      clearAll:    "",        
+      // restart the kernel (clears variables)          
+      restart:     "",        
+      // delete this cell          
+      deleteCell:  "",          
+      // inline preview: edit this cell's source        
+      editSource:  "",       
+      // fold this cell's code away, or back           
+      toggleInput: "",                 
     },
   },
 
@@ -261,6 +288,10 @@ export const DEFAULT_CONFIG = {
     // browser parses them and drops what it does not understand, and they
     // cannot reach anything but the element they are given to.
     headerStyle: "",
+    // CSS declarations, applied to the header and footer as they stand --
+    // "font-size: 18px; color: #888; border-bottom: 1px solid #ddd". The
+    // browser parses them and drops what it does not understand, and they
+    // cannot reach anything but the element they are given to.
     footerStyle: "",
     // The slide's own background, as any CSS colour. Empty follows the theme.
     background: "",
@@ -280,18 +311,10 @@ export const DEFAULT_CONFIG = {
     // default, because a cell carries more characters per line and because
     // code read aloud is usually being pointed at rather than read.
     cellFontSize: 18,
-    // Also start a slide at every heading of this level or above, which makes
+    // Possibility to rtart a slide at every heading of this level or above, which makes
     // a document that was never written as a deck presentable without touching
     // it. 0 means only the explicit `---` markers cut.
     cutAtHeading: 0,
-    // How one slide gives way to the next, while presenting:
-    //
-    //   none       the next slide is simply there
-    //   fade       it appears
-    //   slide      it comes in from the side the deck is moving towards
-    //   slideUp    the same, vertically
-    //   zoom       it grows the last few per cent into place
-    //
     // Which spelling cuts a slide: "both", "plus" or "dash".
     //
     // The point of choosing is what it leaves free. Under "plus" only `+++`
@@ -305,6 +328,13 @@ export const DEFAULT_CONFIG = {
     // four-dash rule is an odd thing to write on purpose, where a three-dash
     // one is not. `***` and `___` are horizontal rules under every setting.
     marker: "both",
+    // How one slide gives way to the next, while presenting:
+    //
+    //   none       the next slide is simply there
+    //   fade       it appears
+    //   slide      it comes in from the side the deck is moving towards
+    //   slideUp    the same, vertically
+    //   zoom       it grows the last few per cent into place
     // A duration may follow on the same line -- "fade 700ms", "slideUp 1.2s",
     // or a bare number read as milliseconds -- because it is not a separate
     // decision: one does not choose a transition and then, elsewhere, how
@@ -316,7 +346,7 @@ export const DEFAULT_CONFIG = {
     transition: "slide",
   },
 
-  // Tauri-only export menu (myst build / myst start).
+  // Tauri-only export menu.
   export: {
     // Command used to invoke mystmd. It is run through a login shell, so the
     // plain name works as long as it is on the PATH of your shell profile;
@@ -328,7 +358,7 @@ export const DEFAULT_CONFIG = {
     // the newest node it can find the first time myst reports none, then
     // records it here.
     nodePath: "",
-    // Produce a PDF by exporting LaTeX, post-processing it, then running the
+    // If true, produce a PDF by exporting LaTeX, post-processing it, then running the
     // LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a
     // .tex the editor never sees, so the styled boxes, the restored proof
     // labels and the injected \label{} could not reach the PDF any other way.

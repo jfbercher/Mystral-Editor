@@ -8,24 +8,8 @@
       "description": "The schema this file is validated against.",
       "type": "string"
     },
-    "suspendAfterMs": {
-      "description": "1 hour",
-      "type": "number"
-    },
-    "checkIntervalMs": {
-      "description": "1 hour",
-      "type": "number"
-    },
-    "autoSaveEnabled": {
-      "description": "5 minutes",
-      "type": "boolean"
-    },
-    "autosaveIntervalMs": {
-      "description": "1 minute",
-      "type": "number"
-    },
     "editorMode": {
-      "description": "1 minute",
+      "description": "Initial display mode -- last state will be remembered by the editor afterward",
       "enum": [
         "Source",
         "Preview",
@@ -36,47 +20,80 @@
         "Inline"
       ]
     },
+    "suspendAfterMs": {
+      "description": "Suspend a tab after (eg 60 * 60 * 1000 = 1 hour) of inactivity",
+      "type": "number"
+    },
+    "checkIntervalMs": {
+      "description": "Interval for inactivity check (eg 5 * 60 * 1000 = 5 minutes)",
+      "type": "number"
+    },
+    "autoSaveEnabled": {
+      "description": "Automatically save modified tabs (true/false)",
+      "type": "boolean"
+    },
+    "autosaveIntervalMs": {
+      "description": "Autosave interval (if enabled), eg 60 * 1000 = 1 minute",
+      "type": "number"
+    },
     "foldFrontmatterOnOpen": {
       "description": "How a document opens for a reader who has never said otherwise. As soon as one folds or unfolds a frontmatter, that choice is remembered and outranks this setting, exactly as the view mode remembers the last button pressed.",
       "type": "boolean"
     },
     "recentFilesMax": {
+      "description": "Number of recent files showed in the Open menu",
       "type": "number"
     },
     "defaultFileName": {
+      "description": "Default filename for new files",
       "type": "string"
     },
     "fallbackImage": {
+      "description": "Image displayed if the image specified is not found",
       "type": "string"
     },
     "shortcuts": {
+      "description": "Keyboard shortcuts",
       "type": "object",
       "properties": {
         "save": {
+          "description": "Save",
           "type": "string"
         },
         "open": {
+          "description": "Open an existing file",
           "type": "string"
         },
         "newTab": {
+          "description": "Open a new tab",
           "type": "string"
         },
         "modeDual": {
-          "description": "Switch the view. `l` rather than the `i` of \"inline\": Ctrl-Shift-I opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works on the three platforms is worth more than a mnemonic that works on one -- and it keeps config.json portable between them. Firefox also keeps Ctrl-Shift-P (private window) for itself, which is one of the reasons these are configurable.",
+          "description": "Switch to dual mode (source+preview)",
           "type": "string"
         },
         "modePreview": {
+          "description": "Switch to preview mode",
           "type": "string"
         },
         "modeInline": {
+          "description": "Keyboard shortcut for inlinePreview. `l` rather than the `i` of \"inline\": Ctrl-Shift-I opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works on the three platforms is worth more than a mnemonic that works on one -- and it keeps config.json portable between them. Firefox also keeps Ctrl-Shift-P (private window) for itself, which is one of the reasons these are configurable.",
           "type": "string"
         },
         "modeSlides": {
-          "description": "`m` for want of anything better: the initials that would be mnemonic here are all spoken for. Worth knowing if this one ever seems dead: in a browser tab, Firefox keeps Mod-Shift-M for its responsive design view and Chrome for switching profile, so the editor never sees it there. The desktop build has no such claim on it. Mod-Shift-F is the roomiest alternative, being a shortcut of neither; Mod-Shift-J is not, it opens the console in both. This is a setting precisely because that varies.",
+          "description": "Keyboard shortcut to switch to inlinePreview. Switch to Slides mode: \"Mod-Shift-m\" `m` for want of anything better: the initials that would be mnemonic here are all spoken for. Worth knowing if this one ever seems dead: in a browser tab, Firefox keeps Mod-Shift-M for its responsive design view and Chrome for switching profile, so the editor never sees it there. The desktop build has no such claim on it. Mod-Shift-F is the roomiest alternative, being a shortcut of neither; Mod-Shift-J is not, it opens the console in both. This is a setting precisely because that varies.",
           "type": "string"
         }
       },
       "additionalProperties": false
+    },
+    "editorPadding": {
+      "description": "The space between the window and the editing and preview panes, as a CSS padding shorthand: one value for all four sides, two for vertical and horizontal, four for top, right, bottom, left. Nothing above and below by default -- that band of background reads as a frame around the panes -- and a little on the sides, where the text would otherwise touch the edge.",
+      "type": "string"
+    },
+    "statusBar": {
+      "description": "The bar at the foot of the window: the branch, the counts, the dictionary in use and the file's path. Clicking the counts opens the full table of statistics. `false` removes it and gives its height back to the panes.",
+      "type": "boolean"
     },
     "spellcheck": {
       "description": "Spell checking. The language a document declares in its frontmatter wins; this is what applies when it declares none.\n The name is the dictionary's: `fr` is accepted and looked up as `fr_FR`, and `en` as `en_US`, since there is no `en_EN`; on the desktop build, a bare tag also finds whichever region is actually installed for it, which is what the folder is called. en_US ships with the application; any other language is a folder <name>/<name>.aff + <name>.dic placed in the configuration directory, beside config.json -- which also lets a bundled language be replaced by a better dictionary.",
@@ -89,6 +106,7 @@
       "additionalProperties": false
     },
     "pyodide": {
+      "description": "Python WASM runtime for executing code-cells",
       "type": "object",
       "properties": {
         "offline": {
@@ -103,7 +121,7 @@
           "type": "array"
         },
         "resetCwdOnRun": {
-          "description": "false = notebook behaviour: CWD persists across cells (option B) true  = resets os.chdir(\"/local\") before each cell  (option A)",
+          "description": "false = notebook behaviour: CWD persists across cells true  = resets os.chdir(\"/local\") before each cell",
           "type": "boolean"
         },
         "figureWidth": {
@@ -123,39 +141,39 @@
               "type": "string"
             },
             "insertBelow": {
-              "description": "run this cell",
-              "type": "string"
-            },
-            "inspect": {
               "description": "insert an empty cell below",
               "type": "string"
             },
-            "clear": {
-              "description": "open the variable window",
+            "inspect": {
+              "description": "open the variable inspector window",
               "type": "string"
             },
-            "runAll": {
+            "clear": {
               "description": "clear this cell's output",
               "type": "string"
             },
-            "clearAll": {
+            "runAll": {
               "description": "run every cell of the document",
               "type": "string"
             },
-            "restart": {
+            "clearAll": {
               "description": "clear every output",
               "type": "string"
             },
-            "deleteCell": {
+            "restart": {
               "description": "restart the kernel (clears variables)",
               "type": "string"
             },
-            "editSource": {
+            "deleteCell": {
               "description": "delete this cell",
               "type": "string"
             },
-            "toggleInput": {
+            "editSource": {
               "description": "inline preview: edit this cell's source",
+              "type": "string"
+            },
+            "toggleInput": {
+              "description": "fold this cell's code away, or back",
               "type": "string"
             }
           },
@@ -195,6 +213,7 @@
           "type": "string"
         },
         "footerStyle": {
+          "description": "CSS declarations, applied to the header and footer as they stand -- \"font-size: 18px; color: #888; border-bottom: 1px solid #ddd\". The browser parses them and drops what it does not understand, and they cannot reach anything but the element they are given to.",
           "type": "string"
         },
         "background": {
@@ -213,22 +232,22 @@
           "type": "number"
         },
         "cutAtHeading": {
-          "description": "Also start a slide at every heading of this level or above, which makes a document that was never written as a deck presentable without touching it. 0 means only the explicit `---` markers cut.",
+          "description": "Possibility to rtart a slide at every heading of this level or above, which makes a document that was never written as a deck presentable without touching it. 0 means only the explicit `---` markers cut.",
           "type": "number"
         },
         "marker": {
-          "description": "How one slide gives way to the next, while presenting:\n none       the next slide is simply there fade       it appears slide      it comes in from the side the deck is moving towards slideUp    the same, vertically zoom       it grows the last few per cent into place\n Which spelling cuts a slide: \"both\", \"plus\" or \"dash\".\n The point of choosing is what it leaves free. Under \"plus\" only `+++` cuts, so `---` goes back to being the horizontal rule it looks like. Under \"dash\" only `---` cuts, which is what a document converted from a notebook wants -- its `+++` lines are cell boundaries nobody asked to see as sixty slides. \"both\" accepts either, and is the default because it is what was there before this setting existed.\n It governs slide cuts only. `----` and `++++` are always fragments: a four-dash rule is an odd thing to write on purpose, where a three-dash one is not. `***` and `___` are horizontal rules under every setting.",
+          "description": "Which spelling cuts a slide: \"both\", \"plus\" or \"dash\".\n The point of choosing is what it leaves free. Under \"plus\" only `+++` cuts, so `---` goes back to being the horizontal rule it looks like. Under \"dash\" only `---` cuts, which is what a document converted from a notebook wants -- its `+++` lines are cell boundaries nobody asked to see as sixty slides. \"both\" accepts either, and is the default because it is what was there before this setting existed.\n It governs slide cuts only. `----` and `++++` are always fragments: a four-dash rule is an odd thing to write on purpose, where a three-dash one is not. `***` and `___` are horizontal rules under every setting.",
           "type": "string"
         },
         "transition": {
-          "description": "A duration may follow on the same line -- \"fade 700ms\", \"slideUp 1.2s\", or a bare number read as milliseconds -- because it is not a separate decision: one does not choose a transition and then, elsewhere, how long it lasts. Without one, 450ms.\n Deliberately few: a transition is there to say \"that was a slide, here is another\", and past that it becomes a thing the room watches instead of listening to you.",
+          "description": "How one slide gives way to the next, while presenting:\n none       the next slide is simply there fade       it appears slide      it comes in from the side the deck is moving towards slideUp    the same, vertically zoom       it grows the last few per cent into place A duration may follow on the same line -- \"fade 700ms\", \"slideUp 1.2s\", or a bare number read as milliseconds -- because it is not a separate decision: one does not choose a transition and then, elsewhere, how long it lasts. Without one, 450ms.\n Deliberately few: a transition is there to say \"that was a slide, here is another\", and past that it becomes a thing the room watches instead of listening to you.",
           "type": "string"
         }
       },
       "additionalProperties": false
     },
     "export": {
-      "description": "Tauri-only export menu (myst build / myst start).",
+      "description": "Tauri-only export menu.",
       "type": "object",
       "properties": {
         "mystPath": {
@@ -240,7 +259,7 @@
           "type": "string"
         },
         "pdfViaTex": {
-          "description": "Produce a PDF by exporting LaTeX, post-processing it, then running the LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a .tex the editor never sees, so the styled boxes, the restored proof labels and the injected \\label{} could not reach the PDF any other way. The cost is that the document must declare a \"tex\" export rather than a \"pdf\" one -- the editor offers to add it -- and that the LaTeX chain below has to be installed. Set to false to let mystmd build the PDF itself, unstyled.",
+          "description": "If true, produce a PDF by exporting LaTeX, post-processing it, then running the LaTeX chain here. `myst build --pdf` goes from Markdown to PDF through a .tex the editor never sees, so the styled boxes, the restored proof labels and the injected \\label{} could not reach the PDF any other way. The cost is that the document must declare a \"tex\" export rather than a \"pdf\" one -- the editor offers to add it -- and that the LaTeX chain below has to be installed. Set to false to let mystmd build the PDF itself, unstyled.",
           "type": "boolean"
         },
         "pdfCommand": {
