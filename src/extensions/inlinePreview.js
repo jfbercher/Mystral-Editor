@@ -6,7 +6,7 @@ import { Decoration, ViewPlugin, WidgetType, keymap } from "@codemirror/view";
 import { EditorSelection, EditorState, RangeSet, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { handlePreviewInteraction } from "../utils/previewInteractions";
 import { SECTION_LABEL_RE } from "../utils/headingNumbering";
-import { dictionary, markMisspellings } from "./spellchecker.js";
+import { dictionary, markMisspellings, spellRefresh } from "./spellchecker.js";
 
 /**
  * Elements inside a rendered block that own their own click.
@@ -348,13 +348,21 @@ function computeBlocks() {
   }
 
   class ProjectedWidget extends WidgetType {
-    constructor(html, startLine, endLine, dict) {
+    constructor(html, startLine, endLine, dict, known) {
       super();
       this.html = html;
       this.startLine = startLine;
       this.endLine = endLine;
-      // The dictionary is part of what this widget shows, because the
-      // misspellings are marked into its DOM when it is built.
+      // What the checker knew when this was built. The checker object does
+      // not change as answers arrive -- its table grows -- so comparing the
+      // object alone said "same widget" and the DOM already marked was kept.
+      // Only a scroll, which destroys and rebuilds, caught up.
+      this.known = known;
+      // The checker is part of what this widget shows, because the
+      // misspellings are marked into its DOM when it is built. Its verdicts
+      // grow as the worker answers, which is why a rebuild is also asked for
+      // on `spellRefresh` above: the object does not change, what it knows
+      // does.
       this.dict = dict;
     }
 
@@ -374,7 +382,8 @@ function computeBlocks() {
         this.html === widget.html &&
         this.startLine === widget.startLine &&
         this.endLine === widget.endLine &&
-        this.dict === widget.dict
+        this.dict === widget.dict &&
+        this.known === widget.known
       );
     }
 
@@ -444,6 +453,7 @@ function computeBlocks() {
   function buildDecorations(state) {
     // Read once per build and handed to every widget: see `ProjectedWidget.eq`.
     const dict = state.facet(dictionary);
+    const known = dict?.version ?? 0;
     const focused = state.field(focusedField);
     const decorations = [];
 
@@ -471,7 +481,7 @@ function computeBlocks() {
       if (block.synthetic) {
         decorations.push(
           Decoration.widget({
-            widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
+            widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict, known),
             block: true,
             side: 1,
           }).range(block.from),
@@ -500,7 +510,7 @@ function computeBlocks() {
       }
       decorations.push(
         Decoration.replace({
-          widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
+          widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict, known),
           block: block.startLine !== block.endLine,
         }).range(block.from, block.to),
       );
@@ -603,6 +613,12 @@ function computeBlocks() {
       // for the prose, and later still for the text inside a card. The
       // transaction that installs the dictionary rebuilds them all.
       if (tr.startState.facet(dictionary) !== tr.state.facet(dictionary)) return buildDecorations(tr.state);
+      // A verdict arriving from the spelling worker: the widgets were marked
+      // with what was known when they were built, and some words were not
+      // known yet. Rebuilding marks them again, now that they are. This
+      // settles rather than loops -- each round leaves fewer words unknown,
+      // and a round that asks nothing is answered by nothing.
+      if (tr.effects.some((e) => e.is(spellRefresh))) return buildDecorations(tr.state);
       if (!tr.selection) return value;
       if (tr.startState.field(unlockedField) !== tr.state.field(unlockedField)) return buildDecorations(tr.state);
       const from = blockAt(tr.startState, tr.startState.selection)?.from;

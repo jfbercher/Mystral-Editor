@@ -1,6 +1,7 @@
 import { Decoration, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
-import { Compartment, Facet, RangeSetBuilder } from "@codemirror/state";
-import Typo from "typo-js";
+import { Compartment, Facet, RangeSetBuilder, StateEffect } from "@codemirror/state";
+import SpellWorker from "../lsp/spellWorker.js?worker";
+import { WORD_RE, TOO_SHORT } from "./spellWords.js";
 
 // Defines a configurable field in the CodeMirror
 const dictionary = Facet.define({
@@ -23,51 +24,155 @@ const spellcheckCompartment = new Compartment();
 // Class which will be applied to misspelled words
 const errorHighlight = Decoration.mark({ class: "cm-error" });
 
-const dictReady = (dict) => dict && Object.keys(dict.rules ?? {}).length > 0;
+const dictReady = (checker) => Boolean(checker?.ready);
 
 /**
- * A word, for a spell checker, in any language.
+ * Asked for when a verdict arrives, so that what is already drawn is redrawn.
  *
- * `\w` is ASCII, so the previous `\w+` cut "élève" into "l" and "ve" and
- * underlined both. That was invisible while the only dictionary was English
- * and would have made any other language a wall of red -- which is why this
- * had to be fixed before a second dictionary could be worth loading.
- *
- * Apostrophes are kept inside the word rather than cutting it, because French
- * needs both readings: "aujourd'hui" is one word in the dictionary, while
- * "l'élève" is an elision in front of another word. Which of the two it is,
- * only the dictionary knows -- so the whole token is offered first and the
- * part after the last apostrophe second.
+ * The answers come back after the decorations were built, which is the whole
+ * point of asking elsewhere; something has to say "ask me again".
  */
-const WORD_RE = /\p{L}[\p{L}\p{M}]*(?:['’]\p{L}[\p{L}\p{M}]*)*/gu;
+export const spellRefresh = StateEffect.define();
 
-/** True when the dictionary accepts the word, under either reading. */
-function accepts(dict, word) {
-  if (dict.check(word)) return true;
-  const cut = word.split(/['’]/).pop();
-  return cut !== word && cut.length > 1 && dict.check(cut);
+/** The views to tell. A view registers when its plugin is created. */
+const listeners = new Set();
+
+function refreshAll() {
+  for (const view of listeners) {
+    if (view.destroyed) listeners.delete(view);
+    else view.dispatch({ effects: spellRefresh.of(null) });
+  }
 }
 
-function doSpellcheck(/** @type {EditorView} */ view) {
-  let from = view.visibleRanges[0]?.from || 0;
-  let to = view.visibleRanges[0]?.to || undefined;
+/**
+ * The worker holding the dictionaries, and one checker per dictionary.
+ *
+ * A checker is what the editor actually consults: a table of verdicts, word
+ * by word, filled as the worker answers. Everything the editor does stays
+ * synchronous -- a decoration pass and a widget being built cannot wait --
+ * and the only asynchronous part is learning the verdict for words never
+ * seen before. A document asks about a few thousand distinct words; the
+ * dictionary holds three million forms, and stays where it was parsed.
+ */
+let worker = null;
+const checkers = new Map();
+/** Words seen but not yet sent, per dictionary name. */
+const asking = new Map();
+/** Words sent and not yet answered, per request. The verdict applies to these and to no others. */
+const inFlight = new Map();
+let nextRequest = 1;
+let askTimer = null;
 
-  const builder = new RangeSetBuilder();
-  const dict = view.state.facet(dictionary);
+function spellWorker() {
+  if (worker) return worker;
+  worker = new SpellWorker();
+  worker.addEventListener("message", (ev) => {
+    const msg = ev.data ?? {};
+    const checker = checkers.get(msg.name);
+    if (!checker) return;
+    if (msg.type === "loaded") {
+      checker.ready = true;
+      checker.words = msg.words;
+      checker.version += 1;
+      checker.resolve?.(checker);
+      refreshAll();
+    } else if (msg.type === "failed") {
+      checker.failed = msg.message;
+      checker.resolve?.(null);
+    } else if (msg.type === "verdict") {
+      // The words of *that* request, and not whatever has accumulated since.
+      // Reading the pending set instead was a real defect: a word added while
+      // the question was in flight had never been asked about, yet the answer
+      // was applied to it -- it was filed as correct, for good, and nothing
+      // ever asked again. The region painted first never lost its mistakes.
+      const asked = inFlight.get(msg.id);
+      // An answer whose question is unknown files nothing: better to ask
+      // again than to file words against the wrong question, which is the
+      // defect this id was introduced for.
+      if (!asked) return;
+      inFlight.delete(msg.id);
+      const refused = new Set(msg.refused);
+      for (const word of asked) checker.verdicts.set(word, refused.has(word));
+      checker.version += 1;
+      refreshAll();
+    }
+  });
+  worker.addEventListener("error", (ev) => {
+    console.error("[spellcheck] the worker failed:", ev.message || ev);
+  });
+  return worker;
+}
 
-  if (!dictReady(dict)) {
-    return builder.finish();
+/**
+ * Ask about the words whose verdict is not known yet.
+ *
+ * Batched on a timer rather than sent word by word: a viewport holds
+ * hundreds of them, and the answer to all of them costs one message.
+ */
+function ask(checker, word) {
+  let pending = asking.get(checker.name);
+  if (!pending) {
+    pending = new Set();
+    asking.set(checker.name, pending);
   }
+  pending.add(word);
+  clearTimeout(askTimer);
+  askTimer = setTimeout(() => {
+    for (const [name, words] of [...asking]) {
+      if (!words.size) continue;
+      // Taken out of the pending set as it is sent: what comes after this
+      // moment belongs to the next question, not to this one's answer.
+      asking.delete(name);
+      const id = nextRequest++;
+      inFlight.set(id, words);
+      spellWorker().postMessage({ type: "check", id, name, words: [...words] });
+    }
+  }, 30);
+}
 
-  const text = view.state.doc.sliceString(from, to);
-  WORD_RE.lastIndex = 0;
-  let m;
-  while ((m = WORD_RE.exec(text))) {
-    const word = m[0];
-    // A single letter is not a spelling. French elision alone would otherwise
-    // underline a word in three: l', d', n', qu'.
-    if (word.length < 2) continue;
-    if (!accepts(dict, word)) builder.add(from + m.index, from + m.index + word.length, errorHighlight);
+/**
+ * Is this word wrong?
+ *
+ * A word nobody has asked about yet is treated as correct, and asked about:
+ * underlining a word while waiting for the verdict would make every new word
+ * flash red as it is typed.
+ */
+export function isWrong(checker, word) {
+  if (!dictReady(checker) || word.length < TOO_SHORT) return false;
+  const known = checker.verdicts.get(word);
+  if (known !== undefined) return known;
+  ask(checker, word);
+  return false;
+}
+
+/**
+ * Underline the misspelled words of what is on screen.
+ *
+ * Every visible range, and not just the first. `visibleRanges` is cut wherever
+ * the view replaces or folds a piece of the document -- a folded frontmatter,
+ * a `{toc}` drawn as a widget, an inline-preview block -- so the first range
+ * can be three characters long while the screen is full of text. Reading only
+ * that one left the top of a document permanently unchecked, and, worse,
+ * *erased* what a correct pass had just marked: the ranges it did not look at
+ * were not left alone, they were rebuilt as empty.
+ */
+function doSpellcheck(/** @type {EditorView} */ view) {
+  const builder = new RangeSetBuilder();
+  const checker = view.state.facet(dictionary);
+
+  // Before the dictionary is there, nothing is marked -- and nothing is
+  // asked either: a word is only questioned once there is something to
+  // question. The redraw comes from `spellRefresh`, when the worker answers.
+  if (!dictReady(checker)) return builder.finish();
+
+  for (const { from, to } of view.visibleRanges) {
+    const text = view.state.doc.sliceString(from, to);
+    WORD_RE.lastIndex = 0;
+    let m;
+    while ((m = WORD_RE.exec(text))) {
+      const word = m[0];
+      if (isWrong(checker, word)) builder.add(from + m.index, from + m.index + word.length, errorHighlight);
+    }
   }
 
   return builder.finish();
@@ -76,11 +181,24 @@ function doSpellcheck(/** @type {EditorView} */ view) {
 const spellcheckExtension = ViewPlugin.fromClass(
   class {
     constructor(/** @type {EditorView} */ view) {
+      this.view = view;
+      // Registered so that a verdict arriving later can ask for a redraw.
+      listeners.add(view);
       this.decorations = doSpellcheck(view);
     }
 
     update(/** @type {ViewUpdate} */ update) {
-      if (update.docChanged || update.viewportChanged) this.decorations = doSpellcheck(update.view);
+      const answered = update.transactions.some((tr) => tr.effects.some((e) => e.is(spellRefresh)));
+      // And when the dictionary is replaced: choosing another from the status
+      // bar reconfigures the compartment, which is neither a document change
+      // nor a scroll, so the view kept the previous language's underlines
+      // until something else happened to redraw it.
+      const swapped = update.startState.facet(dictionary) !== update.state.facet(dictionary);
+      if (update.docChanged || update.viewportChanged || answered || swapped) this.decorations = doSpellcheck(update.view);
+    }
+
+    destroy() {
+      listeners.delete(this.view);
     }
   },
   {
@@ -115,11 +233,11 @@ const NOT_PROSE = "code, pre, kbd, samp, var, tt, math, .katex, .katex-mathml, s
  * whose tree changes under it stops being a reliable way to see the tree.
  *
  * @param {Element|DocumentFragment} root the rendered fragment, modified in place
- * @param {object} dict a Typo instance, or anything not ready, in which case nothing is done
+ * @param {object} checker the dictionary's checker, or anything not ready, in which case nothing is done
  * @returns {number} how many words were marked
  */
-export function markMisspellings(root, dict) {
-  if (!root || !dictReady(dict)) return 0;
+export function markMisspellings(root, checker) {
+  if (!root || !dictReady(checker)) return 0;
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -140,7 +258,7 @@ export function markMisspellings(root, dict) {
     let fragment = null;
     while ((m = WORD_RE.exec(text))) {
       const word = m[0];
-      if (word.length < 2 || accepts(dict, word)) continue;
+      if (!isWrong(checker, word)) continue;
       fragment ??= document.createDocumentFragment();
       if (m.index > at) fragment.appendChild(document.createTextNode(text.slice(at, m.index)));
       const span = document.createElement("span");
@@ -408,33 +526,42 @@ export async function loadDictionary(language, dictionaryPath) {
       continue;
     }
     const attempt = (async () => {
-      // Timed because the wait is the one thing a user notices about a
-      // dictionary, and because the remedy depends on which half costs: a
-      // slow read is a file or a protocol, a slow parse is typo-js building a
-      // table of a few hundred thousand entries. Measured here rather than
-      // guessed from a machine that is not yours.
+      // Read here, parsed there. The files are read on this side because the
+      // asset protocol lives here -- 28 ms for a megabyte, against 1.8 s
+      // through the IPC -- and the two strings then cross to the worker,
+      // which a megabyte of text does cheaply. What must not cross is the
+      // parsed table: measured, a structured clone of it costs more than
+      // parsing the file again.
       const startedRead = performance.now();
       const [aff, dic, via] = await readPair(name, dictionaryPath);
       const readMs = performance.now() - startedRead;
       if (!looksLikeDictionary(aff, dic)) throw new Error("not a hunspell dictionary");
+
+      // `version` counts what this checker knows, and is the only way a
+      // consumer can tell that it has learned something: the object itself
+      // never changes, its table grows. The inline preview reads it to decide
+      // whether a widget it already drew is still up to date.
+      const checker = { name, ready: false, verdicts: new Map(), words: 0, version: 0 };
+      const settled = new Promise((resolve) => {
+        checker.resolve = resolve;
+      });
+      checkers.set(name, checker);
       const startedParse = performance.now();
-      const dict = new Typo(name, aff, dic);
-      const parseMs = performance.now() - startedParse;
+      spellWorker().postMessage({ type: "load", name, aff, dic });
+      const got = await settled;
+      if (!got) throw new Error(checker.failed ?? "the worker could not load it");
       console.debug(
         `[spellcheck] ${name}: read ${readMs.toFixed(0)} ms via ${via} (${(dic.length / 1e6).toFixed(1)} MB), ` +
-          `parsed ${parseMs.toFixed(0)} ms, ${Object.keys(dict.dictionaryTable ?? {}).length} words`,
+          `parsed ${(performance.now() - startedParse).toFixed(0)} ms in the worker, ${checker.words} words`,
       );
-      // Verified rather than assumed, for the same reason: an empty table is
-      // a dictionary that accepts nothing, which looks exactly like one that
-      // is still loading.
-      if (!Object.keys(dict.dictionaryTable ?? {}).length) throw new Error("empty dictionary");
-      return dict;
+      return checker;
     })();
     loaded.set(name, attempt);
     try {
       return await attempt;
     } catch (err) {
       loaded.delete(name);
+      checkers.delete(name);
       // A failed candidate is a step, not a fault: `fr` is *expected* to find
       // nothing before `fr_FR` does. Only the last one is worth a warning,
       // and it is the loop's own message below that reports the real failure.
@@ -469,7 +596,7 @@ export async function useSpellcheckLanguage(view, languages, dictionaryPath) {
     if (view.destroyed) return null;
     if (dict) {
       view.dispatch({ effects: spellcheckCompartment.reconfigure(dictionary.of(dict)) });
-      return dict.dictionary ?? language;
+      return dict.name ?? language;
     }
   }
   console.warn(`[spellcheck] no dictionary found for ${wanted.join(", ") || "(nothing asked for)"}; spelling is not checked`);
@@ -489,5 +616,7 @@ export default function spellcheck(opts) {
   // whenever the document declares another.
   void dict;
   void dictionaryPath;
-  return [spellcheckCompartment.of(dictionary.of(new Typo())), spellcheckExtension];
+  // Nothing until a dictionary is asked for: an editor with no checker simply
+  // underlines nothing, which is what it did with an empty Typo.
+  return [spellcheckCompartment.of(dictionary.of(null)), spellcheckExtension];
 }
