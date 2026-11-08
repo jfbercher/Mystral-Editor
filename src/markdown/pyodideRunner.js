@@ -2101,8 +2101,17 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       details.appendChild(document.createElement("summary"));
       outputArea.replaceWith(details);
       details.appendChild(outputArea);
-      new MutationObserver(() => { details.hidden = outputArea.hidden; })
-        .observe(outputArea, { attributes: true, attributeFilter: ["hidden"] });
+      // The observer outlives the <details> it was made for: a cell whose
+      // `:dropdown:` is taken away sets `details` back to null, and the
+      // observer -- still watching the same output area -- then fired on a
+      // null. It reads the variable at each call rather than closing over the
+      // element, so the guard is the whole fix, and it disconnects itself
+      // once there is nothing left to follow.
+      const observer = new MutationObserver(() => {
+        if (!details) return observer.disconnect();
+        details.hidden = outputArea.hidden;
+      });
+      observer.observe(outputArea, { attributes: true, attributeFilter: ["hidden"] });
     } else if (!wanted && details) {
       details.replaceWith(outputArea);
       details = null;
