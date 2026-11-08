@@ -97,8 +97,32 @@ const projectDir = () => currentFileDir.value || workingDirectory.value || null;
  * sidecar beside the document often enough that a timer would mostly be
  * measuring its own noise.
  */
-export async function refreshRepoState() {
+/**
+ * How long a reading of the repository stands before another focus may ask
+ * again.
+ *
+ * Two seconds only collapsed bursts, which no human produces: every click
+ * spaced by more than that still cost six git commands. Ten is the span over
+ * which a repository changing behind the editor's back is still noticed
+ * promptly, while clicking about in the application costs nothing. An action
+ * of ours -- a commit, a push, opening the panel -- passes `force` and is
+ * never delayed by this.
+ */
+const QUIET_PERIOD = 10_000;
+
+let lastRefresh = 0;
+
+export async function refreshRepoState({ force = false } = {}) {
   if (!isTauri()) return;
+  // Six git commands, and the window's `focus` event is more talkative than
+  // it looks: with the developer tools open, every click in the application
+  // is a focus returning to it. A state read a moment ago is still the state,
+  // so a repeat inside this window is dropped -- unless the caller is an
+  // action of ours that has just changed the repository, which is what
+  // `force` is for.
+  const now = Date.now();
+  if (!force && now - lastRefresh < QUIET_PERIOD) return;
+  lastRefresh = now;
   try {
     if (!(await gitAvailable())) return (repoState.value = { available: false });
     const repo = await findRepo(projectDir());
@@ -213,7 +237,7 @@ const flagsOf = (entry) => (entry.untracked ? "??" : `${entry.staged}${entry.uns
 /** A commit the panel has asked for: the same signal, with every file in it. */
 const openCommit = async (owner) => {
   await saveEverything();
-  await refreshRepoState();
+  await refreshRepoState({ force: true });
   const state = repoState.peek();
   if (!state?.repo) return;
   const entries = state.entries ?? [];
@@ -261,13 +285,13 @@ const GitPanel = () => {
       showToast(`Push failed: ${err?.message ?? err}`, "error", 0);
     } finally {
       setPushing(false);
-      await refreshRepoState();
+      await refreshRepoState({ force: true });
     }
   };
 
   useEffect(() => {
     let alive = true;
-    refreshRepoState().finally(() => alive && setBusy(false));
+    refreshRepoState({ force: true }).finally(() => alive && setBusy(false));
     return () => (alive = false);
   }, []);
 
@@ -375,7 +399,7 @@ export const GitModal = () => {
     } catch (err) {
       showToast(`Commit failed: ${err?.message ?? err}`, "error", 0);
     } finally {
-      await refreshRepoState();
+      await refreshRepoState({ force: true });
     }
   };
 

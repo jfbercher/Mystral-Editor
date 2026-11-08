@@ -151,7 +151,12 @@ export async function runShell(line, cwd, env = {}) {
     }
   }
   const [scope, args] = isWindows ? [WINDOWS_SHELL, ["/d", "/s", "/c", winArg ?? `chcp 65001>nul & ${line}`]] : [LOGIN_SHELL, ["-lc", line]];
-  console.log("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
+  // `debug` and not `log`: every git command of the status bar passes here,
+  // and the console was unreadable for it. The line is still there for anyone
+  // debugging an export -- it is one checkbox away in the inspector -- and a
+  // command that *fails* still speaks up below, at the level a failure
+  // deserves.
+  console.debug("[export]", scope, JSON.stringify(args), cwd ? `(cwd: ${cwd})` : "");
 
   try {
     // `encoding: "raw"` hands back the bytes; see `decodeOutput`.
