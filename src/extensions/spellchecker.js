@@ -159,7 +159,18 @@ export function markMisspellings(root, dict) {
 
 // ─── Loading a dictionary ────────────────────────────────────────────────────
 
-/** One Typo per language name, for as long as the application runs. */
+/**
+ * One load per language name, for as long as the application runs.
+ *
+ * The *promise* is kept, not the dictionary: a dictionary used to be put in
+ * here once it was parsed, so a second caller arriving during those two
+ * seconds found nothing and parsed it all over again -- which is exactly what
+ * two tabs, or one tab asked twice, did. Keeping the promise makes the second
+ * caller wait for the first one's work instead of repeating it.
+ *
+ * A failed attempt is removed, so that a dictionary installed after the fact
+ * is tried again rather than remembered as absent.
+ */
 const loaded = new Map();
 
 /**
@@ -289,6 +300,32 @@ export function storeDictionary(path, name) {
 }
 
 /** The two files of a hunspell dictionary, from wherever they are. */
+/**
+ * One file of the configuration folder, by the fastest route available.
+ *
+ * `readTextFile` hands the contents back through Tauri's IPC, which
+ * serialises the whole string across the bridge: measured at **1834 ms for a
+ * 1.2 MB dictionary**, where a disk read of that file is a few tens of
+ * milliseconds. The asset protocol serves the same file to the webview as an
+ * ordinary HTTP response, without that crossing.
+ *
+ * The IPC route is kept as the fallback rather than removed: the asset
+ * protocol answers only for paths inside the scope declared in
+ * `tauri.conf.json`, and a build whose scope is narrower -- or a future one
+ * that tightens it -- should read the file slowly rather than not at all.
+ */
+async function readFileFast(path, readTextFile) {
+  try {
+    const { convertFileSrc } = await import("@tauri-apps/api/core");
+    const res = await fetch(convertFileSrc(path));
+    if (res.ok) return { text: await res.text(), via: "asset" };
+    console.debug(`[spellcheck] the asset protocol answered ${res.status} for ${path}; reading through IPC instead`);
+  } catch (err) {
+    console.debug("[spellcheck] the asset protocol is not available here; reading through IPC:", err?.message ?? err);
+  }
+  return { text: await readTextFile(path), via: "ipc" };
+}
+
 async function readPair(name, dictionaryPath) {
   // The configuration folder first, so a user can add a language the
   // application does not ship -- and replace one it does. The same precedence
@@ -301,7 +338,12 @@ async function readPair(name, dictionaryPath) {
       const aff = await join(dir, `${name}.aff`);
       const dic = await join(dir, `${name}.dic`);
       if ((await exists(aff)) && (await exists(dic))) {
-        return [await readTextFile(aff), await readTextFile(dic)];
+        // Sequentially, and the small one first: the two go through the same
+        // channel, and a 3 kB file tells us whether the fast route works
+        // before the megabyte commits to it.
+        const affRead = await readFileFast(aff, readTextFile);
+        const dicRead = await readFileFast(dic, readTextFile);
+        return [affRead.text, dicRead.text, dicRead.via];
       }
     } catch (err) {
       console.warn(`[spellcheck] could not read "${name}" from the configuration folder`, err);
@@ -311,7 +353,7 @@ async function readPair(name, dictionaryPath) {
   const base = `${String(dictionaryPath ?? "/dictionaries").replace(/\/$/, "")}/${name}`;
   const [aff, dic] = await Promise.all([fetch(`${base}/${name}.aff`), fetch(`${base}/${name}.dic`)]);
   if (!aff.ok || !dic.ok) throw new Error(`${name}: HTTP ${aff.status}/${dic.status}`);
-  return [await aff.text(), await dic.text()];
+  return [await aff.text(), await dic.text(), "http"];
 }
 
 /**
@@ -356,31 +398,43 @@ export async function loadDictionary(language, dictionaryPath) {
   // the console beats guessing from the one failure that got reported.
   console.debug(`[spellcheck] "${language}" -> trying ${names.join(", ")}`);
   for (const name of names) {
-    if (loaded.has(name)) return loaded.get(name);
-    try {
+    if (loaded.has(name)) {
+      try {
+        const shared = await loaded.get(name);
+        if (shared) return shared;
+      } catch {
+        /* the attempt that is already running failed; try the next name */
+      }
+      continue;
+    }
+    const attempt = (async () => {
       // Timed because the wait is the one thing a user notices about a
       // dictionary, and because the remedy depends on which half costs: a
       // slow read is a file or a protocol, a slow parse is typo-js building a
       // table of a few hundred thousand entries. Measured here rather than
       // guessed from a machine that is not yours.
       const startedRead = performance.now();
-      const [aff, dic] = await readPair(name, dictionaryPath);
+      const [aff, dic, via] = await readPair(name, dictionaryPath);
       const readMs = performance.now() - startedRead;
       if (!looksLikeDictionary(aff, dic)) throw new Error("not a hunspell dictionary");
       const startedParse = performance.now();
       const dict = new Typo(name, aff, dic);
       const parseMs = performance.now() - startedParse;
       console.debug(
-        `[spellcheck] ${name}: read ${readMs.toFixed(0)} ms (${(dic.length / 1e6).toFixed(1)} MB), ` +
+        `[spellcheck] ${name}: read ${readMs.toFixed(0)} ms via ${via} (${(dic.length / 1e6).toFixed(1)} MB), ` +
           `parsed ${parseMs.toFixed(0)} ms, ${Object.keys(dict.dictionaryTable ?? {}).length} words`,
       );
       // Verified rather than assumed, for the same reason: an empty table is
       // a dictionary that accepts nothing, which looks exactly like one that
       // is still loading.
       if (!Object.keys(dict.dictionaryTable ?? {}).length) throw new Error("empty dictionary");
-      loaded.set(name, dict);
       return dict;
+    })();
+    loaded.set(name, attempt);
+    try {
+      return await attempt;
     } catch (err) {
+      loaded.delete(name);
       // A failed candidate is a step, not a fault: `fr` is *expected* to find
       // nothing before `fr_FR` does. Only the last one is worth a warning,
       // and it is the loop's own message below that reports the real failure.
