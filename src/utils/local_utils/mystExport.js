@@ -992,6 +992,65 @@ export function declareSiteStyle(yml, path = SITE_STYLE_PATH) {
 }
 
 /**
+ * The rule that makes mystmd quiet about the keys it does not know.
+ *
+ * Every key this editor adds -- `python`, `slides`, `language`, `css`,
+ * `shortCaptions`, `citation-style` -- is "extra" to mystmd, which says so on
+ * every build: *'frontmatter' extra keys ignored: language, python, slides*.
+ * They are ours, they are documented, and the message is noise.
+ *
+ * Measured before being written, on 1.11 and on 1.12. Naming the rule silences
+ * it, in either accepted spelling. The `keys:` filter, which reads as if it
+ * could silence our keys and keep the rest, **does not discriminate**: mystmd
+ * emits one message per page listing every unknown key, so a filter matching
+ * one of them drops the whole line -- a `titel:` typed by mistake went
+ * unreported too. It is therefore all or nothing, and this chooses all.
+ *
+ * What makes that acceptable is that the check has not been lost, only moved
+ * earlier: the editor validates the frontmatter against a JSON schema that
+ * knows mystmd's keys, its aliases and ours, and underlines an unknown one as
+ * it is typed -- three steps before a build, and with a message that names it.
+ */
+export const FRONTMATTER_RULE = "valid-page-frontmatter";
+
+/**
+ * Add the rule to `project.error_rules`, creating the list if there is none.
+ *
+ * Line-wise like its neighbours, for the same reason: the file is the user's,
+ * with their comments and their order.
+ *
+ * Returns the new text, or null when there is nothing to do.
+ */
+export function declareErrorRule(yml, rule = FRONTMATTER_RULE) {
+  if (new RegExp(`(^|\\s)${rule}(\\s|$)`, "m").test(yml)) return { yml: null, reason: "already" };
+
+  const lines = yml.split("\n");
+  const projectAt = lines.findIndex((l) => /^project:\s*$/.test(l));
+  if (projectAt === -1) return { yml: null, reason: "no-project" };
+
+  // The end of the `project:` block: the next line starting in column one.
+  let end = lines.length;
+  for (let i = projectAt + 1; i < lines.length; i++) {
+    if (/^\S/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const rulesAt = lines.slice(projectAt + 1, end).findIndex((l) => /^\s+error_rules:\s*$/.test(l));
+  if (rulesAt === -1) {
+    // At the end of the block rather than at its head, so the file still
+    // reads in the order its author wrote it -- `title:` first, as they left
+    // it. Trailing blank lines belong to no key and are stepped over.
+    let last = end - (projectAt + 1);
+    while (last > 0 && lines[projectAt + last].trim() === "") last -= 1;
+    lines.splice(projectAt + 1 + last, 0, "  error_rules:", `    - ${rule}`);
+  } else {
+    lines.splice(projectAt + 1 + rulesAt + 1, 0, `    - ${rule}`);
+  }
+  return { yml: lines.join("\n"), reason: "added" };
+}
+
+/**
  * Give a project the plugins its documents need, and declare them.
  *
  * Without them a build is silently incomplete: the cell outputs are written to
@@ -1053,6 +1112,10 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
         styled = declareSiteStyle(current);
         if (styled.yml) current = styled.yml;
       }
+      // Late too, and for every project that said yes to the rest: the keys
+      // were always ours, only the way to silence mystmd about them is new.
+      const quiet = declareErrorRule(current);
+      if (quiet.yml) current = quiet.yml;
       if (current === yml) return false;
       await writeTextFile(ymlPath, current);
       if (late.yml) {
@@ -1060,6 +1123,9 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
       }
       if (styled?.yml) {
         showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      }
+      if (quiet.yml) {
+        showToast(`${FRONTMATTER_RULE} added to myst.yml: mystmd no longer reports this editor's own frontmatter keys as unknown.`, "success", 8000);
       }
       return true;
     }
@@ -1069,11 +1135,19 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     if (!missing.length && yml.includes(PYODIDE_OUTPUT_DIR) && /^\s*jupyter:/m.test(yml)) {
       // Everything else is already declared, but a project set up before the
       // stylesheet existed still has no site style: offer it on its own.
-      if (yml.includes(SITE_STYLE_PATH)) return false;
-      const only = declareSiteStyle(yml);
-      if (!only.yml) return false;
-      await writeTextFile(ymlPath, only.yml);
-      showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      let current = yml;
+      const only = yml.includes(SITE_STYLE_PATH) ? { yml: null } : declareSiteStyle(yml);
+      if (only.yml) current = only.yml;
+      const quiet = declareErrorRule(current);
+      if (quiet.yml) current = quiet.yml;
+      if (current === yml) return false;
+      await writeTextFile(ymlPath, current);
+      if (only.yml) {
+        showToast(`${SITE_STYLE_PATH} declared as the site stylesheet: floated figures need it to float on the site.`, "success", 8000);
+      }
+      if (quiet.yml) {
+        showToast(`${FRONTMATTER_RULE} added to myst.yml: mystmd no longer reports this editor's own frontmatter keys as unknown.`, "success", 8000);
+      }
       return true;
     }
 
@@ -1104,7 +1178,8 @@ async function ensureProjectPlugins(dir, { declare = true } = {}) {
     // on the site: the class travels there by itself, the meaning of the word
     // does not.
     const styled = declareSiteStyle(lines.join("\n"));
-    await writeTextFile(ymlPath, styled.yml ?? lines.join("\n"));
+    const quiet = declareErrorRule(styled.yml ?? lines.join("\n"));
+    await writeTextFile(ymlPath, quiet.yml ?? styled.yml ?? lines.join("\n"));
     showToast(`${PLUGIN_DIR}/ added to myst.yml: cell outputs, exercises and lists of figures need it to reach the exports.`, "success", 8000);
     if (styled.reason === "has-style") {
       showToast(
