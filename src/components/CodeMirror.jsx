@@ -371,7 +371,7 @@ const CodeEditor = styled.div`
 `;
 
 const CodeMirror = () => {
-  const { editorView, options, collab, userSettings, linter, text, headings, error, suggestMode } = useContext(MystState);
+  const { editorView, options, collab, userSettings, linter, text, headings, activeSection, error, suggestMode } = useContext(MystState);
   const logger = useContext(Logger);
   const editorMountpoint = useRef(null);
   const focusScroll = useRef(null);
@@ -515,6 +515,7 @@ const tA = performance.now();
             .useCodeBlockLanguages(editorView, linter)
             .if(options.mode.value === "Inline", (c) => c.useInlinePreview(text, options))
             .useTrackHeadings(headings)
+            .useTrackActiveSection(headings, activeSection)
             .useMystCompletions({
               getRefMap: () => text.refMap,
               getBibEntries: () => text.bibArray,

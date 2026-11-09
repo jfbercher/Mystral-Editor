@@ -38,6 +38,7 @@ import { inlinePreview } from "./inlinePreview";
 import { Autolink, Strikethrough } from "@lezer/markdown";
 import { checkboxParser, colonFencedCodeParser, customTransformsParser, roleParser, tableParser } from "./lezerMarkdownExtensions";
 import { trackHeadings } from "./trackHeadings";
+import { trackActiveSection } from "./activeSection";
 import { highlightFocusedActiveLine } from "./activeLineHighlight";
 import { classHighlighter, tags } from "@lezer/highlight";
 import { loggerFacet } from "../logger";
@@ -442,6 +443,11 @@ export class ExtensionBuilder {
 
   useTrackHeadings(headings) {
     this.extensions.push(trackHeadings(headings));
+    return this;
+  }
+
+  useTrackActiveSection(headings, activeSection) {
+    this.extensions.push(trackActiveSection(headings, activeSection));
     return this;
   }
 

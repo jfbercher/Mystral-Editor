@@ -1,4 +1,4 @@
-import { useContext, useMemo,  useState } from "preact/hooks";
+import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import styled from "styled-components";
 import { MystState } from "../mystState";
 import { useSignalEffect } from "@preact/signals";
@@ -7,6 +7,7 @@ import { numberHeadings } from "../utils/headingNumbering";
 // For drag & drop of sections
 import { moveSectionInText } from "../utils/sectionReorder";
 import { headingInlineHtml } from "../utils/headingInline";
+import { watchPreviewSection } from "../extensions/activeSection";
 
 const Wrapper = styled.div`
   background-color: var(--panel-bg);
@@ -52,6 +53,10 @@ const HeadingList = styled.div`
   }
   li > span {
     display: block;
+    /* Carried by every entry, active or not, so that highlighting one does not
+       nudge its text sideways. */
+    padding-left: 6px;
+    border-radius: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -66,6 +71,21 @@ const HeadingList = styled.div`
   }
   .dragging {
     opacity: 0.4;
+  }
+  /* The section the reader is in. A tint plus a bar on the edge rather than a
+     strong background: the entry has to be findable at a glance in a long list
+     without becoming the only thing the eye sees. color-mix() keeps it right in
+     both themes -- a fixed light blue is unreadable under white text -- and the
+     plain declaration above it is what a browser without color-mix() keeps. */
+  li.active > span {
+    background: var(--button-bg-hover);
+    background: color-mix(in srgb, var(--accent-dark) 18%, transparent);
+    box-shadow: inset 3px 0 0 0 var(--accent-dark);
+  }
+  /* Its ancestors: enough to read the path down to the current section, not
+     enough to compete with it. */
+  li.in-path > span {
+    color: var(--accent-dark);
   }
   .included > span {
     font-style: italic;
@@ -104,7 +124,7 @@ function findSiblingsArray(nodes, target, parentChildren = nodes) {
 }
 
 
-function Heading({ heading, dragState, setDragState, onDrop }) {
+function Heading({ heading, dragState, setDragState, onDrop, activePos, branch }) {
   // Read here rather than threaded through the recursion: an entry shows the
   // heading as the document renders it -- emphasis, code, maths -- and the tree
   // only holds the source text.
@@ -112,13 +132,23 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
   const isDragged = dragState.dragged === heading;
   const isDropBefore = dragState.overNode === heading && dragState.overPosition === "before";
   const isDropAfter = dragState.overNode === heading && dragState.overPosition === "after";
+  const isActive = heading.pos === activePos;
+  const inPath = !isActive && branch.has(heading.pos);
 
   let children;
   if (heading.children.length > 0) {
     children = (
       <ul>
         {heading.children.map((c) => (
-          <Heading key={c.pos} heading={c} dragState={dragState} setDragState={setDragState} onDrop={onDrop} />
+          <Heading
+            key={c.pos}
+            heading={c}
+            dragState={dragState}
+            setDragState={setDragState}
+            onDrop={onDrop}
+            activePos={activePos}
+            branch={branch}
+          />
         ))}
       </ul>
     );
@@ -132,6 +162,8 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
         isDropBefore ? "drop-before" : "",
         isDropAfter ? "drop-after" : "",
         heading.included ? "included" : "",
+        isActive ? "active" : "",
+        inPath ? "in-path" : "",
       ].filter(Boolean).join(" ")}
       onDragStart={(ev) => {
         if (heading.isTitle || heading.included) return;
@@ -180,8 +212,10 @@ function Heading({ heading, dragState, setDragState, onDrop }) {
 }
 
 export const TableOfContents = ({ compact = false }) => {
-  const { headings, outlineHeadings, editorView, options, text, userSettings } = useContext(MystState);
+  const { headings, outlineHeadings, editorView, options, text, userSettings, activeSection } = useContext(MystState);
   const [dragState, setDragState] = useState({ dragged: null, overNode: null, overPosition: null });
+  const panel = useRef(null);
+  const activePos = activeSection?.value ?? null;
 
   const numberingEnabled = userSettings.value.find((s) => s.id === "number-headers")?.enabled ?? false;
   // The merged tree when there is one -- it is the document as it reads,
@@ -196,6 +230,70 @@ export const TableOfContents = ({ compact = false }) => {
     },
     [headings.value, outlineHeadings?.value, numberingEnabled],
   );
+
+  /**
+   * The current section and the ones containing it, by position.
+   *
+   * Computed over the displayed tree rather than the editor's: the two pair by
+   * character offset for a heading of this document, and an entry pulled in by
+   * an `{include}` can never be the active one, since its content holds no
+   * position the caret could occupy.
+   */
+  const branch = useMemo(() => {
+    const path = new Set();
+    if (activePos == null) return path;
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (node.pos === activePos || walk(node.children ?? [])) {
+          path.add(node.pos);
+          return true;
+        }
+      }
+      return false;
+    };
+    walk(numberedHeadings);
+    return path;
+  }, [activePos, numberedHeadings]);
+
+  /**
+   * In Preview mode the editor is hidden and has nothing to say: the rendered
+   * pane is what the reader sees, so it is what gets asked. Installed only for
+   * that mode, and only while this panel is mounted -- which is exactly when
+   * someone is looking at the answer.
+   */
+  useSignalEffect(() => {
+    if (options.mode.value !== "Preview") return;
+    const preview = text?.preview?.value;
+    if (!preview) return;
+    const watcher = watchPreviewSection({ preview, text, editorView, headings, activeSection });
+    return () => watcher.destroy();
+  });
+
+  /**
+   * Keep the current section in sight, in a table of contents too long to show
+   * at once.
+   *
+   * Only when it has actually left the view, and never while a section is being
+   * dragged: a panel that recentres itself every time the reader crosses a
+   * heading would jump under the hand, and one that moves while an entry is
+   * already comfortably visible would move for nothing. The margin is a fifth of
+   * the panel, capped, so a short panel is not declared "out of sight" over two
+   * pixels.
+   */
+  useEffect(() => {
+    const root = panel.current;
+    if (activePos == null || dragState.dragged || !root) return;
+    const entry = root.querySelector(`[data-heading-pos="${activePos}"]`);
+    if (!entry) return;
+    const view = root.getBoundingClientRect();
+    const box = entry.getBoundingClientRect();
+    const margin = Math.min(48, view.height / 5);
+    if (box.top >= view.top + margin && box.bottom <= view.bottom - margin) return;
+    root.scrollTo({
+      top: root.scrollTop + (box.top - view.top) - (view.height - box.height) / 2,
+      behavior: "smooth",
+    });
+  }, [activePos]);
 
   function handleClick(ev) {
     // closest, not the target itself: the entry now holds rendered markup, so a
@@ -238,13 +336,21 @@ export const TableOfContents = ({ compact = false }) => {
   }
 
   return (
-    <Wrapper compact={compact}>
+    <Wrapper compact={compact} ref={panel}>
       <h1>Table of Contents</h1>
       <VerticalSparator />
       <HeadingList compact={compact} onClick={handleClick}>
         <ul>
           {numberedHeadings.map((h) => (
-            <Heading heading={h} key={h.pos} dragState={dragState} setDragState={setDragState} onDrop={handleDrop} />
+            <Heading
+              heading={h}
+              key={h.pos}
+              dragState={dragState}
+              setDragState={setDragState}
+              onDrop={handleDrop}
+              activePos={activePos}
+              branch={branch}
+            />
           ))}
         </ul>
       </HeadingList>

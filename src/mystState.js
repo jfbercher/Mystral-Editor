@@ -379,6 +379,14 @@ export function createMystState(/** @type {typeof defaults} */ opts) {
      * @type {Signal<{level: number, text: string, pos: number|string, number: string|null, included?: boolean}[]>}
      */
     outlineHeadings: signal([]),
+    /**
+     * The position of the heading whose section the reader is in -- the caret's
+     * section while typing, the visible one while scrolling. `activeSection.js`
+     * decides, the outline highlights it, and `null` means the document has not
+     * reached its first heading yet.
+     * @type {Signal<number|null>}
+     */
+    activeSection: signal(null),
     /** @type {Signal<{ src: string; error: Error } | null>} */
     error: signal(null),
     suggestMode: signal(false),
