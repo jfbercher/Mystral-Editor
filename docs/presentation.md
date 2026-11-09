@@ -353,7 +353,7 @@ plt.plot(x+y)
 :alt: 
 :width: 95%
 
-Definition and excution of a code-cell, also showcasting completions and suggestions, bi-directional synchronization between source and preview.  
+Definition and execution of a code-cell, also showcasting completions and suggestions, bi-directional synchronization between source and preview.  
 
 :::
 
@@ -478,7 +478,7 @@ This follows MyST spec: lines starting with `%` are hidden from the preview. Key
 
 ## Theming and Interface
 
-Mystral Editor ships an explicit **light theme** alongside the dark theme, each defined as a full `CSSStyleSheet` with dedicated color tokens for the editor UI and CodeMirror syntax highlighting. Theme switching applies to both the main document and each editor's Shadow DOM.
+Mystral Editor ships explicit **light**  and **dark themes**, each defined as a full `CSSStyleSheet` with dedicated color tokens for the editor UI and CodeMirror syntax highlighting. Theme switching applies to both the main document and each editor's Shadow DOM.
 
 Users can further customize the appearance with an optional `custom.css` file (scoped to `#myst-css-namespace`) that is loaded at startup and applied on top of the built-in themes. See [Customisation section](#customisation).
 
