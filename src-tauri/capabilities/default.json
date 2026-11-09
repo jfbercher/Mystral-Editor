@@ -113,22 +113,18 @@
       "identifier": "fs:allow-remove",
       "allow": [
         {
-          "path": "$HOME/**"
+          "path": "$HOME/**/.git/**/mystral-pathspec"
         },
         {
-          "path": "$HOME/**/.git"
+          "path": "$HOME/**/.git/**/mystral-commit-msg"
         },
         {
-          "path": "$HOME/**/.git/**"
-        },
-        {
-          "path": "$APPCONFIG/**"
+          "path": "$APPCONFIG/mystral-*.bat"
         }
       ]
     },
     "fs:allow-app-write-recursive",
     "fs:allow-home-read-recursive",
-    "fs:allow-home-write-recursive",
     {
       "identifier": "fs:allow-read-file",
       "allow": [
@@ -169,13 +165,13 @@
           "path": "$HOME/**"
         },
         {
-          "path": "$HOME/**/.git"
+          "path": "$HOME/**/.git/**/mystral-pathspec"
         },
         {
-          "path": "$HOME/**/.git/**"
+          "path": "$HOME/**/.git/**/mystral-commit-msg"
         },
         {
-          "path": "$APPCONFIG/**"
+          "path": "$APPCONFIG/mystral-*.bat"
         }
       ]
     },
