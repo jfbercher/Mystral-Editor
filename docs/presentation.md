@@ -54,7 +54,7 @@ The original Myst-Editor is distributed under an Apache 2.0 license. The two fol
 
 ### Features Inherited from Myst-Editor
 
-Mystral Editor uses the original Myst-Editor as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, themes).
+Mystral Editor uses the original Myst-Editor as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all of Myst-Editor's strengths (live preview, inline mode, suggestions, diff view, and themes).
 
 Mystral Editor retains and extends all upstream editor features:
 
