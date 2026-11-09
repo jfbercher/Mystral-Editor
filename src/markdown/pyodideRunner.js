@@ -1618,6 +1618,38 @@ export const restoredOutputCache = new Map();
 let pendingEmptyCellFocus = 0;
 const FOCUS_REQUEST_TTL_MS = 3000;
 
+/**
+ * Put text in the clipboard, whichever way the platform allows.
+ *
+ * The modern call needs a secure context: it is there under Tauri and on
+ * localhost, and missing the moment the dev server is reached by its address on
+ * the network -- which is exactly how one tests on a tablet. The old command is
+ * kept for that case. The textarea goes into the top document rather than the
+ * editor's shadow root, where `execCommand` finds nothing to select.
+ */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    /* no clipboard API, no permission, or an insecure context */
+  }
+  try {
+    const holder = document.createElement("textarea");
+    holder.value = text;
+    holder.setAttribute("readonly", "");
+    holder.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+    document.body.appendChild(holder);
+    holder.select();
+    const done = document.execCommand("copy");
+    holder.remove();
+    return done;
+  } catch (err) {
+    console.warn("[pyodide] could not copy the output:", err?.message ?? err);
+    return false;
+  }
+}
+
 export function initCodeCell(el, code, { packages = [], linenos = false, hash, owner = "" } = {}) {
   const cacheKey = hash ? cellKey(owner, hash, linenos) : null;
   // Only a widget still attached to this editor may stand in for this
@@ -1851,6 +1883,80 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   widgetOutputArea.className = "pyodide-widget-output";
   const textOutputArea = document.createElement("div");
   textOutputArea.className = "pyodide-text-output";
+
+  /**
+   * Copy the output, since selecting it with the mouse cannot be made to work.
+   *
+   * Measured rather than assumed, on a bench holding nothing but CodeMirror and
+   * one replace widget: a drag inside such a widget never extends the browser's
+   * selection -- not with `user-select: text`, not with `-webkit-user-drag:
+   * none`, not with the widget in line rather than in block, not with
+   * CodeMirror's own `ignoreEvent` hook for `selectionchange`, which *is*
+   * consulted and *does* answer "leave it alone". The same structure written in
+   * plain HTML selects without being asked, so it is what the editor builds
+   * around a widget that stops the gesture, and not the island's
+   * non-editability.
+   *
+   * It used to look as though it worked: before a cell's host joined the list
+   * of interactive elements, CodeMirror took the mousedown and drew *its* own
+   * selection over the source around the block -- which is why a copy served
+   * `:::{code-cell} python` rather than the output. The selection was never the
+   * reader's.
+   *
+   * So the output gets its own affordance, the one every notebook offers: a
+   * button in the corner, faint until the pointer is over the output. It also
+   * earns its place in the panes where selecting *does* work, because dragging
+   * across forty lines of output to copy them is its own small misery.
+   */
+  const COPY_GLYPH = "\u29c9";
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "pyodide-btn pyodide-copy-out";
+  copyBtn.textContent = COPY_GLYPH;
+  copyBtn.title = "Copy this output";
+  copyBtn.setAttribute("aria-label", "Copy this output");
+  copyBtn.hidden = true;
+
+  /**
+   * The text of the output as it reads on screen.
+   *
+   * `innerText` and not `textContent`: it is what the reader sees, so a folded
+   * `<details>` does not smuggle its contents into the clipboard. It is also
+   * layout-dependent and answers nothing for a hidden element, hence the
+   * fallback -- a cell whose output is there but not laid out yet.
+   */
+  const outputText = () =>
+    [widgetOutputArea, textOutputArea]
+      .map((area) => (area.innerText || area.textContent || "").replace(/\s+$/, ""))
+      .filter((t) => t.trim())
+      .join("\n");
+
+  // Asked at the moment the pointer arrives rather than tracked: the output is
+  // rewritten at every run and restored from sidecars as raw HTML, and no
+  // observer would be as reliable as the question asked just in time.
+  outputArea.addEventListener("mouseenter", () => {
+    copyBtn.hidden = !outputText();
+  });
+
+  copyBtn.addEventListener("click", async (ev) => {
+    // The cell host is an interactive element in the inline preview, so this
+    // click never reaches the editor; stopped all the same, because the output
+    // area carries a click handler of its own for the figure viewer.
+    ev.stopPropagation();
+    const text = outputText();
+    if (!text) return;
+    const done = await copyToClipboard(text);
+    copyBtn.textContent = done ? "\u2713" : "\u2717";
+    copyBtn.classList.toggle("pyodide-copy-done", done);
+    setTimeout(() => {
+      copyBtn.textContent = COPY_GLYPH;
+      copyBtn.classList.remove("pyodide-copy-done");
+    }, 1200);
+  });
+
+  // First, so that the float sits in the output's top corner and the text wraps
+  // beside it instead of being covered by it.
+  outputArea.appendChild(copyBtn);
   outputArea.appendChild(widgetOutputArea);
   outputArea.appendChild(textOutputArea);
 
