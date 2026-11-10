@@ -38,6 +38,144 @@ const INTERACTIVE_IN_PREVIEW = [
 const atomicMark = Decoration.mark({});
 
 /**
+ * Write new verdicts into the blocks already drawn.
+ *
+ * The worker answers after the widgets were built -- that is the whole point of
+ * asking elsewhere -- so something has to carry the answer to what is on
+ * screen. Rebuilding the widgets did it and cost far too much (see
+ * `decorationsField`); this writes into their DOM instead.
+ *
+ * Mutating a widget's DOM from outside is safe, and not by luck: CodeMirror's
+ * observer drops such mutations on purpose -- `readMutation` opens with
+ * `if (!tile || tile.isWidget()) return null`. And `markMisspellings` refuses
+ * to look inside a `.cm-error` it has already written, so marking twice marks
+ * nothing twice: a second pass only reaches the words that were still unknown.
+ *
+ * Nothing here reads layout, and underlining changes no height, so the pass
+ * cannot disturb the measuring it used to break.
+ */
+/**
+ * What a block is worth, in pixels, before it has been drawn.
+ *
+ * CodeMirror asks a block widget for `estimatedHeight` when it builds its
+ * height map, and **a widget that answers -1 is entered as one line high**
+ * (`if (height < 0) height = this.oracle.lineHeight`, heightmap.ts). In Inline
+ * mode every block is such a widget, so an undrawn document of a thousand lines
+ * was thought a few hundred pixels tall. A jump to a section was then computed
+ * on that fiction: the blocks drew, the heights exploded, the target moved, and
+ * CodeMirror restarted its measuring pass hundreds of times before giving up
+ * -- leaving the window blank. Scrolling there by hand cured it, because every
+ * block had then been measured for real.
+ *
+ * Two answers, in order. The exact one: the height this very HTML was measured
+ * at, which is kept as the view measures it. And failing that, the number of
+ * source lines the block replaces, at the editor's own line height -- a rough
+ * guess, but one that is wrong by a factor of two where the default was wrong
+ * by a factor of twenty.
+ *
+ * Kept per content width, because a narrower pane wraps differently; two Map
+ * lookups and no string built, since this is asked for every undrawn block
+ * every time the map is rebuilt.
+ */
+const measured = new Map();
+let measuredWidth = 0;
+let lineUnit = 20;
+/** Enough for a long document; cleared whole rather than aged one by one. */
+const MEASURED_MAX = 4000;
+
+function rememberHeight(width, html, height) {
+  let atWidth = measured.get(width);
+  if (!atWidth) {
+    // A resize makes every stored height wrong, and keeping several widths
+    // would only grow: the previous ones are dropped.
+    measured.clear();
+    atWidth = new Map();
+    measured.set(width, atWidth);
+  }
+  if (atWidth.size >= MEASURED_MAX) atWidth.clear();
+  atWidth.set(html, height);
+}
+
+/**
+ * Opt-in diagnostic: which blocks change height, and when.
+ *
+ * CodeMirror restarts its measuring pass when the geometry moves under it, and
+ * gives up with "Viewport failed to stabilize" -- which is what leaves part of
+ * the window blank after a jump. The cause is always the same in kind, a height
+ * that is not what was assumed, but *which* heights move is not something to
+ * guess at: a rendered block can hold a code cell that builds its own editor
+ * when it appears, maths whose fonts arrive late, or an image without stated
+ * dimensions. Each would be a different remedy.
+ *
+ * So this reports, pass by pass, how many blocks are drawn and which ones
+ * changed size since the pass before, naming what they hold. Set
+ * `window.__mystInlineDebug = true` and reproduce; it costs nothing otherwise.
+ */
+const watchHeights = ViewPlugin.fromClass(
+  class {
+    constructor(view) {
+      this.view = view;
+      this.seen = new Map();
+      this.passes = 0;
+      this.schedule();
+    }
+
+    update(update) {
+      if (update.docChanged || update.viewportChanged || update.geometryChanged) this.schedule();
+    }
+
+    schedule() {
+      // Always, not only under the flag: this pass is what feeds the height
+      // cache above, and the logging is the part that is optional.
+      this.view.requestMeasure({ read: (view) => this.read(view) });
+    }
+
+    read(view) {
+      this.passes += 1;
+      const moved = [];
+      let drawn = 0;
+      // Read here rather than stored once: the line height follows the zoom and
+      // the settings, and the width follows the pane.
+      lineUnit = view.defaultLineHeight || lineUnit;
+      measuredWidth = Math.round(view.contentDOM.clientWidth);
+      for (const el of view.contentDOM.querySelectorAll(".cm-inline-rendered-md")) {
+        drawn += 1;
+        const key = el.dataset.mystBlock ?? "?";
+        const height = Math.round(el.getBoundingClientRect().height);
+        // What this block really costs, for the next time the map is built
+        // without it on screen -- after an edit, a re-render, or a jump.
+        if (height > 0 && el.mystHtml) rememberHeight(measuredWidth, el.mystHtml, height);
+        const before = this.seen.get(key);
+        this.seen.set(key, height);
+        if (before === undefined || before === height) continue;
+        const holds = el.querySelector(".code-cell-host")
+          ? "cellule"
+          : el.querySelector("img")
+            ? "image"
+            : el.querySelector(".katex-display, .katex")
+              ? "math"
+              : "texte";
+        moved.push(`L${key} ${holds} ${before}->${height}`);
+      }
+      if (typeof window === "undefined" || !window.__mystInlineDebug) return;
+      if (moved.length) console.log("[inline] passe %s : %s blocs, %s bougent -- %s", String(this.passes), String(drawn), String(moved.length), moved.slice(0, 8).join(" | "));
+      else console.log("[inline] passe %s : %s blocs, aucune hauteur ne bouge", String(this.passes), String(drawn));
+    }
+  },
+);
+
+const reMarkOnVerdict = ViewPlugin.fromClass(
+  class {
+    update(update) {
+      if (!update.transactions.some((tr) => tr.effects.some((e) => e.is(spellRefresh)))) return;
+      const checker = update.state.facet(dictionary);
+      if (!checker) return;
+      for (const block of update.view.contentDOM.querySelectorAll(".cm-inline-rendered-md")) markMisspellings(block, checker);
+    }
+  },
+);
+
+/**
  * True when the click landed on an interactive element *inside* a rendered widget.
  *
  * The containment check is essential, not defensive.  closest() walks all the way
@@ -348,21 +486,17 @@ function computeBlocks() {
   }
 
   class ProjectedWidget extends WidgetType {
-    constructor(html, startLine, endLine, dict, known) {
+    constructor(html, startLine, endLine, dict) {
       super();
       this.html = html;
       this.startLine = startLine;
       this.endLine = endLine;
-      // What the checker knew when this was built. The checker object does
-      // not change as answers arrive -- its table grows -- so comparing the
-      // object alone said "same widget" and the DOM already marked was kept.
-      // Only a scroll, which destroys and rebuilds, caught up.
-      this.known = known;
-      // The checker is part of what this widget shows, because the
-      // misspellings are marked into its DOM when it is built. Its verdicts
-      // grow as the worker answers, which is why a rebuild is also asked for
-      // on `spellRefresh` above: the object does not change, what it knows
-      // does.
+      // Which dictionary this was marked against -- a different one marks
+      // different words, so the widget is a different widget. What that
+      // dictionary has *learned* since is deliberately not part of this:
+      // counting its verdicts here made every widget unequal to itself on
+      // every answer from the worker, which is the rebuild storm described in
+      // `decorationsField`. New verdicts reach the DOM in place instead.
       this.dict = dict;
     }
 
@@ -377,13 +511,23 @@ function computeBlocks() {
      * destroyed the widgets and rebuilt them, which is why a scroll
      * "repainted" what a rebuild would not.
      */
+    /**
+     * See `measured` above: answering -1 here, as the default does, had every
+     * undrawn block counted as a single line.
+     */
+    get estimatedHeight() {
+      const known = measured.get(measuredWidth)?.get(this.html);
+      if (known) return known;
+      const lines = Math.max(1, (this.endLine ?? 0) - (this.startLine ?? 0) + 1);
+      return Math.round(lines * lineUnit);
+    }
+
     eq(widget) {
       return (
         this.html === widget.html &&
         this.startLine === widget.startLine &&
         this.endLine === widget.endLine &&
-        this.dict === widget.dict &&
-        this.known === widget.known
+        this.dict === widget.dict
       );
     }
 
@@ -391,6 +535,13 @@ function computeBlocks() {
     toDOM(view) {
       const el = document.createElement("span");
       el.className = "cm-inline-rendered-md";
+      // Which source lines this block stands for: the diagnostic above names
+      // them, and a line number is what one looks for in the document.
+      el.dataset.mystBlock = `${this.startLine}-${this.endLine}`;
+      // The key the measuring pass files this block's height under. A property
+      // and not an attribute: it is read from the live element only, and a
+      // chunk of HTML has no business in the document's markup.
+      el.mystHtml = this.html;
       el.innerHTML = this.html;
       // The source this widget stands in for is not displayed, so the
       // editor's own checker -- which decorates ranges of the document --
@@ -453,7 +604,6 @@ function computeBlocks() {
   function buildDecorations(state) {
     // Read once per build and handed to every widget: see `ProjectedWidget.eq`.
     const dict = state.facet(dictionary);
-    const known = dict?.version ?? 0;
     const focused = state.field(focusedField);
     const decorations = [];
 
@@ -481,7 +631,7 @@ function computeBlocks() {
       if (block.synthetic) {
         decorations.push(
           Decoration.widget({
-            widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict, known),
+            widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
             block: true,
             side: 1,
           }).range(block.from),
@@ -510,7 +660,7 @@ function computeBlocks() {
       }
       decorations.push(
         Decoration.replace({
-          widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict, known),
+          widget: new ProjectedWidget(block.html, block.startLine, block.endLine, dict),
           block: block.startLine !== block.endLine,
         }).range(block.from, block.to),
       );
@@ -613,12 +763,18 @@ function computeBlocks() {
       // for the prose, and later still for the text inside a card. The
       // transaction that installs the dictionary rebuilds them all.
       if (tr.startState.facet(dictionary) !== tr.state.facet(dictionary)) return buildDecorations(tr.state);
-      // A verdict arriving from the spelling worker: the widgets were marked
-      // with what was known when they were built, and some words were not
-      // known yet. Rebuilding marks them again, now that they are. This
-      // settles rather than loops -- each round leaves fewer words unknown,
-      // and a round that asks nothing is answered by nothing.
-      if (tr.effects.some((e) => e.is(spellRefresh))) return buildDecorations(tr.state);
+      // A verdict from the spelling worker used to rebuild everything here, and
+      // that was the most expensive line in the file. Verdicts arrive in
+      // batches whenever new words come into view -- that is, *while
+      // scrolling* -- and the widgets carried the checker's version in their
+      // `eq`, so not one of them was judged equal to its predecessor.
+      // CodeMirror therefore destroyed and rebuilt the DOM of every block on
+      // screen, the heights changed under the measuring pass, and the symptoms
+      // were a white flash, a view landing somewhere else, and its own warnings
+      // in the console: "Measure loop restarted more than 5 times", "Viewport
+      // failed to stabilize". The marks are now written into the DOM already
+      // built, by `reMarkOnVerdict` below: no widget is destroyed, no height
+      // moves, and nothing has to be measured again.
       if (!tr.selection) return value;
       if (tr.startState.field(unlockedField) !== tr.state.field(unlockedField)) return buildDecorations(tr.state);
       const from = blockAt(tr.startState, tr.startState.selection)?.from;
@@ -696,5 +852,7 @@ function computeBlocks() {
       return RangeSet.of(ranges, true);
     }),
     EditorView.focusChangeEffect.of((_, focus) => focusEffect.of(focus)),
+    reMarkOnVerdict,
+    watchHeights,
   ];
 };
