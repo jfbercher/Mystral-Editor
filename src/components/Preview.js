@@ -125,6 +125,34 @@ details.admonition {
     clear: both;
   }
 
+  /* The inset of everything the box holds, title included.
+     Proportional, not in pixels: a list marker is drawn outside the padding
+     box and is sized in em, so it eats into this inset. A fixed inset stayed
+     put while the marker grew with the zoom, until the marker had eaten the
+     ten pixels and the bullets came out through the border. 0.625em is those
+     same ten pixels at the default size, and keeps being them afterwards. */
+  --admonition-inset: 0.625em;
+
+  /* The room a list keeps for its marker, on top of the inset.
+
+     It cannot be made exact. A marker set outside sits in a box the browser
+     sizes itself, and part of that width does not follow the font: whatever
+     reserve is written here, the markers align at one size only, drifting left
+     of the text above them at larger sizes and right of it at smaller ones --
+     the sign of the error changing, which is the proof that no value in em can
+     answer. 1.625em was measured to sit right at reading size, where a numeral
+     and its gap take about 26 pixels.
+
+     Aligning them exactly would mean placing the markers from here, with
+     counters and a ::before, and that buys alignment at the price of the
+     browser's own numbering -- a list with a start or a type of its own would
+     renumber itself from one. Not a trade worth making for a few pixels in a
+     preview.
+
+     Tune this one number if the markers look too far in or too far out; the
+     inset above is not the one to touch. */
+  --admonition-marker: 1.625em;
+
   // Contenu interne
   .admonition {
     margin: 0 22px 14px 22px;
@@ -132,8 +160,37 @@ details.admonition {
 
   // Texte
   & > p {
-    padding: 10px;
+    padding: var(--admonition-inset);
     margin-bottom: 0;
+  }
+
+  /* The box's inset was carried by the paragraphs alone. Anything else placed
+     directly in an admonition -- a list, a quote, a table, a code block -- got
+     none of it and sat against the border, and had no air above it when
+     nothing preceded it. The inset belongs to the content, whatever the
+     content is made of.
+
+     The lists keep room for their markers on top of the inset; see
+     --admonition-marker above. */
+  & > ul,
+  & > ol {
+    padding-left: calc(var(--admonition-inset) + var(--admonition-marker));
+    padding-right: var(--admonition-inset);
+  }
+
+  & > blockquote,
+  & > table,
+  & > pre,
+  & > dl {
+    margin-left: var(--admonition-inset);
+    margin-right: var(--admonition-inset);
+  }
+
+  /* First in the box, under the title: the paragraphs' own top padding is
+     what spaces the others, and the first child has nothing above it. */
+  & > header + :is(ul, ol, blockquote, table, pre, dl),
+  & > summary.admonition-title + :is(ul, ol, blockquote, table, pre, dl) {
+    margin-top: var(--admonition-inset);
   }
 
   // ==========================================================
@@ -142,7 +199,9 @@ details.admonition {
 
   & > header,
   & > summary.admonition-title {
-    padding: 10px;
+    /* Same inset as the body, so the title stays aligned with the text under
+       it at any zoom. */
+    padding: var(--admonition-inset);
     color: white;
     font-weight: bold;
     background: var(--green-500);
