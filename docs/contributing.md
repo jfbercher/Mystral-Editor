@@ -103,6 +103,65 @@ To run a single test, pass a `-g` name filter:
 npx -y node@20 node_modules/@playwright/test/cli.js test -c tests/playwright.config.js -g "test name"
 ```
 
+### Diagnosing the Inline-mode layout
+
+In Inline mode every block of the document is a CodeMirror *block widget*: a
+rendered chunk standing in for the source lines it replaces. CodeMirror has to
+know how tall each one is before it draws it, so the editor keeps the heights
+it has measured and, for the rest, estimates them from a shape fitted at
+runtime. When one of those answers is wrong, the document's height changes
+under the reader, the view slides, and the console says
+`Measure loop restarted more than 5 times`.
+
+A trace is built into the measuring pass to tell the possible causes apart. It
+is off by default and costs nothing; turn it on from the console and reload:
+
+```js
+localStorage.mystInlineDebug = "1"   // "0", or remove the key, to stop
+```
+
+It survives the reload on purpose: the lines that matter are those of the
+*first* measurement of each block, and by the time one has opened a console
+everything on screen has already been measured once.
+
+Two lines are printed. One per measuring pass:
+
+```
+[inline] passe 47 : 20 blocs, contenu=579, hauteur doc=23657
+[inline]   2 bougent -- L535-535 math 48->68 | L548-553 prose 155->156
+```
+
+and one the first time a given block is measured, giving the estimate against
+what it really measures:
+
+```
+[inline] L543-548 prose : 6 lignes, 658 caracteres, estime 144 -> reel 156 (rapport 2.61, forme 25+4.7x)
+```
+
+How to read them:
+
+A pass that draws blocks and reports none moving is a layout at rest -- that is
+the normal state, and seeing it is how one knows the problem is elsewhere.
+
+Heights moving while `contenu=` holds is content arriving after the block was
+drawn: a code cell building its own editor, a font loading, an image without
+stated dimensions.
+
+A height moving by exactly one line *while* `contenu=` changes is text that
+wrapped differently. That is a width problem wearing a height's clothes, and
+the width is printed beside the heights for exactly this reason. Rendered
+blocks are given a measured width (`pinContentWidth`) so that no single
+unshrinkable block can widen the content and re-wrap all the others; a
+`contenu=` that moves means something has got around that.
+
+`estime -> reel` is the line worth watching in the long run. The shapes the
+estimates come from -- `forme 25+4.7x`, read as *margins + line height x
+rendered lines* -- are fitted as the editor measures real blocks, so they
+adapt silently and, when they go wrong, say nothing. A document of an unusual
+kind, a theme with another leading, a font that loads late: nothing else
+reports it. A handful of these lines, pasted into an issue, is enough to see
+whether the model is still fitting.
+
 ### Releasing a New Version
 
 Use the `Makefile` release target to bump versions, commit, tag, and push:

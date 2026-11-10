@@ -229,7 +229,11 @@ const CodeEditor = styled.div`
        because of border-box below, and it is the same 1em the source line uses,
        so a block does not shift when it switches between rendered and source. */
     padding: 0 1em;
-    width: 100%;
+    /* Measured, not relative: 100% here would be 100% of cm-content, whose own
+       width is set by its widest child, so one unshrinkable block would re-wrap
+       every other one. pinContentWidth publishes the real available width; the
+       fallback only applies before the first measurement. */
+    width: var(--myst-inline-width, 100%);
     vertical-align: top;
     box-sizing: border-box;
     color: inherit;
@@ -239,6 +243,13 @@ const CodeEditor = styled.div`
 
     :is(h1, h2, h3, h4, h5, h6) {
       padding-bottom: 1em;
+    }
+
+    /* What cannot narrow scrolls inside its own block instead of pushing the
+       block -- and with it the whole content -- wider than the pane. */
+    :is(table, pre, .code-cell-host) {
+      max-width: 100%;
+      overflow-x: auto;
     }
   }
 

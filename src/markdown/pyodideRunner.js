@@ -2132,6 +2132,11 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   el.innerHTML = "";
   el.appendChild(wrapper);
   el.dataset.initialized = "1";
+  // The inline preview reserves the cell's last known height on the empty
+  // placeholder so the document does not shrink by the height of every cell
+  // between the block being drawn and this observer filling it. The cell is
+  // here now, so the reservation goes: the real content takes over.
+  el.style.minHeight = "";
 
   if (cacheKey) cellCache.set(cacheKey, el);
 
