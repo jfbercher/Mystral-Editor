@@ -2140,11 +2140,21 @@ function findPreview(tab) {
  * the widget is built from, so without this the cells would come out as empty
  * boxes, without their code and without their output.
  */
+/**
+ * The rendered HTML, without what belongs to the editor rather than to the
+ * document. The cells' copy buttons are the only such furniture so far: in an
+ * exported file nothing would answer their click.
+ */
+function exportedHtml(node) {
+  node.querySelectorAll(".pyodide-copy-out").forEach((b) => b.remove());
+  return node.outerHTML;
+}
+
 function previewHtmlFor(tab, preview) {
-  if (preview.querySelector("html-chunk")) return preview.outerHTML;
+  if (preview.querySelector("html-chunk")) return exportedHtml(preview.cloneNode(true));
 
   const chunks = (typeof window !== "undefined" ? window.myst_editor?.[tab?.editorId]?.state?.text?.chunks : null) ?? [];
-  if (!chunks.length) return preview.outerHTML;
+  if (!chunks.length) return exportedHtml(preview.cloneNode(true));
 
   const clone = preview.cloneNode(false);
   clone.innerHTML = chunks.map((c) => `<html-chunk id="html-chunk-${c.id}">${c.html}</html-chunk>`).join("");
@@ -2153,7 +2163,7 @@ function previewHtmlFor(tab, preview) {
     const live = cellCache.get(cellKey(tab.editorId, host.id, host.dataset.linenos === "true"));
     if (live) host.replaceWith(live.cloneNode(true));
   }
-  return clone.outerHTML;
+  return exportedHtml(clone);
 }
 
 export async function exportHtml(tab) {

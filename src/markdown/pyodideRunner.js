@@ -1974,6 +1974,11 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   if (cacheKey && restoredOutputCache.has(cacheKey)) {
     const restored = restoredOutputCache.get(cacheKey);
     textOutputArea.innerHTML = restored.html;
+    // Sidecars written before the capture was fixed hold a copy of the button;
+    // restoring one would plant a second, which the next save would capture in
+    // its turn. Removed here rather than only at the source, so a file already
+    // written repairs itself the first time it is opened.
+    textOutputArea.querySelectorAll(".pyodide-copy-out").forEach((b) => b.remove());
     outputArea.hidden = false;
     if (restored.ranAt) setRanAt(new Date(restored.ranAt));
     restoredOutputCache.delete(cacheKey);

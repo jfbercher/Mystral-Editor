@@ -272,7 +272,15 @@ function collectCellOutputs(editorId = "") {
     const out = el.querySelector(".pyodide-output");
     if (!out || out.hidden || !out.innerHTML.trim()) continue;
     const key = cacheKey.slice(prefix.length);
-    cells[key] = { output_html: out.innerHTML, source_hash: key, ran_at: el.dataset.ranAt ?? null };
+    // What is stored is the cell's output, not the editor's furniture. The copy
+    // button lives inside this area, so capturing it verbatim put a button in
+    // the file -- and the next load restored it *inside* the output, where the
+    // following save captured two. Hence buttons multiplying at odd places and
+    // a copy that carried their glyph. Removed on a copy of the node: the live
+    // one must keep its button.
+    const kept = out.cloneNode(true);
+    kept.querySelectorAll(".pyodide-copy-out").forEach((b) => b.remove());
+    cells[key] = { output_html: kept.innerHTML, source_hash: key, ran_at: el.dataset.ranAt ?? null };
   }
   return cells;
 }
