@@ -109,24 +109,69 @@ export const roleParser = {
   ],
 };
 
-/** @returns {import("@lezer/markdown").MarkdownConfig} */
+/**
+ * Transform markers, matched **in place**.
+ *
+ * An inline parser is called at every character position, and a paragraph is one
+ * inline section: 250 soft-broken lines of numbers are a single section of
+ * twelve thousand characters. This hook used to open with
+ * `cx.slice(start, cx.end)` -- a copy from here to the end of the section -- so
+ * it cost twelve thousand copies of twelve thousand characters, *before* even
+ * looking at whether there was a transform to match. And `transforms` defaults
+ * to `[]`, so that was usually the whole of the work.
+ *
+ * V8 hid it: a `slice` there is a SlicedString that copies nothing, which is why
+ * the editor was instant in a browser. JavaScriptCore flattens the string to
+ * hand it to a regular expression, so the same paste took seconds under Tauri --
+ * 144 million characters copied and as many allocations to collect. Measured
+ * from the other end: pasting 12 kB cost 1633 ms inside the transaction, in a
+ * document holding nothing else.
+ *
+ * So nothing is copied. A sticky expression is matched against the section's own
+ * text at the right offset, which is exactly what anchoring a copy did, and a
+ * string target is compared in place. `cx.text` and `cx.offset` are the fields
+ * `cx.slice` itself reads.
+ *
+ * ── What `^` in a target now means, and why it changed ───────────────────
+ *
+ * It means the start of the inline section, which is what the expression says.
+ * Under the old copy it meant "here", at every position, because every position
+ * was the start of its own copy -- so `(^|(?<=\s))#\d+`, written to match an
+ * issue number *in front of which there is a space*, matched `x#42` as well. Two
+ * of the five transforms configured in `src/index.html` are written that way, so
+ * this is not a hypothetical: it is why a first attempt at this fix changed
+ * nothing at all, an exception having been kept for exactly those targets.
+ *
+ * Measured on those five real targets: the one and only difference is a `#42`
+ * glued to a word character, which is no longer marked. Start of paragraph,
+ * after a space, start of a soft-broken line, the `repo/name#12` forms and
+ * `|date|` all behave identically. The regular expression now does what it says.
+ */
 export const customTransformsParser = (transforms) => {
-  const beginTransforms = transforms.map(({ target }) => (target instanceof RegExp ? new RegExp(`^(?:${target.source})`, target.flags) : target));
+  // `y` rather than `^`: the match is tied to the offset we ask for, which is
+  // what anchoring a copy achieved, without the copy.
+  const begins = transforms.map(({ target }) =>
+    target instanceof RegExp ? new RegExp(`(?:${target.source})`, target.flags.replace(/[gy]/g, "") + "y") : target,
+  );
+
   return {
     defineNodes: [{ name: "Transform", style: tags.macroName }],
     parseInline: [
       {
         name: "Transforms",
         parse(cx, _, start) {
-          const line = cx.slice(start, cx.end);
-          for (const beginTarget of beginTransforms) {
-            if (beginTarget instanceof RegExp) {
-              const match = line.match(beginTarget);
-              if (match) {
-                return cx.addElement(cx.elt("Transform", start, start + match[0].length));
-              }
-            } else if (line.startsWith(beginTarget)) {
-              return cx.addElement(cx.elt("Transform", start, start + beginTarget.length));
+          // Nothing to look for: the common case, and the one that used to cost
+          // the most, since the copy was made before the loop that found nothing.
+          if (!begins.length) return -1;
+
+          const at = start - cx.offset;
+          for (const begin of begins) {
+            if (typeof begin === "string") {
+              if (cx.text.startsWith(begin, at)) return cx.addElement(cx.elt("Transform", start, start + begin.length));
+            } else {
+              begin.lastIndex = at;
+              const match = begin.exec(cx.text);
+              if (match) return cx.addElement(cx.elt("Transform", start, start + match[0].length));
             }
           }
           return -1;
