@@ -91,10 +91,34 @@ function overrideDefaultRole(/** @type {markdownIt} */ md) {
   };
 }
 
+/**
+ * Only an opening tag can carry an attribute.
+ *
+ * The line id is inserted before the first `>` of the rendered HTML, which is
+ * right for `<div …>` and destructive for everything else. On a comment it fell
+ * between the two dashes and the bracket: `<!-- note -->` came out as
+ * `<!-- note -- data-line-id="x">`, which no longer closes. The browser then
+ * read everything after it as part of the comment, and the rendering vanished
+ * from there to the end of the chunk -- that is, to the next heading, since
+ * that is where chunks are cut. One comment, half a section gone.
+ *
+ * The same would hold for a doctype, a processing instruction or a CDATA
+ * section, and a closing tag has nowhere to put an attribute either: the id
+ * landed on `</div data-line-id="x">`, where it marks nothing at all.
+ *
+ * Note for the next report: an HTML comment that is never closed still swallows
+ * what follows, and that one is not ours -- markdown-it alone, with no rule
+ * overridden, does exactly the same, as CommonMark prescribes for an unclosed
+ * HTML block. mystmd will do likewise at build time.
+ */
+const CAN_CARRY_ATTRS = /^\s*<[a-zA-Z]/;
+
 function overrideHTML(/** @type {markdownIt} */ md) {
   const override = (defaultRule) => (tokens, idx, options, env, self) => {
     let html = defaultRule(tokens, idx, options, env, self);
+    if (!CAN_CARRY_ATTRS.test(html)) return html;
     const tagCloseIdx = html.indexOf(">");
+    if (tagCloseIdx === -1) return html;
     html = html.slice(0, tagCloseIdx) + self.renderAttrs(tokens[idx]) + html.slice(tagCloseIdx);
     return html;
   };
