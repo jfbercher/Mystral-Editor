@@ -401,6 +401,10 @@ The three reference roles — `eq`, `ref`, `numref` — are the ones Library alr
 
 Not directives or roles, but part of what the editor renders, and all added in this work (also see [the general presentation](./presentation.md)). 
 - `%` line comments: each line starting with a % is not rendered at all. Keyboard shortcuts are `Mod-/ or Mod-:` to quickly comment or uncomment a line or block of text. `Mod` = `Cmd` on macOS, `Ctrl` elsewhere.
+  An HTML comment (`<!-- … -->`) is a different thing: it is HTML, and one
+  never closed swallows the rendering down to the next heading -- CommonMark's
+  rule for an unterminated HTML block, which mystmd applies as well. See
+  [document organisation](./document-organisation.md).
 - footnotes (`[^1]`)
 - reference-style links (`[text][ref]`),
 - BibTeX citations (`[@key]`) with a `[bibliography]` marker,

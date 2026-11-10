@@ -476,6 +476,8 @@ Headings can be folded individually (chevron marker in the editor gutter) or glo
 
 This follows MyST spec: lines starting with `%` are hidden from the preview. Keyboard shortcuts are `Mod-/ or Mod-:` to quickly comment or uncomment a line or block of text. `Mod` = `Cmd` on macOS, `Ctrl` elsewhere.
 
+⚠️ **HTML comments are not the same thing.** A `<!-- … -->` is HTML, so it reaches the preview as HTML: invisible, which is what one wants, but obeying HTML's rule rather than MyST's. A comment that is **never closed** swallows everything after it -- not a defect of the editor but what CommonMark prescribes for an unterminated HTML block, and what mystmd does at build time too, so the document would be published with the same hole. The symptom is unmistakable: the rendering disappears from that point to the next heading, which is where the preview cuts its chunks. If a passage vanishes for no reason, look for a `<!--` above it. A `%` comment has no such trap, since it ends with its line.
+
 ## Theming and Interface
 
 Mystral Editor ships explicit **light**  and **dark themes**, each defined as a full `CSSStyleSheet` with dedicated color tokens for the editor UI and CodeMirror syntax highlighting. Theme switching applies to both the main document and each editor's Shadow DOM.
