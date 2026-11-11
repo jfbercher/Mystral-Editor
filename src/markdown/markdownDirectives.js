@@ -1,4 +1,4 @@
-import { foldValue } from "./cellFold.js";
+import { foldValue, optionIsOn } from "./cellFold.js";
 import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
@@ -1146,8 +1146,30 @@ class CodeCellDirective extends Directive {
   required_arguments = 0;
   optional_arguments = 1; // langage (python, etc.) — informatif
   has_content = true;
+  /**
+   * Les options arrivent telles qu'elles sont écrites, sans conversion.
+   *
+   * La bibliothèque, laissée à elle-même, remplace une valeur `false` par une
+   * chaîne vide avant d'appeler le convertisseur : `:linenos: false` devenait
+   * indiscernable de `:linenos:` nu et allumait donc les numéros de ligne,
+   * tandis que `:linenos: true` était rejeté comme « aucun argument permis ».
+   * Or la spécification mystmd en fait un booléen, et mystmd l'honore. Ici les
+   * valeurs sont lues brutes et interprétées par `optionIsOn`.
+   *
+   * Ce mode fait perdre la vérification des options inconnues, que `run()`
+   * refait donc lui-même : `option_spec` ci-dessous reste la déclaration de ce
+   * qui est permis, même si la bibliothèque ne s'en sert plus.
+   */
+  rawOptions = true;
   option_spec = {
-    linenos:  directiveOptions.flag,         // affiche les numéros de ligne
+    linenos:  directiveOptions.unchanged,    // numéros de ligne : nu, true ou false
+    // Numérotation de cette cellule-ci, par-dessus le réglage du frontmatter :
+    // `:enumerated: false` laisse la légende s'afficher sans son préfixe, comme
+    // pour une figure. Le balayage les lit et n'avance pas le compteur pour un
+    // élément non numéroté ; elles sont déclarées ici pour ne pas être rejetées
+    // comme options inconnues.
+    enumerated: directiveOptions.unchanged,
+    numbered:   directiveOptions.unchanged,  // alias de enumerated
     // L'état du chevron, écrit par le chevron lui-même : `:fold:` replie,
     // `:fold: false` ouvre une cellule que `:tags: hide-input` replierait.
     // Voir src/markdown/cellFold.js.
@@ -1170,8 +1192,10 @@ class CodeCellDirective extends Directive {
   };
 
   run(data) {
+    const unknown = Object.keys(data.options ?? {}).filter((name) => !(name in this.option_spec));
+    if (unknown.length) throw new Error(`Unknown option${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}`);
     const code     = (data.body ?? "").trim();
-    const linenos  = data.options?.linenos !== undefined && data.options?.linenos !== false;
+    const linenos  = optionIsOn(data.options?.linenos);
     const pkgStr   = data.options?.packages ?? "";
     const packages = pkgStr ? pkgStr.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
@@ -1181,8 +1205,19 @@ class CodeCellDirective extends Directive {
 
     // Same attributes as the fence form in markdownPyodide.js: the cell has to
     // know which Python namespace it belongs to, whichever syntax wrote it.
+    const label    = String(data.options?.label ?? data.options?.name ?? "").trim();
     const env = this.state?.env ?? {};
+    // The number is not computed here: it comes from the scan, the only pass
+    // that knows reading order, includes and the numbering settings. The same
+    // road the admonitions take, a few hundred lines up.
+    const absoluteLine = data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
+    const scanned = absoluteLine != null ? env.refMap?.byLine?.get(absoluteLine) : null;
     const html =
+      // A reference lands on `#label`, and the host's own id is the cell's
+      // identity -- the hash of its code -- which cannot be given away. An
+      // empty anchor beside it costs nothing, and is what `{ref}` and
+      // `{numref}` jump to.
+      (label ? `<span id="${escapeHtml(label)}" class="code-cell-target"></span>` : "") +
       `<div id="${id}" class="code-cell-host" ` +
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
@@ -1191,7 +1226,9 @@ class CodeCellDirective extends Directive {
       `data-tags="${escapeHtml(String(data.options?.tags ?? "").trim())}" ` +
       `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
       `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
-      `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
+      `data-number="${scanned?.number ?? ""}" ` +
+      `data-number-label="${escapeHtml(displayLabel(this.state, "code-cell", "code"))}" ` +
+      `data-label="${escapeHtml(label)}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
       `data-fold="${data.options?.fold === undefined ? "" : foldValue(data.options.fold)}" ` +

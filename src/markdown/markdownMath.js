@@ -115,7 +115,15 @@ export function getNumberingConfig(frontmatter) {
   //const defaultNumbered = numberedByKindFrom(LABELLED_DIRECTIVES);
   const defaultNumbered = numberedByNameFrom(LABELLED_DIRECTIVES);
 
-  const numbering = frontmatter?.numbering ?? {};
+  // `numbering:` may be a whole answer rather than a table of them: `false`
+  // turns every kind off, `true` turns every kind on. Read as an object, as it
+  // was, a boolean answered `undefined` to every lookup and every kind fell
+  // back to its default -- so `numbering: false` left the numbers exactly
+  // where they were.
+  const declared = frontmatter?.numbering;
+  const allOff = declared === false;
+  const allOn = declared === true;
+  const numbering = declared && typeof declared === "object" ? declared : {};
 
   const getEntry = (singular, plural) => numbering[singular] ?? numbering[plural];
 
@@ -126,6 +134,8 @@ export function getNumberingConfig(frontmatter) {
 
 
   const getEnabled = (singular, plural, fallback = true) => {
+    if (allOff) return false;
+    if (allOn) return true;
     const entry = getEntry(singular, plural);
     if (typeof entry === "boolean") return entry;
     return fallback;
@@ -156,7 +166,7 @@ export function getNumberingConfig(frontmatter) {
 
 // The sections do not come from a directive.
   kindLabel.sec = getTemplate("section", "sections", "Section");
-  numberingEnabled.sec = numbering.headings ?? true;
+  numberingEnabled.sec = allOff ? false : allOn ? true : (numbering.headings ?? true);
 
   return { kindLabel, numberingEnabled };
 }

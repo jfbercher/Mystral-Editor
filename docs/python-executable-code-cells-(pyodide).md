@@ -47,8 +47,15 @@ Code-cell: example showing the variable inspector, to explore current variables,
 Supported options:
 
 - `:packages: pkg1, pkg2` — additional packages to install via `micropip` before running
-- `:linenos:` — show line numbers in the cell editor
+- `:linenos:` — show line numbers in the cell editor. A boolean, as in the MyST specification: bare, `true` and `yes` turn them on, `false` and `no` turn them off, and the option's absence leaves them off.
 - `:tags: hide-input` — cell metadata, carried through to the export
+- `:caption:` — a name for the cell. Shown in the cell's toolbar, right of the buttons and wrapping onto its own line when they leave no room, and read by mystmd when the document is exported.
+- `:label:` — makes the cell referenceable: `{ref}` and `{numref}` resolve to it, and land on the cell.
+- `:align:`, `:figwidth:` — read by mystmd when the document is exported, where the cell and its outputs become a figure. They have no effect on the editor's own rendering.
+
+Captioned cells are numbered, under a counter of their own -- `Code 1`, `Code 2` -- rather than among the figures. mystmd counts them as figures when it builds the site, so the two numberings differ by design; change `kind` to `"fig"` for `code-cell` in `data_directives` to follow mystmd instead. The label shown can be changed the same way.
+
+Note that `:caption:` and `:label:` are deliberately not passed to the exporter a second time: mystmd reads them from the source itself, and sending them again produced two nested floats and the caption twice.
 - `:fold:` — the cell opens with its code folded away
 
 The chevron that folds a cell's code **writes this option itself**. Folding a cell adds `:fold:` to its source, unfolding one removes it, so the way a document was left is the way it opens the next time -- on another machine, or for whoever the document is sent to. The option says one thing and only that, and is independent of `:tags: hide-input`, which concerns the export rather than what the editor shows: a cell may well be read open and exported without its input. The fence form carries the flag in its info line, beside `:linenos:`:

@@ -60,6 +60,15 @@ export const BUILTIN_DIRECTIVES = {
   // Math
   math:         { kind: "eq",        label: "Equation",  numbered: true },
 
+  // Executable cells. A counter of their own rather than the figures': mystmd
+  // puts a captioned cell among the figures, but in a course document a cell
+  // is a listing, not an illustration, and mixing the two makes both numbering
+  // sequences harder to read. Change `kind` to "fig" here, or in
+  // `data_directives`, to follow mystmd instead.
+  // The caption comes from the `:caption:` option rather than from the body,
+  // which is the cell's code.
+  "code-cell":  { kind: "code",      label: "Code",      numbered: true,  caption: "option" },
+
   // Exercises — mystmd / sphinx-exercise model
   exercise:         { kind: "exercise",  label: "Exercise", numbered: true,  caption: "arg" },
   solution:         { kind: "solution",  label: "Solution", numbered: false, caption: "arg", reference: true },

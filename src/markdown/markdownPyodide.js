@@ -173,12 +173,13 @@ function ensureObserver(parent, owner = "") {
     const packages = JSON.parse(el.dataset.packages ?? "[]");
     const linenos  = el.dataset.linenos === "true";
     const hash     = el.id;
-    const cacheKey = cellKey(owner, hash, linenos);
+    const cacheKey = cellKey(owner, hash);
 
     // ── Réutilisation d'un widget évincé ────────────────────────────────
     // On cherche dans le cache un élément qui n'est plus dans le DOM
-    // (évincé par le re-render du chunk) et dont les options (linenos)
-    // correspondent. On réutilise ce widget plutôt que d'en créer un neuf.
+    // (évincé par le re-render du chunk) et portant le même code. Les options
+    // de vue, elles, sont réappliquées à l'hôte repris plus bas : elles ne
+    // font pas partie de son identité.
     if (evictedHost?.dataset.initialized) {
       const textarea = evictedHost.querySelector(".pyodide-editor");
       if (textarea) {
@@ -242,11 +243,19 @@ function ensureObserver(parent, owner = "") {
         evictedHost.dataset.figwidth = el.dataset.figwidth ?? "";
         evictedHost.dataset.align = el.dataset.align ?? "";
         evictedHost.dataset.caption = el.dataset.caption ?? "";
+        evictedHost.dataset.number = el.dataset.number ?? "";
+        evictedHost.dataset.numberLabel = el.dataset.numberLabel ?? "";
         evictedHost.dataset.label = el.dataset.label ?? "";
         // Same reason again, and one more: the strip of controls is built from
         // this attribute, so the reused widget has to be told to rebuild it.
         evictedHost.dataset.params = el.dataset.params ?? "";
         evictedHost.dataset.tags = el.dataset.tags ?? "";
+        // Line numbers travel the same way as the rest: the reused editor is
+        // reconfigured rather than rebuilt, which is what makes `:linenos:`
+        // take effect on the cell in front of the author instead of at the
+        // next reload.
+        evictedHost.dataset.linenos = el.dataset.linenos ?? "false";
+        evictedHost._setLinenos?.(el.dataset.linenos === "true");
         // The re-render carries the document's answer, which the chevron has
         // just written: a reused host would otherwise keep the one it was
         // built with, and the option would stay without effect until a reload.
@@ -258,6 +267,7 @@ function ensureObserver(parent, owner = "") {
         evictedHost._syncParams?.();
         evictedHost._syncChrome?.();
         evictedHost._syncDropdown?.();
+        evictedHost._syncCaption?.();
         el.replaceWith(evictedHost);
         evictedHost.dataset.initialized = "1";
         // Pour les textareas legacy : autoResize après replaceWith.
@@ -287,12 +297,11 @@ function ensureObserver(parent, owner = "") {
       if (!el.isConnected && el.dataset.initialized) evictedSet.add(el);
     }
 
-    // Passe 1 : appariement exact par clé de cache (hash + linenos)
+    // Passe 1 : appariement exact par clé de cache (propriétaire + code)
     // Ceci est indispensable car _syncToEditor déplace l'entrée éditée en fin
     // de Map, cassant l'appariement naïf par index.
     const pairs = newHosts.map((el) => {
-      const linenos = el.dataset.linenos === "true";
-      const cacheKey = cellKey(owner, el.id, linenos);
+      const cacheKey = cellKey(owner, el.id);
       const cached = cellCache.get(cacheKey);
       if (cached && evictedSet.has(cached)) {
         evictedSet.delete(cached);

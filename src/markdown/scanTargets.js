@@ -69,6 +69,8 @@ const CODE_OPEN = /^\s*([`~]{3,})/;
 const LABEL_OPTION = /^\s*:(?:label|name):\s*(\S+)/;
 const ENUMERATED = /^\s*:(?:enumerated|numbered):\s*(\S*)\s*$/i;
 const ANY_OPTION = /^\s*:[\w-]+:/;
+/** Légende portée par une option plutôt que par le corps ou l'argument : `caption: "option"`. */
+const CAPTION_OPTION = /^\s*:caption:\s*(.+?)\s*$/;
 const TEX_LABEL = /\\label\{([^}]+)\}/;
 /**
  * `% shortcaption: …` inside a figure or a table.
@@ -312,6 +314,16 @@ export function scanTargets(fullText, numberingEnabled = null, headingMap = null
         if (label) {
           frame.label = label[1];
           continue;
+        }
+        if (frame.spec.caption === "option" && !frame.caption.length) {
+          const written = CAPTION_OPTION.exec(line);
+          if (written) {
+            frame.caption = [written[1]];
+            frame.captionDone = true;
+            const entry = byLine.get(frame.line);
+            if (entry) entry.title = written[1];
+            continue;
+          }
         }
         if (ANY_OPTION.test(line)) continue;
         frame.optionsDone = true;

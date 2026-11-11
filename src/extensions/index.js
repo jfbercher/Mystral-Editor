@@ -19,6 +19,7 @@ import {
   HighlightStyle,
   forceParsing,
   foldCode, unfoldCode, foldAll, unfoldAll, toggleFold,
+  indentService,
 } from "@codemirror/language";
 import { frontmatterFoldService, frontmatterFoldMemory } from "./frontmatterFold";
 import { syncPreviewWithCursor } from "./syncDualPane";
@@ -111,6 +112,41 @@ const syntaxHighlight = HighlightStyle.define([
 
 export const lineNumbersCompartment = new Compartment();
 
+/**
+ * A directive's options are not code, whatever parses them.
+ *
+ * The body of a `{code-cell}` fence is handed to the Python parser whole, for
+ * the highlighting -- and that body includes the directive's own option lines,
+ * which are not Python. The parser recovers from them as best it can, and
+ * while it is recovering it believes itself inside an unfinished construct:
+ * pressing Enter after `:label: refcode` then indented the new line by one
+ * unit, as a continuation. Which options were affected looked arbitrary and
+ * was not: the `%` of `:figwidth: 30%` and the `]` of `:params: a=[1, 2]` end
+ * the recovery, so the lines after them behaved while the lines before did
+ * not.
+ *
+ * Python cannot be blamed for failing to parse what is not Python. So the
+ * question is answered before it reaches the parser: a line that follows a
+ * directive option takes that option's own indentation -- which is what the
+ * options being a vertical list at one level means. `undefined` elsewhere, so
+ * every other line is left to the language, and `null` is never returned: it
+ * would mean "no indentation at all" and stop the chain.
+ */
+const DIRECTIVE_OPTION = /^([ \t]*):[\w-]+:/;
+const directiveOptionIndent = Prec.high(
+  indentService.of((cx, pos) => {
+    // Two positions reach here. Pressing Enter asks for the indentation at the
+    // caret, which is still on the option line -- the break is only simulated.
+    // Indenting an existing line asks at its start, and what matters is then
+    // the line above it.
+    const here = cx.state.doc.lineAt(pos);
+    const onThisLine = DIRECTIVE_OPTION.exec(here.text);
+    if (onThisLine && pos >= here.to) return onThisLine[1].length;
+    const above = here.number > 1 ? DIRECTIVE_OPTION.exec(cx.state.doc.line(here.number - 1).text) : null;
+    return above ? above[1].length : undefined;
+  }),
+);
+
 export class ExtensionBuilder {
   constructor(base = []) {
     this.important = [EditorState.lineSeparator.of("\n")];
@@ -135,6 +171,7 @@ export class ExtensionBuilder {
       }),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
+      directiveOptionIndent,
       indentOnInput(),
       bracketMatching(),
       autocompletion(),

@@ -33,15 +33,30 @@
 /** Is this block written as a directive (options on their own lines) or as a bare fence? */
 const isDirective = (openLine) => openLine.includes("{code-cell}");
 
-/** The value of a `:fold:` option line: "1" folded, "0" open. */
-export const foldValue = (raw) => {
-  const value = String(raw ?? "")
-    .trim()
-    .toLowerCase();
-  if (value === "" || value === "true" || value === "1" || value === "yes") return "1";
-  if (value === "false" || value === "0" || value === "no") return "0";
-  return "1";
+/**
+ * Whether an option meant as a boolean is on.
+ *
+ * A directive's options reach us raw, so the three ways of writing the same
+ * thing all arrive distinct: `:opt:` alone is `null`, `:opt: true` and
+ * `:opt: false` are real booleans (YAML reads `True` and `yes` too), and a
+ * value typed by hand is a string. Absent is off; present and bare is on;
+ * anything spelling falsehood is off.
+ *
+ * Read raw on purpose: the directive library, left to convert them, turns a
+ * `false` into an empty string before the convertor ever sees it -- which made
+ * `:linenos: false` indistinguishable from `:linenos:`, and therefore turn
+ * line numbers *on*. See `rawOptions` on CodeCellDirective.
+ */
+export const optionIsOn = (raw) => {
+  if (raw === undefined) return false;
+  if (raw === null || raw === true) return true;
+  if (raw === false) return false;
+  const value = String(raw).trim().toLowerCase();
+  return !(value === "false" || value === "0" || value === "no" || value === "off");
 };
+
+/** The value of a `:fold:` option: "1" folded, "0" open. */
+export const foldValue = (raw) => (optionIsOn(raw) ? "1" : "0");
 
 /** Does this fence's info string carry the flag? `:fold:` beside `:linenos:`. */
 export const infoHasFold = (info) => /(^|\s):fold:(\s|$)/i.test(String(info ?? ""));

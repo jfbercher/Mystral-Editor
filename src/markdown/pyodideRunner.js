@@ -1612,8 +1612,19 @@ export function clearCellCache(owner) {
   return gone;
 }
 
-export const cellKey = (owner, hash, linenos) =>
-  `${owner ?? ""}${OWNER_SEP}${hash}${linenos ? "-ln" : ""}`;
+/**
+ * What identifies a cell in the cache: who owns it, and its code.
+ *
+ * `:linenos:` used to be part of this key, on the idea that a cell with line
+ * numbers was a different cell. It made the option unapplicable instead:
+ * adding it changed the key, so the reused host no longer matched, and the
+ * observer's second pass handed it over by position anyway -- with the editor
+ * it already had, built once and for all without the gutter. The numbers only
+ * appeared on a reload, which is when the cell is built afresh, and removing
+ * the option left them there for the same reason. Line numbers are a view
+ * setting, reconfigured on the editor that exists; see `_setLinenos`.
+ */
+export const cellKey = (owner, hash) => `${owner ?? ""}${OWNER_SEP}${hash}`;
 /** Populated from sidecar before render; consumed by initCodeCell(). */
 export const restoredOutputCache = new Map();
 
@@ -1668,7 +1679,7 @@ async function copyToClipboard(text) {
 }
 
 export function initCodeCell(el, code, { packages = [], linenos = false, hash, owner = "" } = {}) {
-  const cacheKey = hash ? cellKey(owner, hash, linenos) : null;
+  const cacheKey = hash ? cellKey(owner, hash) : null;
   // Only a widget still attached to this editor may stand in for this
   // placeholder. A disconnected one belongs to a tab that is not showing, and
   // moving it here would remove it from there.
@@ -1900,7 +1911,35 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   largerBtn.addEventListener("click", stepCellFont(1));
 
   controls.append(foldBtn, upBtn, downBtn, smallerBtn, largerBtn, runBtn, clearBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
-  header.append(controls);
+
+  /**
+   * The cell's caption, in the toolbar.
+   *
+   * `:caption:` is read by mystmd, which turns the cell and its outputs into a
+   * numbered figure in the exported document; the editor showed nothing, so
+   * what one wrote was invisible until the site was built. It is shown here
+   * rather than under the output, where a figure's caption goes: a cell is not
+   * an illustration one reads beneath, it is a tool with a name, and the
+   * toolbar is where the cell says what it is. Right of the buttons, in the
+   * status bar's smaller type, wrapping to its own line when the buttons leave
+   * it no room.
+   *
+   * The number comes from the document's scan through `data-number`; it is
+   * absent when numbering is off, and the caption then stands alone.
+   */
+  const captionEl = document.createElement("span");
+  captionEl.className = "pyodide-caption";
+  el._syncCaption = () => {
+    const text = (el.dataset.caption ?? "").trim();
+    const number = (el.dataset.number ?? "").trim();
+    const label = (el.dataset.numberLabel ?? "").trim();
+    captionEl.textContent = !text ? "" : number ? `${label} ${number} — ${text}` : text;
+    captionEl.hidden = !text;
+  };
+  el._syncCaption();
+  // After the buttons: the caption is what gives way when the header runs out
+  // of room, and it wraps onto its own line rather than squeezing them.
+  header.append(controls, captionEl);
 
   // Zone d'édition CM6
   const editorRow = document.createElement("div");
@@ -2357,7 +2396,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
     const newHex = new IMurMurHash(newCode, 42).result().toString(16);
     const newId  = `code-cell-${newHex}`;
-    const newKey = cellKey(owner, newId, linenos);
+    const newKey = cellKey(owner, newId);
     if (_currentCacheKey) cellCache.delete(_currentCacheKey);
     cellCache.set(newKey, el);
     el.id = newId;
@@ -2375,6 +2414,8 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   // ── Raccourcis clavier configurables ─────────────────────────────────────
   const keysCompartment = new Compartment();
+  const linenosCompartment = new Compartment();
+  let _linenosOn = linenos;
   const cellActions = {
     run:         (view) => { _syncToEditor(view); runBtn.click(); },
     insertBelow: (view) => { _syncToEditor(view); insertBtn.click(); },
@@ -2484,10 +2525,18 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     pyodideCmTheme,
   ];
 
-  if (linenos) cmExtensions.push(lineNumbers());
+  // In a compartment rather than pushed once: the same host is reused across
+  // re-renders, so an option added to the document has to reach the editor
+  // that already exists. `_setLinenos` is what the renderer calls.
+  cmExtensions.push(linenosCompartment.of(linenos ? lineNumbers() : []));
 
   const cmState = EditorState.create({ doc: code, extensions: cmExtensions });
   const view    = new EditorView({ state: cmState, parent: editorContainer });
+  el._setLinenos = (on) => {
+    if (on === _linenosOn) return;
+    _linenosOn = on;
+    view.dispatch({ effects: linenosCompartment.reconfigure(on ? lineNumbers() : []) });
+  };
 
   if (!code.trim() && pendingEmptyCellFocus
       && performance.now() - pendingEmptyCellFocus < FOCUS_REQUEST_TTL_MS) {
