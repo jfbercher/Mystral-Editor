@@ -1111,13 +1111,30 @@ export async function deleteVariables(names, { unloadModules = false, space = SH
  * cannot parse is reported once and dropped: a typo in a configuration file
  * should cost that one shortcut, not the cell's whole keymap.
  */
+/**
+ * Does this look like a CodeMirror key name?
+ *
+ * Modifiers, then the key. The key is a word -- a letter, a digit, `F5`,
+ * `ArrowUp`, `Enter` -- or a single character of punctuation: `-`, `[`, `/`
+ * are names CodeMirror knows, and the first version of this test, which asked
+ * for alphanumerics only, rejected every one of them. It rejected the notebook
+ * gesture for splitting a cell, `Mod-Shift--`, which was this function's own
+ * default. A validator stricter than what it validates is a trap that catches
+ * its author first.
+ *
+ * Several keys separated by spaces are a chord, which CodeMirror also takes;
+ * each part is checked on its own.
+ */
+const KEY_PART = /^(?:(?:Mod|Cmd|Meta|Ctrl|Control|Alt|Shift)-)*(?:[A-Za-z0-9]+|[^A-Za-z0-9\s])$/;
+const isKeyName = (key) => key.split(/\s+/).filter(Boolean).every((part) => KEY_PART.test(part));
+
 function cellKeyBindings(actions) {
   const configured = config.pyodide?.keys ?? {};
   const bindings = [];
   for (const [action, handler] of Object.entries(actions)) {
     const key = (configured[action] ?? "").trim();
     if (!key) continue;
-    if (!/^([A-Za-z0-9]+-)*[A-Za-z0-9]+$/.test(key.replace(/\s+/g, ""))) {
+    if (!isKeyName(key)) {
       console.warn(`[cells] ignoring the shortcut configured for "${action}": "${key}" is not a CodeMirror key name`);
       continue;
     }
@@ -1723,8 +1740,32 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     if (!startLine) return;
     document.dispatchEvent(new CustomEvent("myst-block-move", { detail: { owner, startLine, dir } }));
   };
-  upBtn.addEventListener("click", () => moveBy("up"));
-  downBtn.addEventListener("click", () => moveBy("down"));
+  /**
+   * Alt on the same arrow merges instead of moving: the cell takes in the one
+   * above or below it.
+   *
+   * The same grammar the toolbar already speaks -- Alt on Run runs the whole
+   * document, Alt on Clear clears all of it -- and the direction is already
+   * carried by the arrow. Two operations, no eleventh button.
+   *
+   * Nothing happens when the neighbour is not a code cell, or when anything
+   * but blank lines stands between the two: a paragraph caught in a merge
+   * would have to go somewhere, and there is no answer to where.
+   */
+  const mergeWith = (dir) => {
+    _syncToEditor(editorContainer._cmView);
+    document.dispatchEvent(new CustomEvent("pyodide-cell-merge", { detail: { owner, code: _currentCode, lineId: _lineId(), dir } }));
+  };
+  // The edits made in this cell are written to the document first, in both
+  // cases: the block about to be moved or merged is read from the source, and
+  // an unsynchronised cell would hand over the code it had before.
+  const arrow = (dir) => (ev) => {
+    if (ev.altKey) return mergeWith(dir);
+    _syncToEditor(editorContainer._cmView);
+    moveBy(dir);
+  };
+  upBtn.addEventListener("click", arrow("up"));
+  downBtn.addEventListener("click", arrow("down"));
   /**
    * The code of this cell, a little smaller or a little larger.
    *
@@ -2307,7 +2348,10 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   const _lineId = () => el.dataset.lineId ?? null;
 
   const _syncToEditor = (view) => {
-    if (editorContainer._suppressSync) return;
+    // The toolbar calls this with the cell's own editor, which does not exist
+    // yet while the cell is being built: an absent view is not an error here,
+    // only a cell with nothing to synchronise.
+    if (!view || editorContainer._suppressSync) return;
     const newCode = view.state.doc.toString();
     if (newCode === _currentCode) return;
 
@@ -2342,6 +2386,20 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     deleteCell:  (view) => { _syncToEditor(view); deleteBtn.click(); },
     editSource:  (view) => { _syncToEditor(view); sourceBtn.click(); },
     toggleInput: () => { foldBtn.click(); },
+    /**
+     * Cut the cell in two at the caret, both halves keeping the marker and the
+     * options of the cell they come from -- whatever made it run is still
+     * there on either side.
+     *
+     * A key and not a button, because this one is not a direction but a
+     * position: it needs a caret, so it needs the cell to have the focus, and
+     * a cell that has the focus is already under the fingers.
+     */
+    splitCell: (view) => {
+      _syncToEditor(view);
+      const bodyIndex = view.state.doc.lineAt(view.state.selection.main.head).number - 1;
+      document.dispatchEvent(new CustomEvent("pyodide-cell-split", { detail: { owner, code: _currentCode, lineId: _lineId(), bodyIndex } }));
+    },
   };
 
   // ── Extensions CM6 ───────────────────────────────────────────────────────

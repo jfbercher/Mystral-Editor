@@ -77,11 +77,11 @@
           "type": "string"
         },
         "modeInline": {
-          "description": "Keyboard shortcut for inlinePreview. `l` rather than the `i` of \"inline\": Ctrl-Shift-I opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works on the three platforms is worth more than a mnemonic that works on one -- and it keeps config.json portable between them. Firefox also keeps Ctrl-Shift-P (private window) for itself, which is one of the reasons these are configurable.",
+          "description": "Keyboard shortcut for inlinePreview - Default: \"Mod-Shift-l\", `l` rather than the `i` of \"inline\": Ctrl-Shift-I opens the developer tools on Windows and Linux, in the webview as in a browser, so the editor never sees it there. One binding that works on the three platforms is worth more than a mnemonic that works on one -- and it keeps config.json portable between them. Firefox also keeps Ctrl-Shift-P (private window) for itself, which is one of the reasons these are configurable.",
           "type": "string"
         },
         "modeSlides": {
-          "description": "Keyboard shortcut to switch to inlinePreview. Switch to Slides mode: \"Mod-Shift-m\" `m` for want of anything better: the initials that would be mnemonic here are all spoken for. Worth knowing if this one ever seems dead: in a browser tab, Firefox keeps Mod-Shift-M for its responsive design view and Chrome for switching profile, so the editor never sees it there. The desktop build has no such claim on it. Mod-Shift-F is the roomiest alternative, being a shortcut of neither; Mod-Shift-J is not, it opens the console in both. This is a setting precisely because that varies.",
+          "description": "Switch to Slides mode - Default: \"Mod-Shift-m\" `m` for want of anything better: the initials that would be mnemonic here are all spoken for. Worth knowing if this one ever seems dead: in a browser tab, Firefox keeps Mod-Shift-M for its responsive design view and Chrome for switching profile, so the editor never sees it there. The desktop build has no such claim on it. Mod-Shift-F is the roomiest alternative, being a shortcut of neither; Mod-Shift-J is not, it opens the console in both. This is a setting precisely because that varies.",
           "type": "string"
         }
       },
@@ -133,7 +133,7 @@
           "type": "number"
         },
         "keys": {
-          "description": "Keyboard shortcuts of a code-cell editor, in CodeMirror notation: \"Mod\" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and a key name (\"Enter\", \"ArrowUp\", \"k\"). An empty string means no shortcut; a binding that CodeMirror does not understand is reported in the console and ignored, so a typo costs a shortcut rather than the whole cell. They apply inside a cell editor only, and win over the editor's own bindings, so rebinding one to a key the editor already uses (for instance \"Mod-s\") shadows it while the cursor is in a cell.",
+          "description": "Keyboard shortcuts of a code-cell editor, in CodeMirror notation: \"Mod\" is Cmd on macOS and Ctrl elsewhere, then Shift / Alt / Ctrl, and a key name (\"Enter\", \"ArrowUp\", \"k\"). An empty string means no shortcut; a binding that CodeMirror does not understand is reported in the console and ignored, so a typo costs a shortcut rather than the whole cell. They apply inside a cell editor only, and win over the editor's own bindings, so rebinding one to a key the editor already uses (for instance \"Mod-s\") shadows it while the cursor is in a cell.\n One combination to avoid on macOS: Alt with neither Cmd nor Ctrl. There Alt composes characters -- the browser reports the composed sign rather than the letter -- and CodeMirror refuses to guess the physical key in that case, on purpose (runHandlers: \"Alt-combinations on macOS tend to be typed characters\"). Such a binding can never match on a Mac, and the composed character is typed into the cell instead.",
           "type": "object",
           "properties": {
             "run": {
@@ -174,6 +174,10 @@
             },
             "toggleInput": {
               "description": "fold this cell's code away, or back",
+              "type": "string"
+            },
+            "splitCell": {
+              "description": "cut this cell in two at the caret -- the notebook's own gesture",
               "type": "string"
             }
           },

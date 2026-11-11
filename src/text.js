@@ -1,4 +1,5 @@
 import { foldOptionChange } from "./markdown/cellFold.js";
+import { cellsAreNeighbours, mergeCellsText, splitCellText } from "./markdown/cellSplitMerge.js";
 import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
@@ -451,6 +452,58 @@ export class TextManager {
       const change = foldOptionChange(src, found, folded);
       if (change) view.dispatch({ changes: change });
     };
+    /**
+     * Merge a cell with the one next to it, and split one in two.
+     *
+     * The surgery itself is in src/markdown/cellSplitMerge.js, as functions of
+     * a string. What belongs here is finding the blocks: `listFenceBlocks`
+     * lists code cells and nothing else, so "the neighbour is a cell" needs no
+     * test of its own -- a paragraph simply is not in the list. What does need
+     * a test is that nothing stands between the two, which `cellsAreNeighbours`
+     * answers.
+     */
+    const cellBlocks = (code, lineId) => {
+      const view = this.editorView.value;
+      if (!view) return null;
+      const src = view.state.doc.toString();
+      const active = findFenceBlock(src, String(code ?? "").trim(), this._posFromLineId(lineId));
+      return active ? { view, src, active, blocks: listFenceBlocks(src) } : null;
+    };
+
+    this._pyodideMergeHandler = ({ detail: { code, lineId, owner, dir } }) => {
+      if (_notMine(owner)) return;
+      const found = cellBlocks(code, lineId);
+      if (!found) return;
+      const { view, src, active, blocks } = found;
+      const i = blocks.findIndex((b) => b.lineStart === active.lineStart);
+      const j = i + (dir === "up" ? -1 : 1);
+      if (i === -1 || j < 0 || j >= blocks.length) return;
+      const [first, second] = i < j ? [blocks[i], blocks[j]] : [blocks[j], blocks[i]];
+      if (!cellsAreNeighbours(src, first, second)) return;
+      view.dispatch({
+        // Merging upwards, the active cell is the second: its options are the
+        // ones kept, since they are the cell the reader is acting from.
+        changes: { from: first.lineStart, to: second.blockEnd, insert: mergeCellsText(src, first, second, dir === "up") },
+        userEvent: "merge.cell",
+      });
+    };
+    document.addEventListener("pyodide-cell-merge", this._pyodideMergeHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-cell-merge", this._pyodideMergeHandler));
+
+    this._pyodideSplitHandler = ({ detail: { code, lineId, owner, bodyIndex } }) => {
+      if (_notMine(owner)) return;
+      const found = cellBlocks(code, lineId);
+      if (!found) return;
+      const { view, src, active } = found;
+      const insert = splitCellText(src, active, bodyIndex);
+      // Null when one half would be empty: nothing happens rather than an
+      // empty cell appearing a keystroke away from being noticed.
+      if (!insert) return;
+      view.dispatch({ changes: { from: active.lineStart, to: active.blockEnd, insert }, userEvent: "split.cell" });
+    };
+    document.addEventListener("pyodide-cell-split", this._pyodideSplitHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-cell-split", this._pyodideSplitHandler));
+
     document.addEventListener("pyodide-cell-fold", this._pyodideFoldHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-cell-fold", this._pyodideFoldHandler));
 

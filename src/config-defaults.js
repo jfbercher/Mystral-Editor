@@ -216,6 +216,13 @@ export const DEFAULT_CONFIG = {
     // They apply inside a cell editor only, and win over the editor's own
     // bindings, so rebinding one to a key the editor already uses (for
     // instance "Mod-s") shadows it while the cursor is in a cell.
+    //
+    // One combination to avoid on macOS: Alt with neither Cmd nor Ctrl.
+    // There Alt composes characters -- the browser reports the composed sign
+    // rather than the letter -- and CodeMirror refuses to guess the physical
+    // key in that case, on purpose (runHandlers: "Alt-combinations on macOS
+    // tend to be typed characters"). Such a binding can never match on a Mac,
+    // and the composed character is typed into the cell instead.
     keys: {
       // run this cell
       run:         "Shift-Enter",       
@@ -237,6 +244,8 @@ export const DEFAULT_CONFIG = {
       editSource:  "",       
       // fold this cell's code away, or back           
       toggleInput: "",                 
+      // cut this cell in two at the caret -- the notebook's own gesture
+      splitCell:   "Mod-Shift--",
     },
   },
 
