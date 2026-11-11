@@ -9,6 +9,7 @@
  * détecte pour appeler initCodeCell() depuis pyodideRunner.js.
  */
 
+import { infoHasFold } from "./cellFold.js";
 import IMurMurHash from "imurmurhash";
 import { initCodeCell, cellCache, cellKey, OWNER_SEP, runExpression, onCellExecuted } from "./pyodideRunner";
 import { Role } from "markdown-it-docutils";
@@ -147,12 +148,12 @@ export function decodeCode(encoded) {
 }
 
 /** Génère l'HTML du div placeholder partagé par fence et directive. */
-function placeholderHtml(id, encoded, packages, linenos, space, spaceLabel) {
+function placeholderHtml(id, encoded, packages, linenos, space, spaceLabel, folded = false) {
   // The namespace is written into the HTML rather than looked up when the cell
   // runs: it follows the render, so it is right even with several documents
   // open, and a change of `python:` in the frontmatter reaches the cells the
   // moment the document is re-rendered.
-  return `<div id="${id}" class="code-cell-host" data-code="${encoded}" data-packages='${JSON.stringify(packages)}' data-linenos="${linenos}" data-python-space="${space ?? "shared"}" data-python-space-label="${spaceLabel ?? "shared"}"></div>`;
+  return `<div id="${id}" class="code-cell-host" data-code="${encoded}" data-packages='${JSON.stringify(packages)}' data-fold="${folded ? "1" : ""}" data-linenos="${linenos}" data-python-space="${space ?? "shared"}" data-python-space-label="${spaceLabel ?? "shared"}"></div>`;
 }
 
 // Un seul observateur par conteneur parent
@@ -246,6 +247,10 @@ function ensureObserver(parent, owner = "") {
         // this attribute, so the reused widget has to be told to rebuild it.
         evictedHost.dataset.params = el.dataset.params ?? "";
         evictedHost.dataset.tags = el.dataset.tags ?? "";
+        // The re-render carries the document's answer, which the chevron has
+        // just written: a reused host would otherwise keep the one it was
+        // built with, and the option would stay without effect until a reload.
+        evictedHost.dataset.fold = el.dataset.fold ?? "";
         evictedHost.dataset.chrome = el.dataset.chrome ?? "";
         evictedHost.dataset.chromeLabel = el.dataset.chromeLabel ?? "";
         evictedHost.dataset.dropdown = el.dataset.dropdown ?? "";
@@ -342,10 +347,12 @@ const markdownItPyodide = (md, { parent, editorId = "" } = {}) => {
 
     // Linenos : présent si ":linenos:" figure dans la ligne info
     const linenos = /\blinenos\b/i.test(info);
+    // Idem pour le pli, que le chevron écrit lui-même ; voir cellFold.js.
+    const folded = infoHasFold(info);
 
     // Injecter les attributs du token (dont data-line-id posé par markdownSourceMap)
     // pour que le scroll-sync trouve la cellule correctement.
-    let html = placeholderHtml(id, encoded, [], linenos, env.pythonSpace, env.pythonSpaceLabel);
+    let html = placeholderHtml(id, encoded, [], linenos, env.pythonSpace, env.pythonSpaceLabel, folded);
     const closeIdx = html.indexOf(">");
     html = html.slice(0, closeIdx) + self.renderAttrs(token) + html.slice(closeIdx);
     return html;

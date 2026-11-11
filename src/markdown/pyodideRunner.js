@@ -1690,15 +1690,41 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
    * While writing, it is simply a way to get a long cell out of the way
    * without deleting anything.
    *
-   * A view control and not a document edit, deliberately. What the document
-   * declares is `:tags: hide-input`, which sets the state a cell opens in;
-   * the button moves it from there and that choice lives as long as the cell
-   * widget does. Writing the tag back on every click would mean editing a
-   * directive option rather than the cell's body -- a different machinery
-   * from the one the editor has -- and would make a glance at a long cell a
-   * modification of the file.
+   * The state is written back into the document, as a `:fold:` option on the
+   * cell; see src/markdown/cellFold.js. It was a view control at first, which
+   * meant a document tidied cell by cell opened untidy at the next sitting --
+   * thirty cells to fold again. The price is that a glance at a long cell is
+   * a modification of the file: one undo step, and the modified marker.
    */
   const foldBtn    = mkBtn("pyodide-btn-fold",    "⌄");
+  /**
+   * Move the cell one place up or down in the document.
+   *
+   * Only in Inline mode: the step they take is one *block* of that mode's own
+   * projection -- the next rendered object, whatever it is -- and that notion
+   * exists nowhere else. In the dual preview there is no editor under the
+   * rendering to move anything in. Where they show is settled by a rule in
+   * pyodide-cells.css, keyed on the widget they sit in, and not by this file:
+   * a host element travels between the two renderings, and a state recomputed
+   * at each move is a state one can forget to recompute.
+   *
+   * The cell says which block it is by the line range the widget carries, and
+   * `inlinePreview` does the move: it is the only part that knows where one
+   * block ends and the next begins, which is what keeps a cell from landing
+   * inside an admonition.
+   */
+  const upBtn      = mkBtn("pyodide-btn-move pyodide-btn-up",   "↑");
+  const downBtn    = mkBtn("pyodide-btn-move pyodide-btn-down", "↓");
+  upBtn.title = "Move this cell up";
+  downBtn.title = "Move this cell down";
+  const moveBy = (dir) => {
+    const widget = el.closest(".cm-inline-rendered-md");
+    const startLine = Number((widget?.dataset.mystBlock ?? "").split("-")[0]);
+    if (!startLine) return;
+    document.dispatchEvent(new CustomEvent("myst-block-move", { detail: { owner, startLine, dir } }));
+  };
+  upBtn.addEventListener("click", () => moveBy("up"));
+  downBtn.addEventListener("click", () => moveBy("down"));
   /**
    * The code of this cell, a little smaller or a little larger.
    *
@@ -1783,7 +1809,27 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     if (folded) el.dataset.folded = "1";
     else delete el.dataset.folded;
   };
-  foldBtn.addEventListener("click", () => setFolded(!wrapper.classList.contains("pyodide-folded")));
+
+  /**
+   * Fold, and remember it in the document.
+   *
+   * The state is written as a `:fold:` option in the source, so that it
+   * survives a reopening, another machine, and a copy sent to someone else --
+   * which the host element alone does not, since it lives only as long as the
+   * session. The event travels on `document` and carries the owning editor and
+   * the cell's line, exactly as the code edits do: `text.js` locates the block
+   * and rewrites its options. Only the reader's own gesture goes through here;
+   * applying what the document already says must not write it back.
+   */
+  const foldByHand = (folded) => {
+    setFolded(folded);
+    document.dispatchEvent(
+      new CustomEvent("pyodide-cell-fold", {
+        detail: { code: _currentCode, lineId: _lineId(), owner, folded },
+      }),
+    );
+  };
+  foldBtn.addEventListener("click", () => foldByHand(!wrapper.classList.contains("pyodide-folded")));
 
   const MIN_CELL_FONT = 8;
   const MAX_CELL_FONT = 48;
@@ -1812,7 +1858,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   smallerBtn.addEventListener("click", stepCellFont(-1));
   largerBtn.addEventListener("click", stepCellFont(1));
 
-  controls.append(foldBtn, smallerBtn, largerBtn, runBtn, clearBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
+  controls.append(foldBtn, upBtn, downBtn, smallerBtn, largerBtn, runBtn, clearBtn, varsBtn, restartBtn, insertBtn, sourceBtn, deleteBtn);
   header.append(controls);
 
   // Zone d'édition CM6
@@ -2140,12 +2186,15 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   if (cacheKey) cellCache.set(cacheKey, el);
 
-  // How the cell opens: what it was left at if it has been seen before,
-  // otherwise what the document asked for with `:tags: hide-input`.
-  const tags = String(el.dataset.tags ?? "")
-    .split(/[\s,]+/)
-    .filter(Boolean);
-  setFolded(el.dataset.folded === "1" || tags.includes("hide-input"));
+  // Two answers, in order: what the reader left it at during this session --
+  // the host's own attribute, which survives a re-render -- and what the
+  // document asks for with `:fold:`, which the chevron writes itself.
+  //
+  // `:tags: hide-input` used to fold here as well. It no longer does: it is
+  // metadata for the export, and the two say different things -- a cell may
+  // well be read open and exported without its input. The tag is still carried
+  // through to the export untouched.
+  setFolded(el.dataset.folded === "1" || (el.dataset.folded === undefined && el.dataset.fold === "1"));
   if (el.dataset.cellFont) setCellFont(Number(el.dataset.cellFont));
 
   // ── Bare chrome ─────────────────────────────────────────────────────────
@@ -2176,7 +2225,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         // uses -- Run All, Restart, the size buttons. Hiding the toolbar took
         // the chevron with it, so without this the cell under the button could
         // not be opened at all: a door whose handle is on the other side.
-        if (ev.altKey) return setFolded(false);
+        if (ev.altKey) return foldByHand(false);
         // The button does not run anything itself -- it clicks Run. One run
         // path means the streaming, the status, the namespace and the cleanup
         // are the ones that have been debugged, and a second would drift.

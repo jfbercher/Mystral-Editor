@@ -1,3 +1,4 @@
+import { foldValue } from "./cellFold.js";
 import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
@@ -1147,6 +1148,10 @@ class CodeCellDirective extends Directive {
   has_content = true;
   option_spec = {
     linenos:  directiveOptions.flag,         // affiche les numéros de ligne
+    // L'état du chevron, écrit par le chevron lui-même : `:fold:` replie,
+    // `:fold: false` ouvre une cellule que `:tags: hide-input` replierait.
+    // Voir src/markdown/cellFold.js.
+    fold:     directiveOptions.unchanged,
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
     figwidth: directiveOptions.unchanged,    // largeur des figures : "60%", "20em"...
@@ -1189,6 +1194,7 @@ class CodeCellDirective extends Directive {
       `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
+      `data-fold="${data.options?.fold === undefined ? "" : foldValue(data.options.fold)}" ` +
       `data-linenos="${linenos}">` +
       `</div>\n`;
 

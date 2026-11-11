@@ -1,3 +1,4 @@
+import { foldOptionChange } from "./markdown/cellFold.js";
 import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
 import markdownitDocutils, { directivesDefault } from "markdown-it-docutils";
@@ -316,6 +317,8 @@ export class TextManager {
     this.text = signal(initialText.peek());
     this.lineMap = new Map();
     this.chunks = [];
+    /** Whether the preview's DOM has fallen behind `chunks` -- see renderText. */
+    this.previewStale = false;
     this.editorView = editorView;
     this.preview = signal(null);
     /** The document's declared language, for the spell checker. */
@@ -433,6 +436,24 @@ export class TextManager {
     document.addEventListener("pyodide-code-edit", this._pyodideEditHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-code-edit", this._pyodideEditHandler));
 
+    // The chevron that folds a cell's code writes its state into the document,
+    // so that it survives the session; see src/markdown/cellFold.js. Same road
+    // as a code edit: the block is found by its content, the line id settling
+    // which of two identical cells is meant, and nothing is written when the
+    // source already says what is wanted.
+    this._pyodideFoldHandler = ({ detail: { code, lineId, owner, folded } }) => {
+      if (_notMine(owner)) return;
+      const view = this.editorView.value;
+      if (!view) return;
+      const src = view.state.doc.toString();
+      const found = findFenceBlock(src, String(code ?? "").trim(), this._posFromLineId(lineId));
+      if (!found) return;
+      const change = foldOptionChange(src, found, folded);
+      if (change) view.dispatch({ changes: change });
+    };
+    document.addEventListener("pyodide-cell-fold", this._pyodideFoldHandler);
+    cleanups?.push(() => document.removeEventListener("pyodide-cell-fold", this._pyodideFoldHandler));
+
     // Insère une cellule :::code-cell vide sous la cellule courante.
     // Utilise findFenceBlock pour localiser précisément le bloc, même si currentCode
     // est court ou identique à du texte hors-fence.
@@ -540,7 +561,15 @@ export class TextManager {
       const chunkEls =
         this.chunks.length == newChunks.length ? newChunks.map((c) => this.preview.value.querySelector(`html-chunk#html-chunk-${c.id}`)) : [];
 
-      if (this.chunks.length != newChunks.length || chunkEls.some((el) => !el)) {
+      // `this.chunks` is updated at the end of every render, whether or not the
+      // preview was on screen to receive it. So after a spell in Inline mode
+      // the array describes the current document while the preview's DOM still
+      // holds what it had when it was last visible -- and the patch below,
+      // which compares the new chunks against that array, finds nothing to do
+      // and leaves the stale rendering in place. That is what showed cells in
+      // their old order, or not at all, until an edit happened to make one
+      // chunk's html differ again. What was not shown has to be remembered.
+      if (this.previewStale || this.chunks.length != newChunks.length || chunkEls.some((el) => !el)) {
         const toRemove = [...this.preview.value.childNodes].filter((c) => !c.classList || !c.classList.contains("cm-previewFocus"));
         toRemove.forEach((c) => this.preview.value.removeChild(c));
         this.preview.value.innerHTML += newChunks
@@ -564,6 +593,11 @@ export class TextManager {
 
         requestAnimationFrame(() => { previewEl.scrollTop = savedScrollTop; });
       }
+      this.previewStale = false;
+    } else {
+      // Nothing was drawn: whatever the preview holds no longer describes the
+      // document, and the next render that can be seen has to rebuild it.
+      this.previewStale = true;
     }
 
     this.foldSections();

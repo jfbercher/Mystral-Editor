@@ -48,9 +48,22 @@ Supported options:
 
 - `:packages: pkg1, pkg2` — additional packages to install via `micropip` before running
 - `:linenos:` — show line numbers in the cell editor
-- `:tags: hide-input` — cell metadata (for future filtering)
+- `:tags: hide-input` — cell metadata, carried through to the export
+- `:fold:` — the cell opens with its code folded away
+
+The chevron that folds a cell's code **writes this option itself**. Folding a cell adds `:fold:` to its source, unfolding one removes it, so the way a document was left is the way it opens the next time -- on another machine, or for whoever the document is sent to. The option says one thing and only that, and is independent of `:tags: hide-input`, which concerns the export rather than what the editor shows: a cell may well be read open and exported without its input. The fence form carries the flag in its info line, beside `:linenos:`:
+
+````markdown
+```code-cell python :linenos: :fold:
+import numpy as np
+```
+````
+
+Each fold is an edit like any other: it marks the document modified and can be undone with the usual shortcut.
 
 ℹ️ **Access to local-files** in read/write mode is supported, restricted to the Working Directory with explicit permissions (web), or in the same directory as the current file (Tauri local app).
+
+↑↓ **Moving a cell** In Inline mode the toolbar carries two arrows that move the cell one place up or down. The step is one *block* of the inline projection -- the next rendered object, whatever it is: a paragraph, a heading, another cell, or a whole admonition, which is therefore stepped over rather than entered. The blank lines between two blocks stay where they are, and the move is a single undo step. The arrows do not appear in the dual preview, where there is no editor under the rendering to move anything in.
 
 𐃄 **Toolbar** Each cell carries a toolbar acting on itself or on the whole document: Run, Clear, Run All, Clear All, Restart, 
 

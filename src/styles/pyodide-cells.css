@@ -89,6 +89,13 @@
    on purpose, and there is no source panel beside it. */
 .pyodide-btn-source{display:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#6639ba}
 .cm-inline-rendered-md .pyodide-btn-source{display:inline-flex}
+/* The arrows that move a cell one block up or down. Inline mode only: a step
+   is one block of that mode's projection, and in the dual preview there is no
+   editor under the rendering to move anything in. Asked as a rule rather than
+   recomputed when the host moves -- a host travels between the two renderings
+   and every hand-run answer is one more place to forget to call. */
+.pyodide-btn-move{display:none}
+.cm-inline-rendered-md .pyodide-btn-move{display:inline-flex}
 /* The side panel of the completion popup carries .pyodide-completion-doc, but
    its size and wrapping are set inline in pyodideRunner.js: it is rendered in
    the tooltip host, outside the preview, where this sheet may not reach. */

@@ -872,6 +872,62 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
     return ranges;
   }
 
+  /**
+   * Move a block one place up or down, swapping it with its neighbour.
+   *
+   * The unit is the block this mode projects -- what the reader sees as one
+   * rendered object -- and not a paragraph or a line, which is why this lives
+   * here: `blockRanges` is the only description of the document that agrees
+   * with the view. A code cell inside a `:::{note}` is one block, so is the
+   * note itself, and nothing can be moved into the middle of either.
+   *
+   * The swap keeps what separates the two blocks where it is: the blank lines
+   * belong to the document's rhythm, not to the block above them. One
+   * transaction, so one undo.
+   */
+  const moveBlockListener = ViewPlugin.fromClass(
+    class {
+      constructor(view) {
+        this.view = view;
+        this.onMove = (ev) => this.move(ev.detail ?? {});
+        document.addEventListener("myst-block-move", this.onMove);
+      }
+
+      destroy() {
+        document.removeEventListener("myst-block-move", this.onMove);
+      }
+
+      move({ owner, startLine, dir }) {
+        // The event travels on `document`, so it reaches every open editor;
+        // only the one that holds the block may act on it.
+        const mine = text.options?.id?.value ?? options?.id?.value;
+        if (owner != null && mine != null && owner !== mine) return;
+        const view = this.view;
+        // Empty when the projection no longer describes the document -- a
+        // stale answer here would move the wrong lines.
+        const blocks = blockRanges(view.state).filter((b) => !b.synthetic);
+        const i = blocks.findIndex((b) => b.startLine === startLine);
+        const j = i + (dir === "up" ? -1 : 1);
+        if (i === -1 || j < 0 || j >= blocks.length) return;
+
+        const [first, second] = i < j ? [blocks[i], blocks[j]] : [blocks[j], blocks[i]];
+        const doc = view.state.doc;
+        const gap = doc.sliceString(first.to, second.from);
+        const firstText = doc.sliceString(first.from, first.to);
+        const secondText = doc.sliceString(second.from, second.to);
+        // Where the moved block lands, so the caret follows it: the reader
+        // should be able to click twice without looking for it again.
+        const movedFrom = dir === "up" ? first.from : first.from + secondText.length + gap.length;
+        view.dispatch({
+          changes: { from: first.from, to: second.to, insert: secondText + gap + firstText },
+          selection: { anchor: movedFrom },
+          scrollIntoView: true,
+          userEvent: "move.block",
+        });
+      }
+    },
+  );
+
   function sourceListMarginPx(lineText, listDepth) {
     if (!listDepth) return 0;
     const indentLen = lineText.length - lineText.trimStart().length;
@@ -889,6 +945,25 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
   }
 
   class ProjectedWidget extends WidgetType {
+    /**
+     * Why the rendered text cannot be selected with the mouse, and why the
+     * copy button exists.
+     *
+     * CodeMirror marks every widget's DOM `contenteditable="false"`, since
+     * `WidgetType.editable` is false by default, and inside an editable host
+     * the browser treats such a subtree as one atom: no caret goes in, and a
+     * selection crossing it takes it whole -- the stray line that used to
+     * light up under a code cell. In the dual preview the same HTML lives in
+     * an ordinary document, which is why selecting it there is ordinary.
+     *
+     * Declaring the widget editable was tried, with and without
+     * `-webkit-user-modify: read-only`. It does lift the atom and the
+     * selection draws -- and then CodeMirror erases it, because it owns the
+     * DOM selection and rewrites it from its own state at the next measuring
+     * pass. A position inside a widget does not translate into a document
+     * position, so there is nothing for it to rewrite to. No attribute wins
+     * against that, and the copy button is the answer rather than a fallback.
+     */
     constructor(html, startLine, endLine, dict) {
       super();
       this.html = html;
@@ -1234,6 +1309,7 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
   return [
     focusedField,
     blocksField,
+    moveBlockListener,
     // Before decorationsField: that field reads this one while it rebuilds.
     unlockedField,
     decorationsField,
