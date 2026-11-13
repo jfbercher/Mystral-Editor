@@ -52,11 +52,20 @@ export async function openKernel(kernelId, onMessage) {
   const id = await invoke("jupyter_open", { url: `${ws}/api/kernels/${kernelId}/channels?token=${jupyterToken()}`, onMessage: channel });
 
   const session = crypto.randomUUID();
-  const send = (msgType, content) =>
-    invoke("jupyter_send", {
+  /**
+   * Envoyer, et rendre l'identifiant du message.
+   *
+   * Il est la seule façon de reconnaître les réponses : tout ce qui revient
+   * d'un noyau porte, dans son `parent_header`, l'identifiant de la demande
+   * qui l'a provoqué. Un lien porte plusieurs cellules, donc sans lui on ne
+   * saurait pas à qui appartient une sortie.
+   */
+  const send = async (msgType, content) => {
+    const msgId = crypto.randomUUID();
+    await invoke("jupyter_send", {
       id,
       text: JSON.stringify({
-        header: { msg_id: crypto.randomUUID(), session, username: "mystral", date: new Date().toISOString(), msg_type: msgType, version: "5.3" },
+        header: { msg_id: msgId, session, username: "mystral", date: new Date().toISOString(), msg_type: msgType, version: "5.3" },
         parent_header: {},
         metadata: {},
         content,
@@ -64,6 +73,8 @@ export async function openKernel(kernelId, onMessage) {
         buffers: [],
       }),
     });
+    return msgId;
+  };
 
   return {
     id,

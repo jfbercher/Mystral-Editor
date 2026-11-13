@@ -26,6 +26,7 @@
  *   isReady()                -- without starting anything
  *   execute(code, opts)      -- opts: { packages, onStream, space }; streams as it goes
  *   evaluate(expr, space)    -- one expression and its value, for the {eval} role
+ *   interrupt(space)         -- stop what is running there, without losing it
  *   restart(space)           -- empty that namespace, keep the engine
  *   inspect(includeAll, space) -- what the namespace holds, for the variable panel
  *   forget(names, opts)      -- remove variables from a namespace
@@ -96,7 +97,7 @@ export const CAPABILITIES = [
   "inspect",
   /** Storing a namespace in the sidecar and putting it back. */
   "snapshot",
-  /** Stopping a cell that will not stop by itself. */
+  /** Stopping a cell that will not stop by itself: the `interrupt` verb. */
   "interrupt",
   /** ipywidgets and the comm protocol they travel on. */
   "widgets",
@@ -135,5 +136,14 @@ export const supports = (capability, space) => Boolean(runtime(space)?.capabilit
 export function useRuntime(name) {
   if (!engines.has(name)) throw new Error(`unknown runtime: ${name}`);
   active = name;
+  console.log(`[runtime] les cellules s'exécutent désormais dans « ${name} »`);
   return engines.get(name);
+}
+
+// Depuis la console, le temps du jalon 1 : le choix par le frontmatter
+// (`kernelspec`, voir le point 18 du backlog) est l'étape suivante.
+//   window.mystralUseRuntime("jupyter")   puis   ("pyodide")
+if (typeof window !== "undefined") {
+  window.mystralUseRuntime = useRuntime;
+  window.mystralRuntimes = listRuntimes;
 }

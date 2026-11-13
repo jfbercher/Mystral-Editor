@@ -63,6 +63,9 @@ import "./utils/local_utils/jupyterKernels.js";
 import "./utils/local_utils/jupyterServer.js";
 // Et window.mystralJupyterTry() : l'essai de bout en bout par le relais Rust.
 import "./utils/local_utils/jupyterLink.js";
+// Le moteur Jupyter s'enregistre ici. Il n'est pas choisi pour autant : Pyodide
+// s'étant enregistré le premier reste actif jusqu'à useRuntime("jupyter").
+import "./markdown/jupyterRuntime.js";
 
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {

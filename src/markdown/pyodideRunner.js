@@ -11,7 +11,7 @@
 
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
-import { SHARED_SPACE, isSharedSpace, registerRuntime } from "./cellRuntime.js";
+import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime } from "./cellRuntime.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
@@ -2883,7 +2883,10 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
       let result;
       try {
-        result = await executePython(view.state.doc.toString(), packages, onStream, _space());
+        // Au registre, pas à Pyodide : c'est ici que le choix du moteur se
+        // joue pour une cellule, et `runtime()` rend Pyodide tant qu'aucun
+        // autre n'a été demandé.
+        result = await runtime(_space()).execute(view.state.doc.toString(), { packages, onStream, space: _space() });
       } finally {
         // Stop streaming before renderOutput() wipes textOutputArea, otherwise a
         // queued frame would append to detached nodes.
