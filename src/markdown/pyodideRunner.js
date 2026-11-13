@@ -11,6 +11,7 @@
 
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
+import { SHARED_SPACE, isSharedSpace, registerRuntime } from "./cellRuntime.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
@@ -600,34 +601,13 @@ globalThis._pyodideStreamWrite = function (tag, text) {
  * later without changing what documents are written with.
  */
 
-/** The namespace every document uses unless it asks for another. */
-export const SHARED_SPACE = "shared";
-
 /**
- * The registry key for a frontmatter value.
- * `isolated` is not one namespace but one per document, hence the document id:
- * without it two isolated documents would land in the same place, which is the
- * very thing being avoided.
+ * The namespace vocabulary now lives in `cellRuntime.js`: a document asking for
+ * `python: isolated` is asking this editor a question about documents, and the
+ * answer is the same whoever runs the code. Re-exported from here so that the
+ * modules that have always imported it from the engine keep working.
  */
-export function spaceKey(space, docId) {
-  const value = String(space ?? "").trim();
-  if (!value || value === SHARED_SPACE) return SHARED_SPACE;
-  if (value !== "isolated") return `group:${value}`;
-  if (docId) return `doc:${docId}`;
-  // No id means a document that has never been saved. Falling back to the
-  // shared namespace would silently do the opposite of what it asked for, so it
-  // gets one anyway; it just will not be found again once the tab is gone.
-  console.warn('[namespace] "python: isolated" on a document with no id — isolated for this tab only');
-  return "doc:unsaved";
-}
-
-/** What the indicator shows: the value as written, or "shared" when unset. */
-export function spaceLabel(space) {
-  const value = String(space ?? "").trim();
-  return value || SHARED_SPACE;
-}
-
-export const isSharedSpace = (key) => key === SHARED_SPACE;
+export { SHARED_SPACE, spaceKey, spaceLabel, isSharedSpace } from "./cellRuntime.js";
 
 /**
  * Namespace dicts, by registry key. The shared one is never stored here: it is
@@ -1875,6 +1855,14 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
    */
   const foldByHand = (folded) => {
     setFolded(folded);
+    // While presenting, the chevron is a view control and nothing more.
+    // Writing `:fold:` into the document would change the text, re-render the
+    // slide and replay the deck's transition -- a fade in the middle of a
+    // sentence -- and would modify the file during a lecture, which is the
+    // last moment to do it. The state is kept on the host, as it was before
+    // any of this was written to the source, so the cell stays as the speaker
+    // left it until the deck is closed.
+    if (el.closest(".presenting")) return;
     document.dispatchEvent(
       new CustomEvent("pyodide-cell-fold", {
         detail: { code: _currentCode, lineId: _lineId(), owner, folded },
@@ -3299,3 +3287,26 @@ _report
   );
   return { ok, failed };
 }
+
+/**
+ * Pyodide as an implementation of the cell runtime, rather than as the only
+ * path to one. Nothing changes today: it registers first, so it is the engine
+ * every cell talks to. What this buys is that the day a Jupyter kernel is
+ * written, the call sites already ask a register rather than this file.
+ *
+ * The verbs are the ones already exported; the capabilities are declared, so
+ * an engine that lacks one says so instead of failing when it is used.
+ */
+registerRuntime({
+  name: "pyodide",
+  capabilities: ["expressions", "magics", "inspect", "snapshot"],
+  ready: (packages) => loadPyodideRuntime(packages),
+  isReady: () => isPyodideReady(),
+  execute: (code, { packages = [], onStream = null, space = SHARED_SPACE } = {}) => executePython(code, packages, onStream, space),
+  evaluate: (expr, space) => runExpression(expr, space),
+  restart: (space) => softRestartKernel(space),
+  inspect: (includeAll, space) => inspectNamespace(includeAll, space),
+  forget: (names, opts) => deleteVariables(names, opts),
+  snapshot: (space) => snapshotNamespace(space),
+  restore: (snapshot, space) => restoreNamespace(snapshot, space),
+});

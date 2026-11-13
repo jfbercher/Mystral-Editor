@@ -955,6 +955,10 @@ const SlideStyles = css`
   &.measuring-slides > html-chunk {
     justify-content: flex-start;
   }
+  /* overflow for source code-cells */
+  & > html-chunk .pyodide-editor .cm-editor {
+    max-height: var(--slide-code-max, calc(var(--slide-h, 720px) * 0.45));
+  }
 
   /* The header and the footer, which are real elements put there by the
      slide view: both pseudo-elements of a slide are already spoken for, and

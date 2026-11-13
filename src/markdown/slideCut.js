@@ -427,6 +427,7 @@ export function slideStyle(overrides) {
   // `revert` -- the browser's own heading margin -- so a deck written before
   // this existed is untouched.
   if (o.titleTop !== undefined) add("--slide-title-top", offset(o.titleTop));
+  if (o.codeMaxHeight !== undefined) add("--slide-code-max", px(o.codeMaxHeight));
   if (o.fontSize !== undefined) add("--slide-font", px(o.fontSize));
   if (o.cellFontSize !== undefined) add("--slide-code-font", px(o.cellFontSize));
   if (o.background !== undefined) add("--slide-bg", tameValue(o.background));

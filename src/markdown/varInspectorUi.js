@@ -12,7 +12,10 @@
  * for their own footprint rather than trusting sys.getsizeof is reused here.
  */
 
-import { inspectNamespace, deleteVariables } from "./pyodideRunner";
+// The engine, not Pyodide by name: listing a namespace and forgetting a
+// variable are verbs of the runtime contract, and the panel has no business
+// knowing which engine answers them. See cellRuntime.js.
+import { runtime } from "./cellRuntime.js";
 
 const OVERLAY_ID = "mystral-vars-overlay";
 
@@ -149,7 +152,7 @@ export async function showVarInspector(space = "shared", spaceLabel = "shared") 
     body.querySelectorAll(".vars-del").forEach((btn) =>
       btn.addEventListener("click", async () => {
         btn.disabled = true;
-        await deleteVariables([btn.dataset.name], { unloadModules: Boolean(btn.dataset.module), space });
+        await runtime(space).forget([btn.dataset.name], { unloadModules: Boolean(btn.dataset.module), space });
         await load();
       }));
 
@@ -163,7 +166,7 @@ export async function showVarInspector(space = "shared", spaceLabel = "shared") 
   };
 
   const load = async () => {
-    const list = await inspectNamespace(allBox.checked, space);
+    const list = await runtime(space).inspect(allBox.checked, space);
     if (list === null) {
       body.innerHTML = `<p style="opacity:.7;">Python has not started yet — run a cell first.</p>`;
       total.textContent = "";

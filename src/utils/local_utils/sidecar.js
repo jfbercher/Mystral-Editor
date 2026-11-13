@@ -9,11 +9,10 @@ import {
   cellCache,
   OWNER_SEP,
   restoredOutputCache,
-  isPyodideReady,
-  loadPyodideRuntime,
-  snapshotNamespace,
-  restoreNamespace,
 } from "../../markdown/pyodideRunner";
+// Taking a namespace away and putting it back are verbs of the runtime
+// contract; which engine holds that namespace is not this module's business.
+import { runtime } from "../../markdown/cellRuntime.js";
 import { evalCache } from "../../markdown/markdownPyodide";
 
 /**
@@ -144,9 +143,9 @@ export async function saveSidecarToFile(filePath, fileName, editorId = "") {
     namespace: null,
   };
 
-  if (isPyodideReady()) {
+  if (runtime().isReady()) {
     try {
-      data.namespace = await snapshotNamespace(space);
+      data.namespace = await runtime(space).snapshot(space);
     } catch (e) {
       console.warn("[sidecar] namespace snapshot failed:", e);
     }
@@ -206,7 +205,8 @@ export function scheduleNamespaceRestore(sidecar) {
   const hasCells = Object.keys(sidecar.cells ?? {}).length > 0;
   if (!hasCells && !sidecar.namespace) return;
 
-  loadPyodideRuntime()
+  runtime()
+    .ready()
     .then(async () => {
       if (sidecar.namespace && sidecar.version !== SIDECAR_VERSION) {
         console.warn(
@@ -221,7 +221,7 @@ export function scheduleNamespaceRestore(sidecar) {
         // the old one -- and the cells, which now run elsewhere, have to be
         // re-run. That is what changing the namespace means.
         const target = sidecar.python_space;
-        await restoreNamespace(sidecar.namespace, target);
+        await runtime(target).restore(sidecar.namespace, target);
         console.log(`[sidecar] namespace restored into ${target}`);
       }
       // Always clear eval cache after Pyodide is ready + sidecar loaded,
@@ -316,9 +316,9 @@ export async function saveSidecarWithNamespace(fileKeyOrPath, editorId = "") {
     namespace: null,
   };
 
-  if (isPyodideReady()) {
+  if (runtime().isReady()) {
     try {
-      data.namespace = await snapshotNamespace(space);
+      data.namespace = await runtime(space).snapshot(space);
     } catch (e) {
       console.warn("[sidecar] namespace snapshot failed:", e);
     }

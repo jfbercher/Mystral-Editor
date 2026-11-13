@@ -11,7 +11,11 @@
 
 import { infoHasFold } from "./cellFold.js";
 import IMurMurHash from "imurmurhash";
-import { initCodeCell, cellCache, cellKey, OWNER_SEP, runExpression, onCellExecuted } from "./pyodideRunner";
+import { initCodeCell, cellCache, cellKey, OWNER_SEP, onCellExecuted } from "./pyodideRunner";
+// `{eval}` asks the engine for the value of one expression. A runtime that
+// does not declare `expressions` -- a kernel that is not Python -- would say
+// so here rather than fail at the call.
+import { runtime } from "./cellRuntime.js";
 import { Role } from "markdown-it-docutils";
 
 const HASH_SEED = 42;
@@ -76,7 +80,7 @@ const escapeHtml = (s) =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
- * Turn the {kind, value} answer of runExpression() into inline HTML.
+ * Turn the {kind, value} answer of the engine's evaluate() into inline HTML.
  *
  * Text is escaped. The three rich kinds are the object's own rendering, which
  * is markup by definition -- it was produced by the document's own code, like
@@ -128,7 +132,7 @@ export class EvalRole extends Role {
       token.content = renderEvalValue(evalCache.get(cacheKey));
     } else {
       // Kick off async evaluation; return a placeholder for now.
-      evalCache.resolve(cacheKey, runExpression(expr, space));
+      evalCache.resolve(cacheKey, runtime(space).evaluate(expr, space));
       const safeExpr = expr.replace(/"/g, "&quot;");
       token.content = `<span class="eval-pending" title="{eval} ${safeExpr}">⋯</span>`;
     }

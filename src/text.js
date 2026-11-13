@@ -13,7 +13,9 @@ import markdownPyodide, { evalCache } from "./markdown/markdownPyodide";
 import { includeDirectives, includeCache } from "./markdown/markdownInclude";
 import { expandIncludes, scanHeadingLines } from "./markdown/includeExpansion";
 import { readTextRelative, getEditorFileKey, setEditorPythonSpace } from "./utils/local_utils/fs.js";
-import { spaceKey, spaceLabel } from "./markdown/pyodideRunner";
+// From the runtime contract and not from Pyodide: naming a namespace is a
+// question about documents, and the answer does not depend on what runs them.
+import { spaceKey, spaceLabel } from "./markdown/cellRuntime.js";
 
 /** A chunk containing one of these renders the document's whole heading tree. */
 /**
