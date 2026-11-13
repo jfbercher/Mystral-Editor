@@ -1213,11 +1213,12 @@ class CodeCellDirective extends Directive {
     const absoluteLine = data.map ? data.map[0] + (env.startLine ?? 0) - (env.chunkId ? 1 : 0) : null;
     const scanned = absoluteLine != null ? env.refMap?.byLine?.get(absoluteLine) : null;
     const html =
-      // A reference lands on `#label`, and the host's own id is the cell's
-      // identity -- the hash of its code -- which cannot be given away. An
-      // empty anchor beside it costs nothing, and is what `{ref}` and
-      // `{numref}` jump to.
-      (label ? `<span id="${escapeHtml(label)}" class="code-cell-target"></span>` : "") +
+      // The anchor a reference lands on is set inside the cell, on the element
+      // the runner builds; see `_syncCaption`. It cannot be a tag of its own
+      // here: the source map injects `data-line-id` into the *first* tag of a
+      // block, an anchor placed before the host took it, and the cell -- left
+      // without a source line -- vanished from the inline projection, which
+      // knows a block only by its line.
       `<div id="${id}" class="code-cell-host" ` +
       `data-code="${encoded}" ` +
       `data-packages='${JSON.stringify(packages)}' ` +
