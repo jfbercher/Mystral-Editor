@@ -648,9 +648,16 @@ export function attachSlideView(preview, getSettings = () => null) {
     if (!presenting) return;
     // A click advances, as in every other presenter -- but not one that was
     // aimed at something: a cell's button, its editor, a link, a figure to
-    // open full screen.
+    // open full screen, the summary of a dropdown, or anything inside one that
+    // is open, where the audience is being shown something rather than asked
+    // to move on.
     const t = ev.target;
-    if (t instanceof Element && t.closest("a, button, input, .cm-editor, .pyodide-wrapper, img")) return;
+    if (t instanceof Element && t.closest("a, button, input, summary, details[open], .cm-editor, .code-cell-host, .pyodide-wrapper, img")) return;
+    // Nor a click that ends a selection: underlining a formula while speaking
+    // is a gesture, not a request for the next slide. Asked of the element's
+    // own root, since a cell's output lives in a shadow tree.
+    const selection = t instanceof Element ? (t.getRootNode().getSelection?.() ?? window.getSelection?.()) : window.getSelection?.();
+    if (selection && !selection.isCollapsed) return;
     go(1);
   };
 
