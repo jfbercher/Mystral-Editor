@@ -546,11 +546,20 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
 
   tab.getRecentFileOptions = async (maxFiles = config.recentFilesMax, onOpenHandle = null) => {
     const handles = await getRecentFileHandles();
-    return handles.slice(0, maxFiles).map((handleOrPath) => {
+    return handles.slice(0, maxFiles).map((handleOrPath, index) => {
       const fileName = getFileName(handleOrPath);
+      // The menu shows the file's name, which two documents may share -- a
+      // `README.md` per project, an `index.md` per section. The full path goes
+      // in the tooltip, where it costs nothing and tells them apart. A browser
+      // handle has no path to give: its name is all there is, and the tooltip
+      // then repeats it rather than inventing one.
+      const fullPath = typeof handleOrPath === "string" ? handleOrPath : fileName;
       return {
-        id: fileName,
+        // The path, not the name: two homonyms would otherwise share a key in
+        // the list, which is one entry as far as the renderer is concerned.
+        id: `${fullPath}#${index}`,
         text: fileName,
+        tooltip: fullPath,
         action: async () => {
           if (onOpenHandle) {
             await onOpenHandle(handleOrPath);
