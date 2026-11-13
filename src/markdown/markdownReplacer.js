@@ -338,7 +338,24 @@ export function stripMystComments(src) {
       continue;         // a fence line is never a comment
     }
     if (fence) continue;
-    if (/^[ \t]*%/.test(line)) lines[i] = "";
+    if (/^[ \t]*%/.test(line)) {
+      // One comment is not erased but rendered: a slide's vertical nudge.
+      //
+      //     % slide-vspace: -60px
+      //
+      // A comment rather than a role or a directive, and deliberately: mystmd
+      // ignores comments, so a deck adjusted here still builds a site and a
+      // PDF without a word of warning, where an unknown role would draw one on
+      // every build and be thrown away. The same reasoning `% shortcaption:`
+      // was given. Outside the deck the span is inert, by a stylesheet rule.
+      const nudge = /^[ \t]*%[ \t]*slide-vspace[ \t]*:[ \t]*(-?\d+(?:\.\d+)?)(px|em|rem|%)?[ \t]*$/i.exec(line);
+      // A div and not a span: CommonMark recognises a block of raw HTML only
+      // from a closed list of tag names, and `span` is not on it. Written as a
+      // span, the line came out as a paragraph holding inline HTML -- so a
+      // positive margin grew the paragraph and showed, while a negative one
+      // merely pulled the span up inside it and moved nothing.
+      lines[i] = nudge ? `<div class="myst-slide-vspace" style="margin-top:${nudge[1]}${nudge[2] ?? "px"}"></div>` : "";
+    }
     // A fragment marker, written the MyST way. It is turned into the dash
     // spelling rather than given a path of its own: everything downstream --
     // the class on the rule, the cumulative reveal, the print override --

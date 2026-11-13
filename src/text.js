@@ -296,12 +296,18 @@ function applyChunkAttrs(el, chunk) {
     if (style) el.setAttribute("style", style);
     else el.removeAttribute("style");
   }
+  // Every setting the slide declares, not a list written here: a list has to
+  // be extended each time a setting is added, and the one that was not added
+  // to it reached the element only on a full rebuild -- that is, on a reload.
+  // `hidden` was such a setting. Stale attributes are removed by reading what
+  // the element carries rather than what this function knows.
   const data = chunk.slideData ?? {};
-  for (const key of ["header", "footer"]) {
-    const attr = `data-slide-${key}`;
-    const wanted = data[key];
-    if (wanted === undefined) el.removeAttribute(attr);
-    else if (el.getAttribute(attr) !== wanted) el.setAttribute(attr, wanted);
+  for (const attr of [...el.attributes].map((a) => a.name)) {
+    if (attr.startsWith("data-slide-") && data[attr.slice("data-slide-".length)] === undefined) el.removeAttribute(attr);
+  }
+  for (const [key, wanted] of Object.entries(data)) {
+    const attr = `data-slide-${key.toLowerCase()}`;
+    if (el.getAttribute(attr) !== wanted) el.setAttribute(attr, wanted);
   }
 }
 

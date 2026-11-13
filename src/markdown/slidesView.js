@@ -407,7 +407,10 @@ export function attachSlideView(preview, getSettings = () => null) {
     }, 1100);
   };
 
-  const slides = () => [...preview.querySelectorAll(":scope > html-chunk")];
+  // A slide whose header says `hidden` is not one: it keeps its place in the
+  // document and in the preview, but the deck walks past it. Filtered here and
+  // not merely hidden in CSS, or it would still be a stop on the way.
+  const slides = () => [...preview.querySelectorAll(":scope > html-chunk:not([data-slide-hidden])")];
 
 
   const measure = () => {

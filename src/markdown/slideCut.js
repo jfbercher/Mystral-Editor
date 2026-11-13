@@ -416,6 +416,17 @@ export function slideStyle(overrides) {
     if (value) decls.push(`${prop}: ${value}`);
   };
 
+  // A length that may be zero or negative, which `px` above refuses: pulling
+  // a title up is the whole point of `titleTop`.
+  const offset = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? `${n}px` : tameValue(v);
+  };
+
+  // How much air above the slide's own title. Unset, the rule falls back to
+  // `revert` -- the browser's own heading margin -- so a deck written before
+  // this existed is untouched.
+  if (o.titleTop !== undefined) add("--slide-title-top", offset(o.titleTop));
   if (o.fontSize !== undefined) add("--slide-font", px(o.fontSize));
   if (o.cellFontSize !== undefined) add("--slide-code-font", px(o.cellFontSize));
   if (o.background !== undefined) add("--slide-bg", tameValue(o.background));
@@ -437,5 +448,12 @@ export function slideFurnitureData(overrides) {
   for (const key of ["header", "footer"]) {
     if (o[key] !== undefined) data[key] = String(o[key]);
   }
+  // A slide the deck skips. The chunk stays in the document, in the preview
+  // and in every export that is not a deck: this says "not worth projecting",
+  // not "not worth keeping" -- a paragraph that explains something to the
+  // reader of the page has no place on a screen read from the back of a room.
+  // `skip` is taken as a spelling of the same thing.
+  const hide = o.hidden ?? o.skip;
+  if (hide !== undefined && !/^(false|no|0|off)$/i.test(String(hide).trim())) data.hidden = "1";
   return data;
 }

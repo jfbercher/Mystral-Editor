@@ -2800,6 +2800,10 @@ function slidesMaterial(tab, preview) {
   // still a block between the pane and its first slide, and a block is all it
   // takes to push a page.
   clone.querySelector(".cm-previewFocus")?.remove();
+  // Slides their header takes out of the deck. Removed rather than hidden: a
+  // display:none chunk is still a sibling, and the rule that breaks a page
+  // before each slide would have given it a blank sheet of its own.
+  clone.querySelectorAll("html-chunk[data-slide-hidden]").forEach((el) => el.remove());
 
   const settings = window.myst_editor?.[tab?.editorId]?.state?.text?.slideSettings;
   return { css, theme, clone, settings, w: settings?.width ?? 1280, h: settings?.height ?? 720 };

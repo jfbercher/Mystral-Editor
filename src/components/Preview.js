@@ -96,6 +96,13 @@ export const MdStyles = css`
     cursor: pointer;
   }
 
+  /* A slide-vspace comment adjusts a slide's layout and nothing else; outside
+     the deck it is not an error, it is simply nothing. SlideStyles turns it
+     on. (No backticks in here: this stylesheet is a template literal.) */
+  .myst-slide-vspace {
+    display: none;
+  }
+
 
     /* NEW VERSION */
 // ============================================================
@@ -881,6 +888,37 @@ const SlideStyles = css`
 
   &.presenting hr.fragment-break {
     display: none;
+  }
+
+  /* A slide taken out of the deck by a hidden setting in its header. Hidden
+     here only --
+     the chunk is still in the document, in the ordinary preview and in every
+     export that is not a deck. The deck's own navigation skips it too, since
+     a slide that is merely invisible would still be one to walk past. */
+  & > html-chunk[data-slide-hidden] {
+    display: none;
+  }
+
+  /* Vertical space written as a slide-vspace comment. A block of no height
+     carrying a margin: negative, it pulls what follows up; positive, it pushes
+     it down. Inert everywhere but here -- MdStyles keeps it display:none --
+     because it adjusts a slide, which is this stylesheet's business. */
+  .myst-slide-vspace {
+    display: block;
+    height: 0;
+  }
+
+  & > html-chunk > :is(h1, h2, h3, h4, h5, h6):first-child,
+  & > html-chunk > .slide-header + :is(h1, h2, h3, h4, h5, h6) {
+    /* Two selectors for one title: a furnished deck inserts its slide header
+       as the chunk's first child, so the heading stops being :first-child the
+       moment the deck is set up -- which is the only moment this rule is for.
+
+       A titleTop setting pulls the slide's title up, or pushes it down.
+       The fallback is the 1em MdStyles gives every heading -- not revert,
+       which would hand the slide back to the browser's own 0.83em and move
+       every deck written before this existed by a few pixels. */
+    margin-top: var(--slide-title-top, 1em);
   }
 
   & > html-chunk {

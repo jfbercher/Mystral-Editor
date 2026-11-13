@@ -178,6 +178,22 @@ It goes under either spelling of the marker. When the deck is cut at headings (`
 
 Either way, only the block at the very top of a slide counts, so a `%` comment written further down stays a comment, and a second heading ends the block like any other content.
 
+`% titleTop:` sets the space above the slide's own title, in pixels -- `% titleTop: 0` pulls it up to the padding, a negative value further still, a positive one pushes it down. Unset, the title keeps the margin it has today, so nothing written before this existed moves. It is a setting of its own rather than a case of `% slide-vspace:` below, because the deck is cut *on* the heading: anything written above it would belong to the slide before.
+
+`% hidden: true` takes the slide out of the deck. The chunk stays in the document, in the ordinary preview and in every export that is not a deck -- a paragraph that explains something to the reader of the page but has no business on a screen read from the back of a room. The deck does not merely hide it: it walks past it, so the slide count and the arrows ignore it, and an exported deck has no blank page in its place. `% skip: true` is the same thing.
+
+### Vertical space inside a slide
+
+A line of the form
+
+```
+% slide-vspace: -60px
+```
+
+inserts a block of no height carrying that margin: negative, it pulls what follows up; positive, it pushes it down. `px`, `em`, `rem` and `%` are accepted, and a bare number means pixels; anything else is left as the comment it was.
+
+It is written as a comment, and not as a role or a directive, on purpose. mystmd ignores comments, so a deck adjusted this way still builds a site and a PDF without a word of warning, where an unknown role would draw one on every build and be thrown away before any plugin could see it. The same reasoning gave `% shortcaption:` its form. Outside the deck the line does nothing at all: it adjusts a slide, and only the slide view reads it.
+
 Writing both — a `---` and then a heading, with `cutAtHeading` on — is one cut and not two. The marker and the heading that follows it belong to the same slide, so the block can go under either. The keys are `fontSize`, `cellFontSize`, `padding`, `background`, `verticalAlign`, `header` and `footer`, each overriding the deck's own for that slide alone. An empty value is an answer and not an omission: `header: ""` is how a title slide asks for no header.
 
 The two cases this earns its place for are a title slide centred in the middle of a deck aligned to the top, and a dense slide that wants a smaller body than the rest.
