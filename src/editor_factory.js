@@ -54,6 +54,13 @@ const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 import * as mystExport from "./utils/local_utils/mystExport.js";
 import { showToast } from "./utils/utils_ui.js";
+// Pour l'effet de bord seul : expose window.mystralJupyterKernels(), la sonde
+// du point 50 du backlog. Rien n'en dépend ; elle répond à la question « cette
+// machine a-t-elle des noyaux, et mon PATH les voit-il ? ».
+import "./utils/local_utils/jupyterKernels.js";
+// Idem : window.mystralJupyterStart() / Stop() / Status(), le cycle de vie d'un
+// serveur Jupyter local. Rien ne s'en sert ; c'est la marche suivante du même point.
+import "./utils/local_utils/jupyterServer.js";
 
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {
