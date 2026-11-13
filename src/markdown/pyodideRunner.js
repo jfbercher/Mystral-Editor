@@ -1930,6 +1930,13 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   const captionEl = document.createElement("span");
   captionEl.className = "pyodide-caption";
   el._syncCaption = () => {
+    // The anchor `{ref}` and `{numref}` land on. On the wrapper rather than on
+    // the host, whose id is the hash of the cell's code and is what the cache
+    // recognises it by; and set from here rather than written into the rendered
+    // HTML, where a tag of its own would have taken the block's source line.
+    const anchor = (el.dataset.label ?? "").trim();
+    if (anchor) wrapper.id = anchor;
+    else wrapper.removeAttribute("id");
     const text = (el.dataset.caption ?? "").trim();
     const number = (el.dataset.number ?? "").trim();
     const label = (el.dataset.numberLabel ?? "").trim();
@@ -1967,6 +1974,38 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   const ranAt = document.createElement("span");
   ranAt.className = "pyodide-ran-at";
   statusBar.append(statusText, ranAt, timing, spaceTag);
+  /**
+   * Two controls for the output, at the left of the status bar.
+   *
+   * Here rather than in the toolbar, which has thirteen buttons already and
+   * sits at the other end of the cell: this strip is the one that speaks of
+   * the run and of what it produced, and it is next to the output it governs.
+   *
+   * The first hides the output and brings it back. It sets a class of its own
+   * rather than touching `hidden`, which already means something else -- the
+   * cell has produced nothing -- and is written from a dozen places. The two
+   * questions stay separate, and a stylesheet rule hides these controls
+   * altogether when there is nothing to show.
+   *
+   * The second lifts the height limit, which caps a long output at
+   * `--pyodide-output-max-height` and makes it scroll. It appears only when
+   * the output is actually taller than its box, measured rather than guessed:
+   * a button that would do nothing is worse than a button that is not there.
+   */
+  const outControls = document.createElement("span");
+  outControls.className = "pyodide-out-controls";
+  const mkOutBtn = (cls, label, title) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `pyodide-out-btn ${cls}`;
+    b.textContent = label;
+    b.title = title;
+    outControls.append(b);
+    return b;
+  };
+  const showOutBtn = mkOutBtn("pyodide-out-show", "⌄", "Hide this cell's output");
+  const fullOutBtn = mkOutBtn("pyodide-out-full", "⤢", "Show the whole output");
+  statusBar.prepend(outControls);
 
   /**
    * Record when the cell last ran.
@@ -2085,6 +2124,39 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   outputArea.appendChild(copyBtn);
   outputArea.appendChild(widgetOutputArea);
   outputArea.appendChild(textOutputArea);
+
+  // The two controls declared with the status bar, wired now that the output
+  // they act on exists.
+  const COLLAPSED = "pyodide-output-collapsed";
+  const FULL = "pyodide-output-full";
+  /** Does the output exceed its box? What decides whether the second button exists at all. */
+  const syncOutButtons = () => {
+    const collapsed = outputArea.classList.contains(COLLAPSED);
+    showOutBtn.textContent = collapsed ? "›" : "⌄";
+    showOutBtn.title = collapsed ? "Show this cell's output" : "Hide this cell's output";
+    const full = outputArea.classList.contains(FULL);
+    // Capped and scrolling, or already lifted -- in which case the button has
+    // to stay, since it is the way back.
+    fullOutBtn.hidden = collapsed || !(full || outputArea.scrollHeight > outputArea.clientHeight + 1);
+    fullOutBtn.textContent = full ? "⤡" : "⤢";
+    fullOutBtn.title = full ? "Limit the output's height again" : "Show the whole output";
+  };
+  showOutBtn.addEventListener("click", () => {
+    outputArea.classList.toggle(COLLAPSED);
+    syncOutButtons();
+  });
+  fullOutBtn.addEventListener("click", () => {
+    outputArea.classList.toggle(FULL);
+    syncOutButtons();
+  });
+  // The output's own box stays capped as its content grows, so watching it
+  // would report nothing: what grows is what it holds.
+  if (typeof ResizeObserver === "function") {
+    const watch = new ResizeObserver(() => syncOutButtons());
+    watch.observe(textOutputArea);
+    watch.observe(widgetOutputArea);
+  }
+  syncOutButtons();
 
   // The run handler hides outputArea for the whole duration of the cell and only
   // reveals it once executePython() has resolved.  Anything Python renders *while*

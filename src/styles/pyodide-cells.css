@@ -117,6 +117,21 @@
    signal that the reader has taken over -- the cap is then lifted. */
 .pyodide-output[style*="height"]{max-height:none}
 .pyodide-output[hidden]{display:none}
+/* The reader's own wish, kept apart from [hidden], which says the cell has
+   produced nothing and is written from a dozen places in the runner. */
+.pyodide-output.pyodide-output-collapsed{display:none}
+/* The height cap lifted: the output grows to its full height instead of
+   scrolling inside 25rem. */
+.pyodide-output.pyodide-output-full{max-height:none}
+/* The two controls, at the left of the status bar and in its type. They are
+   worth nothing when the cell has produced nothing, and the rule says so
+   rather than a flag recomputed at each render: `hidden` on the output is set
+   from many places, and the browser re-reads this by itself. */
+.pyodide-out-controls{display:inline-flex;gap:.3rem;align-items:center}
+.pyodide-status-bar:has(+ .pyodide-output[hidden]) .pyodide-out-controls{display:none}
+.pyodide-out-btn{display:inline-flex;align-items:center;justify-content:center;min-width:1.4rem;padding:0 .25rem;border:1px solid transparent;border-radius:4px;background:none;color:inherit;font:inherit;font-size:.78rem;line-height:1.4;cursor:pointer;opacity:.7}
+.pyodide-out-btn:hover{opacity:1;border-color:var(--pyodide-cell-border,var(--color-border,#c4d4e6))}
+.pyodide-out-btn[hidden]{display:none}
 .pyodide-output pre{margin:0 0 .4rem!important;padding:0!important;background:transparent!important;border:0!important;color:inherit!important;white-space:pre-wrap;word-break:break-word;font:inherit}
 .pyodide-error,.pyodide-stderr{color:#cf222e}
 /* width is set per cell from :figwidth:, so only the ceiling is here.

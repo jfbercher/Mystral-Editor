@@ -76,6 +76,8 @@ Each fold is an edit like any other: it marks the document modified and can be u
 
 `Mod-Shift--` (Cmd on macOS, Ctrl elsewhere, with the minus key) cuts the cell in two at the caret, both halves keeping the marker and the options of the cell they come from, so whatever made it run is still there on either side. Nothing happens when one half would be empty. The key is configurable in `config.json` under `pyodide.keys.splitCell`, like the other cell shortcuts, and wins over the editor's own bindings while the caret is in a cell. One combination to avoid when rebinding on macOS: Alt with neither Cmd nor Ctrl. Alt composes characters there, so the browser reports the composed sign rather than the letter, and CodeMirror deliberately refuses to guess the physical key -- the binding never matches and the character is typed into the cell.
 
+▭ **The output's own controls** At the left of the status bar, two small buttons act on what the cell produced: one hides the output and brings it back, the other lifts the height limit so a long output is shown whole instead of scrolling inside `--pyodide-output-max-height` (25rem by default). The second appears only when the output is actually taller than its box, and both disappear when the cell has produced nothing. They are view controls: nothing is written to the document, and a reload starts afresh.
+
 𐃄 **Toolbar** Each cell carries a toolbar acting on itself or on the whole document: Run, Clear, Run All, Clear All, Restart, 
 
 👁️ **Variable inspector** The **Vars** window lists what the namespace holds -- one row per variable with its type, memory footprint, shape and a short `repr`, with per-row deletion. The same information is available as text from inside a cell, with `%whos` and `%who`. 
