@@ -61,6 +61,8 @@ import "./utils/local_utils/jupyterKernels.js";
 // Idem : window.mystralJupyterStart() / Stop() / Status(), le cycle de vie d'un
 // serveur Jupyter local. Rien ne s'en sert ; c'est la marche suivante du même point.
 import "./utils/local_utils/jupyterServer.js";
+// Et window.mystralJupyterTry() : l'essai de bout en bout par le relais Rust.
+import "./utils/local_utils/jupyterLink.js";
 
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {

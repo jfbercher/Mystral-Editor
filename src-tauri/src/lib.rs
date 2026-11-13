@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent, State};
 
 mod google_auth;
+mod jupyter;
 
 #[derive(Default)]
 pub struct PendingFile(pub Mutex<Option<String>>);
@@ -23,7 +24,11 @@ pub fn run() {
         .manage(PendingFile::default())
         .invoke_handler(tauri::generate_handler![
             get_pending_file,
-            google_auth::google_login
+            google_auth::google_login,
+            jupyter::jupyter_open,
+            jupyter::jupyter_send,
+            jupyter::jupyter_close,
+            jupyter::jupyter_fetch
         ])
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             println!("========== SINGLE INSTANCE (CLI) ==========");

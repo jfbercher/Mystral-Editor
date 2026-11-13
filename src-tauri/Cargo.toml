@@ -30,7 +30,17 @@ tauri-plugin-opener = "2.5.5"
 tauri-plugin-single-instance = "2.4.4"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-tokio = { version = "1.53.1", features = ["time", "rt"] }
+# `net` et `sync` pour le relais Jupyter (src/jupyter.rs) : la première est ce
+# dont tokio-tungstenite se sert pour ouvrir la connexion, la seconde porte le
+# canal qui mène les messages sortants à la tâche d'écriture.
+tokio = { version = "1.53.1", features = ["time", "rt", "net", "sync"] }
+
+# Relais WebSocket vers un serveur Jupyter local. La CSP de l'application
+# refuse `connect-src` sur le bouclage, donc la webview ne peut ni ouvrir la
+# socket d'un noyau ni l'appeler en REST ; les deux passent par Rust. Voir
+# src/jupyter.rs et le point 50 du backlog.
+tokio-tungstenite = "0.30"
+futures-util = "0.3"
 
 # Native Google OAuth loopback flow (src/google_auth.rs).
 # Google blocks OAuth inside embedded webviews, so sign-in has to happen in the
