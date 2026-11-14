@@ -1556,16 +1556,24 @@ function renderOutput(outputArea, result) {
     outputArea.appendChild(block);
   }
 
-  // Un widget est passé, et nous ne savons pas encore le rendre : le dire
-  // vaut mieux qu'une cellule qui paraît n'avoir rien produit. Le modèle vit
-  // dans le noyau, son canal est ouvert et écouté (voir les comms dans
-  // jupyterRuntime.js) ; il ne manque que la vue.
+  // Les widgets. L'hôte est posé tout de suite, pour garder sa place dans
+  // l'ordre de la sortie ; la vue arrive ensuite, le gestionnaire et ses
+  // paquets étant chargés à la demande. Un échec laisse une phrase plutôt
+  // qu'un trou : le modèle existe dans le noyau, c'est ici que cela a
+  // manqué.
   for (const modelId of result.widgets ?? []) {
     hasContent = true;
-    const note = document.createElement("div");
-    note.className = "pyodide-widget-note";
-    note.textContent = `ipywidget (${String(modelId).slice(0, 8)}…) — this editor does not display widgets yet`;
-    outputArea.appendChild(note);
+    const host = document.createElement("div");
+    host.className = "pyodide-widget";
+    outputArea.appendChild(host);
+    const space = outputArea.closest(".code-cell-host")?.dataset.pythonSpace || SHARED_SPACE;
+    import("./widgetManager.js")
+      .then((mod) => mod.mountWidget(space, modelId, host))
+      .catch((err) => {
+        console.warn("[widgets] vue non montée :", err);
+        host.className = "pyodide-widget-note";
+        host.textContent = `ipywidget (${String(modelId).slice(0, 8)}…) — ${err?.message ?? err}`;
+      });
   }
 
   if (!hasContent) outputArea.hidden = true;

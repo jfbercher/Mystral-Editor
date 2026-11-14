@@ -144,6 +144,57 @@
    résumé de modèle. Contenu dans la largeur de la cellule et défilant plutôt
    que débordant, comme la sortie texte et le code le font déjà. */
 .pyodide-html{max-width:100%;overflow-x:auto;margin:.5rem 0;font-size:.85em}
+.pyodide-widget{margin:.4rem 0;max-width:100%}
+/* Les widgets s'habillent avec les variables --jp-* de leur propre feuille.
+   Plutôt que de corriger élément par élément -- ce qui laissait le nombre d'un
+   curseur noir sur noir en thème sombre --, on redéfinit ces variables ici en
+   fonction des nôtres : c'est la façon dont ipywidgets prévoit d'être habillé,
+   et elle vaut pour tout ce qu'il dessine, pas seulement ce qu'on avait vu.
+   `currentColor` plutôt qu'une couleur fixe : le widget prend celle du texte
+   qui l'entoure, donc celle du thème courant, sans qu'on ait à les tenir en
+   phase. Et surtout pas `inherit` : un mot-clé CSS global dans une propriété
+   personnalisée n'y est pas rangé comme texte, il fait hériter la variable
+   elle-même -- qui n'est définie nulle part plus haut, donc vide, et le
+   `var()` qui la lit devient invalide. C'est le piège que `revert` dans un
+   `var()` nous avait déjà tendu ailleurs dans ce projet. */
+.pyodide-widget{
+  --jp-ui-font-color0:currentColor;--jp-ui-font-color1:currentColor;
+  --jp-ui-font-color2:var(--color-foreground-muted,#57606a);
+  --jp-ui-font-color3:var(--color-foreground-muted,#8c959f);
+  --jp-content-font-color1:currentColor;
+  --jp-layout-color0:var(--pyodide-cell-bg,transparent);
+  --jp-layout-color1:var(--pyodide-cell-bg,transparent);
+  --jp-layout-color2:var(--panel-bg,transparent);
+  --jp-layout-color3:var(--panel-bg,transparent);
+  --jp-border-color1:var(--color-border,#ccc);
+  --jp-border-color2:var(--color-border,#ccc);
+  --jp-border-color3:var(--color-border,#ccc);
+  color:inherit;
+}
+/* Sept règles de la feuille d'ipywidgets posent `color: black` **en dur**, sans
+   passer par une variable : les étiquettes et le nombre d'un curseur sous leurs
+   deux noms, et surtout `.jupyter-widgets` lui-même, le conteneur -- c'est de
+   lui que l'étiquette tenait son noir, elle n'était coupable de rien. Aucun
+   remapping de `--jp-*` ne peut les atteindre, il faut les nommer. Les champs
+   de formulaire, eux, n'héritent pas de la couleur du texte d'eux-mêmes. */
+.pyodide-widget .jupyter-widgets,
+.pyodide-widget .widget-label,.pyodide-widget .jupyter-widget-label,
+.pyodide-widget .widget-label-basic,.pyodide-widget .jupyter-widget-label-basic,
+.pyodide-widget .widget-readout,.pyodide-widget .jupyter-widget-readout,
+.pyodide-widget input,.pyodide-widget select,.pyodide-widget textarea,.pyodide-widget button{color:inherit}
+.pyodide-widget input,.pyodide-widget select,.pyodide-widget textarea,
+.pyodide-widget .widget-readout,.pyodide-widget .jupyter-widget-readout{background-color:transparent}
+/* Les boutons gardent le fond clair écrit en dur (#eeeeee) de la feuille
+   d'ipywidgets, qui ne connaît pas les thèmes sombres : avec un texte qui suit
+   désormais le thème, cela donnait du gris clair sur blanc. On leur rend le
+   fond et la bordure de l'éditeur. Les boutons de couleur -- `button_style`
+   posé par l'auteur -- gardent la leur : elle est voulue, et elle contraste
+   des deux côtés. */
+.pyodide-widget button:not([class*="mod-"]){background-color:var(--panel-bg,transparent);border:1px solid var(--color-border,#ccc)}
+
+/* La sortie d'un widget Output, rendue par nos soins. */
+.pyodide-widget-output{margin:.2rem 0}
+.pyodide-widget-output pre{margin:.2rem 0;white-space:pre-wrap}
 .pyodide-widget-note{margin:.4rem 0;padding:.25em .5em;font-size:.78rem;font-style:italic;color:var(--color-foreground-muted,#57606a);border-left:2px solid var(--border,#ccc)}
 .pyodide-html table{border-collapse:collapse}
 .pyodide-html th,.pyodide-html td{border:1px solid var(--border,#ccc);padding:.15em .45em;text-align:right}

@@ -80,6 +80,47 @@ export function sendComm(space, msgType, content) {
   return entry.link.send(msgType, content);
 }
 
+/**
+ * Écrire, en rendant tout de suite l'identifiant du message, et en rendant
+ * compte de ce qu'il provoque.
+ *
+ * Les deux comptent, et le second explique pourquoi un curseur déplacé à la
+ * souris ne remontait pas au noyau. `WidgetModel.sync` compte ses messages en
+ * vol et ne décrémente ce compte qu'en recevant le `status: idle` associé **au
+ * `msg_id` que `send` a rendu** ; un identifiant vide, et le compte ne
+ * redescend jamais : tout ce qui suit est mis en tampon au lieu d'être envoyé.
+ *
+ * L'identifiant est donc tiré ici, avant l'envoi -- ce que `link.send` permet
+ * depuis la course réparée au jalon de la complétion -- et les messages qu'il
+ * provoque sont rendus aux rappels `iopub` de l'appelant.
+ */
+export function sendCommMessage(space, msgType, content, callbacks = null) {
+  const entry = kernels.get(space);
+  if (!entry) throw new Error(`aucun noyau pour l'espace ${space}`);
+  const msgId = crypto.randomUUID();
+  if (callbacks) {
+    pending.set(msgId, {
+      on: (msg) => {
+        const handler = callbacks.iopub?.[msg.msg_type];
+        if (handler) {
+          try {
+            handler(msg);
+          } catch (err) {
+            console.warn("[widgets] un rappel iopub a échoué :", err);
+          }
+        }
+        if (msg.msg_type === "status" && msg.content?.execution_state === "idle") pending.delete(msgId);
+      },
+      fail: () => pending.delete(msgId),
+    });
+  }
+  entry.link.send(msgType, content, msgId).catch((err) => {
+    pending.delete(msgId);
+    console.warn(`[jupyter] ${msgType} non envoyé :`, err);
+  });
+  return msgId;
+}
+
 /** Ce qui est ouvert, pour la console et pour un gestionnaire qui arriverait en cours de route. */
 export const listComms = () => [...comms.entries()].map(([id, c]) => ({ id, ...c }));
 
@@ -91,10 +132,47 @@ if (typeof window !== "undefined") {
   window.mystralOnComm = onComm;
 }
 
+/**
+ * Le gestionnaire de widgets n'est chargé qu'à la vue d'un widget.
+ *
+ * Les paquets ipywidgets pèsent, et un document qui n'en a pas n'a pas à les
+ * charger. Mais le gestionnaire doit exister *avant* le `comm_open` qui
+ * annonce un modèle, sinon il le manque -- et c'est le seul message qui dit
+ * qu'un modèle existe. D'où cet amorçage : le premier `comm_open` de widget
+ * déclenche le chargement, et tout ce qui arrive pendant ce temps est mis de
+ * côté puis rejoué dans l'ordre, ce même `comm_open` en tête.
+ */
+let widgetBoot = null;
+const commBacklog = [];
+
+function bootWidgets(msg, space) {
+  commBacklog.push([msg, space]);
+  if (widgetBoot) return;
+  widgetBoot = import("./widgetManager.js")
+    .then((mod) => mod.widgetManagerFor(space))
+    .then(() => {
+      for (const [queued, queuedSpace] of commBacklog.splice(0)) {
+        for (const listener of commListeners) listener(queued, queuedSpace);
+      }
+    })
+    .catch((err) => {
+      console.warn("[widgets] gestionnaire indisponible :", err);
+      commBacklog.length = 0;
+    });
+}
+
 function routeComm(msg, space) {
   const kind = msg.msg_type;
   if (kind !== "comm_open" && kind !== "comm_msg" && kind !== "comm_close") return false;
   const id = msg.content?.comm_id;
+  // Personne n'écoute encore : soit c'est le premier widget et il faut
+  // charger de quoi l'accueillir, soit le chargement est en cours et ce
+  // message attend son tour.
+  if (commListeners.size === 0 && (widgetBoot || msg.content?.target_name === "jupyter.widget")) {
+    if (id && kind === "comm_open") comms.set(id, { target: msg.content?.target_name ?? "", space, openedAt: Date.now() });
+    bootWidgets(msg, space);
+    return true;
+  }
   if (id) {
     if (kind === "comm_open") comms.set(id, { target: msg.content?.target_name ?? "", space, openedAt: Date.now() });
     else if (kind === "comm_close") comms.delete(id);
