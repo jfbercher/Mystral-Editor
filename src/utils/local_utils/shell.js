@@ -195,6 +195,17 @@ export async function runShell(line, cwd, env = {}) {
  *
  * @returns {Promise<{code: number, stdout: string, stderr: string, timedOut: boolean}>}
  */
+/**
+ * Depuis la console, pour savoir ce que l'application voit du système :
+ *
+ *     mystralShell("echo ok").then(console.log)
+ *     mystralShell("echo $PATH; which jupyter python3").then(console.log)
+ *
+ * Posé ici parce que c'est dans l'application empaquetée que la question se
+ * pose : lancée depuis le Finder, elle n'hérite pas de l'environnement d'un
+ * terminal, et ce que `sh -lc` y trouve n'est pas ce qu'on voit en
+ * développement.
+ */
 export async function runShellLimited(line, { cwd, env = {}, timeoutMs = 30000 } = {}) {
   const { Command } = await import("@tauri-apps/plugin-shell");
 
@@ -272,3 +283,5 @@ export async function runShellLimited(line, { cwd, env = {}, timeoutMs = 30000 }
       });
   });
 }
+
+if (typeof window !== "undefined") window.mystralShell = (line, opts) => runShellLimited(line, opts);

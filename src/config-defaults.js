@@ -364,6 +364,20 @@ export const DEFAULT_CONFIG = {
     transition: "slide",
   },
 
+
+// The cell engine: which `jupyter`, and where to find it. Same convention
+  // as `export.mystPath`—the name alone means “search,” while a path means
+  // “this one and no other.” On macOS, an application launched
+  // from the Finder does not inherit any terminal PATH, and `conda init` only works
+  // in an interactive shell: without this search, a Jupyter installed
+  // in a conda environment is invisible.
+  jupyter: {
+    command: "jupyter",
+    // Additional path patterns, in addition to those the program
+    // already recognizes. Wildcards are allowed here: “/opt/*/envs/*/bin/jupyter”.
+    searchPaths: [],
+  },
+
   // Tauri-only export menu.
   export: {
     // Command used to invoke mystmd. It is run through a login shell, so the
