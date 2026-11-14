@@ -13,6 +13,7 @@ import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, supports } from "./cellRuntime.js";
 import { chooseEngineFor } from "./engineChoice.js";
+import DOMPurify from "dompurify";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
@@ -1045,9 +1046,26 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
   let error = null;
   let returnValue = null;
 
+  const htmls = [];
   try {
     const value = await pyodide.runPythonAsync(expandMystralMagics(code), { globals: namespace });
-    if (value !== undefined && value !== null) returnValue = String(value);
+    if (value !== undefined && value !== null) {
+      // Ce qu'un noyau livre dans son paquet MIME, il faut ici aller le
+      // chercher : un objet qui sait se rendre en HTML porte `_repr_html_`,
+      // la convention qu'IPython a établie et que pandas, les tables et bien
+      // d'autres respectent. Un proxy Pyodide expose les attributs Python
+      // comme des propriétés, donc la question se pose en une ligne. Si elle
+      // échoue -- un `_repr_html_` qui lève --, le texte reste, et c'est la
+      // bonne réponse : mieux vaut un `repr` qu'une cellule en erreur.
+      let html = null;
+      try {
+        if (typeof value._repr_html_ === "function") html = String(value._repr_html_());
+      } catch {
+        html = null;
+      }
+      if (html) htmls.push(html);
+      else returnValue = String(value);
+    }
   } catch (err) {
     error = String(err);
   } finally {
@@ -1074,6 +1092,7 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
     error,
     returnValue,
     figures,
+    htmls,
     durationMs: Math.round(performance.now() - started),
   };
 }
@@ -1515,6 +1534,26 @@ function renderOutput(outputArea, result) {
     img.title = "Click to enlarge";
     if (figWidth) img.style.width = figWidth;
     outputArea.appendChild(img);
+  }
+
+  // Ce qu'un objet sait dire de lui-même en HTML : un DataFrame, une table,
+  // un résumé de modèle. Les deux moteurs y arrivent par des chemins opposés
+  // -- le noyau livre le paquet MIME, Pyodide doit interroger l'objet -- mais
+  // ce qui arrive ici est le même, et c'était jusque-là perdu des deux côtés.
+  //
+  // Désinfecté avant d'entrer dans la page, parce qu'un rendu HTML est du code
+  // écrit par une bibliothèque et non par l'auteur du document, et que ce
+  // panneau vit dans l'éditeur. Un effet de bord utile : ce qui dépend de
+  // `<script>` pour s'afficher -- bokeh, plotly -- ne s'affichera pas, et il
+  // vaut mieux que ce soit une règle claire qu'une surprise, puisque le HTML
+  // inséré ainsi n'exécute de toute façon aucun script.
+  for (const html of result.htmls ?? []) {
+    const block = document.createElement("div");
+    block.className = "pyodide-html";
+    block.innerHTML = DOMPurify.sanitize(html);
+    if (!block.textContent.trim() && !block.querySelector("img, svg, table, canvas")) continue;
+    hasContent = true;
+    outputArea.appendChild(block);
   }
 
   if (!hasContent) outputArea.hidden = true;

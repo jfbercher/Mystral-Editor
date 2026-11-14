@@ -139,6 +139,14 @@
    sheet rather than on the element so that a figure restored from a sidecar,
    injected as raw HTML, says the same thing. */
 .pyodide-figure{display:block;max-width:100%;height:auto;margin:.5rem 0;cursor:zoom-in}
+
+/* Ce qu'un objet rend de lui-même en HTML : un DataFrame, une table, un
+   résumé de modèle. Contenu dans la largeur de la cellule et défilant plutôt
+   que débordant, comme la sortie texte et le code le font déjà. */
+.pyodide-html{max-width:100%;overflow-x:auto;margin:.5rem 0;font-size:.85em}
+.pyodide-html table{border-collapse:collapse}
+.pyodide-html th,.pyodide-html td{border:1px solid var(--border,#ccc);padding:.15em .45em;text-align:right}
+.pyodide-html th{font-weight:600}
 .pyodide-status-text{font-size:.78rem;color:var(--color-foreground-muted,#57606a);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .pyodide-status-info{color:#0550ae}.pyodide-status-success{color:#1a7f37}.pyodide-status-error{color:#cf222e}
 .pyodide-timing{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);font-variant-numeric:tabular-nums;flex:0 0 auto;white-space:nowrap}

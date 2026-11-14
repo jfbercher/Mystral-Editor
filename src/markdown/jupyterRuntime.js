@@ -491,7 +491,15 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
   const started = performance.now();
   const guarded = await guardUninstall(code);
   if (guarded === null) {
-    return { stdout: "", stderr: "", error: "cancelled: pip uninstall needs -y to run here", returnValue: null, figures: [], durationMs: 0 };
+    return {
+      stdout: "",
+      stderr: "",
+      error: "cancelled: pip uninstall needs -y to run here",
+      returnValue: null,
+      figures: [],
+      htmls: [],
+      durationMs: 0,
+    };
   }
 
   const entry = await kernelFor(space);
@@ -504,6 +512,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
   let error = null;
   let returnValue = null;
   const figures = [];
+  const htmls = [];
 
   await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
@@ -520,8 +529,13 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
       case "execute_result": {
         // Les figures arrivent comme des images, ce que Pyodide doit aller
         // chercher dans matplotlib : ici elles sont déjà dans le message.
+        // Un noyau livre le paquet MIME complet, et l'ordre des préférences
+        // est le nôtre : une image d'abord, puis le HTML d'un objet qui sait
+        // se rendre -- un DataFrame, une table --, le texte en dernier. Sous
+        // Pyodide il faut aller interroger l'objet ; ici il a déjà répondu.
         const image = figureUrl(c.data);
         if (image) figures.push(image);
+        else if (c.data?.["text/html"]) htmls.push(c.data["text/html"]);
         else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
         break;
       }
@@ -533,7 +547,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
     }
   });
 
-  return { stdout, stderr, error, returnValue, figures, durationMs: Math.round(performance.now() - started) };
+  return { stdout, stderr, error, returnValue, figures, htmls, durationMs: Math.round(performance.now() - started) };
 }
 
 async function evaluate(expr, space = SHARED_SPACE) {
