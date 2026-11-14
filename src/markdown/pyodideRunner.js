@@ -12,6 +12,7 @@
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
 import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime } from "./cellRuntime.js";
+import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
@@ -23,7 +24,7 @@ import { python } from "@codemirror/lang-python";
 import { defaultKeymap, historyKeymap, history, indentWithTab } from "@codemirror/commands";
 import { indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { pythonHighlightStyle as pythonHighlight } from "../extensions/pythonHighlightStyle";
-import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
+import { autocompletion, completionKeymap, startCompletion, completionStatus } from "@codemirror/autocomplete";
 import {
   parseParams,
   parseParamsOptions,
@@ -113,111 +114,13 @@ sys.stdout = _JsBridge("stdout")
 sys.stderr = _JsBridge("stderr")
 sys._mystral_env = True
 `);
-      // Namespace introspection, used by the variable inspector and by %whos.
+      // Namespace introspection, used by the variable inspector and by %whos,
+      // and the persistence helpers the sidecar calls. Both live in
+      // `namespacePython.js`: the same source runs in a kernel, and a second
+      // copy is the one that would not get fixed.
       // Every name starts with "_" so that a soft restart spares it.
-      pyodide.runPython(`
-import sys as _sys_vi, json as _json_vi
-
-_MYSTRAL_HIDDEN_TYPES = ('module', 'function', 'builtin_function_or_method',
-                         'method', 'type', 'ufunc', '_Feature', 'classmethod',
-                         'staticmethod', 'JsProxy')
-
-def _mystral_size(x):
-    # sys.getsizeof lies about arrays and frames: it reports the wrapper, not
-    # the buffer. Ask the object itself when it knows better.
-    t = type(x).__name__
-    try:
-        if t in ('ndarray', 'Series'):
-            return int(x.nbytes)
-        if t == 'DataFrame':
-            return int(x.memory_usage(deep=False).sum())
-        return _sys_vi.getsizeof(x)
-    except Exception:
-        return -1
-
-def _mystral_shape(x):
-    try:
-        s = getattr(x, 'shape', None)
-        if s is not None:
-            return ' x '.join(str(d) for d in s)
-        if isinstance(x, (list, tuple, dict, set, frozenset, str, bytes)):
-            return str(len(x))
-    except Exception:
-        pass
-    return ''
-
-def _mystral_preview(x, limit=200):
-    try:
-        text = repr(x)
-    except Exception as e:
-        return '<unrepresentable: %s>' % type(e).__name__
-    text = ' '.join(text.split())
-    return text if len(text) <= limit else text[:limit - 3] + '...'
-
-def _mystral_varlist(include_all=False, ns=None):
-    # ns is the namespace to look at. Defaulting to globals() here means
-    # __main__, since this function is defined there -- which is exactly the
-    # shared namespace, so an unqualified call keeps its old meaning.
-    ns = globals() if ns is None else ns
-    out = []
-    for _k, _v in list(ns.items()):
-        if _k.startswith('_'):
-            continue
-        t = type(_v).__name__
-        if not include_all and t in _MYSTRAL_HIDDEN_TYPES:
-            continue
-        out.append({'name': _k, 'type': t, 'size': _mystral_size(_v),
-                    'shape': _mystral_shape(_v), 'preview': _mystral_preview(_v)})
-    out.sort(key=lambda d: d['name'].lower())
-    return out
-
-def _mystral_varlist_json(include_all=False, ns=None):
-    return _json_vi.dumps(_mystral_varlist(include_all, ns))
-
-def _mystral_human_size(n):
-    if n is None or n < 0:
-        return '?'
-    for unit in ('B', 'kB', 'MB', 'GB'):
-        if n < 1024 or unit == 'GB':
-            return ('%d %s' % (n, unit)) if unit == 'B' else ('%.1f %s' % (n, unit))
-        n /= 1024.0
-
-def _mystral_whos(include_all=False, ns=None):
-    rows = _mystral_varlist(include_all, ns)
-    if not rows:
-        print('No variables defined.')
-        return
-    head = ('Variable', 'Type', 'Size', 'Shape', 'Value')
-    cells = [head] + [(r['name'], r['type'], _mystral_human_size(r['size']),
-                       r['shape'], r['preview'][:60]) for r in rows]
-    widths = [max(len(c[i]) for c in cells) for i in range(len(head))]
-    for i, row in enumerate(cells):
-        print('  '.join(v.ljust(widths[j]) for j, v in enumerate(row)).rstrip())
-        if i == 0:
-            print('  '.join('-' * w for w in widths))
-
-def _mystral_delete(names, unload=False, ns=None):
-    # Removing the name is all that is needed for data. For a module, dropping
-    # it from sys.modules too is what actually lets it be re-imported fresh --
-    # but any object still referencing it keeps the old module alive, so this
-    # frees memory only when nothing else holds on.
-    import types as _t_del
-    ns = globals() if ns is None else ns
-    removed = []
-    for _n_del in names:
-        if _n_del not in ns:
-            continue
-        _v_del = ns[_n_del]
-        del ns[_n_del]
-        removed.append(_n_del)
-        if unload and isinstance(_v_del, _t_del.ModuleType):
-            _sys_vi.modules.pop(getattr(_v_del, '__name__', ''), None)
-    return _json_vi.dumps(removed)
-
-def _mystral_who(include_all=False, ns=None):
-    names = [r['name'] for r in _mystral_varlist(include_all, ns)]
-    print('  '.join(names) if names else 'No variables defined.')
-`);
+      pyodide.runPython(NAMESPACE_HELPERS_PY);
+      pyodide.runPython(PERSISTENCE_HELPERS_PY);
 
       pyodide.runPython(`import matplotlib\nmatplotlib.use("agg")`);
 
@@ -1286,47 +1189,121 @@ function tooltipParent(el) {
   return host;
 }
 
-// ─── Source de complétion jedi pour CM6 ──────────────────────────────────────
+// ─── Complétion : jedi derrière le verbe du contrat ──────────────────────────
 
 /**
- * Source d'autocomplétion CM6 appelant _jedi_complete dans Pyodide.
- * Retourne les suffixes à insérer à la position courante.
+ * Tab demande la complétion quand il y a un mot à compléter.
+ *
+ * Jusqu'ici elle ne venait que d'elle-même, à la frappe, et c'était suffisant
+ * tant que jedi répondait en quelques millisecondes depuis le même processus.
+ * Un noyau met une soixantaine de millisecondes, et près de sept cents la
+ * première fois -- le temps que son propre jedi s'éveille. La popup ouverte
+ * par une frappe est alors fermée par la suivante avant que la réponse
+ * n'arrive, ce qui donne exactement ce qu'on observe : des complétions qui
+ * passent sans se laisser attraper.
+ *
+ * Un déclencheur explicite change cela : la demande est rattachée à un geste,
+ * et le délai se lit comme une attente plutôt que comme un défaut. Tab est le
+ * geste du notebook, et sur macOS il est le seul disponible -- Ctrl-Espace
+ * appartient au changement de source de saisie du système, ce qui explique
+ * qu'il n'ait rien fait ici.
+ *
+ * Posé après `completionKeymap`, pour qu'une popup ouverte soit acceptée
+ * d'abord, et avant `indentWithTab`, qui garde Tab quand il n'y a rien à
+ * compléter : en début de ligne, Tab indente comme avant.
  */
-function jediCompletionSource(context) {
-  const py = pyodideInstance;
-  if (!py || !py.globals.has('_jedi_complete')) return null;
+const askForCompletion = {
+  key: "Tab",
+  run: (view) => {
+    const range = view.state.selection.main;
+    if (!range.empty || completionStatus(view.state)) return false;
+    const before = view.state.doc.sliceString(Math.max(0, range.from - 1), range.from);
+    if (!/[\w.]/.test(before)) return false;
+    return startCompletion(view);
+  },
+};
 
-  const source = context.state.doc.toString();
-  const pos    = context.pos;
-  const before = source.substring(0, pos).split('\n');
-  const line   = before.length;          // 1-based
-  const col    = before[before.length - 1].length; // 0-based
+/**
+ * Ce que jedi propose ici, dans la forme que le contrat demande.
+ *
+ * jedi lit le texte, sans rien savoir de l'espace de noms : la complétion
+ * marche donc avant la première exécution, ce qu'un noyau ne sait pas faire.
+ * Les deux approches ont chacune leur vertu, et c'est pour cela que le verbe
+ * ne dit pas comment on s'y prend.
+ */
+function pyodideComplete(source, pos) {
+  const py = pyodideInstance;
+  if (!py || !py.globals.has("_jedi_complete")) return null;
+
+  const before = source.substring(0, pos).split("\n");
+  const line = before.length; // 1-based
+  const col = before[before.length - 1].length; // 0-based
 
   let completions;
   try {
-    completions = JSON.parse(
-      py.runPython(`_jedi_complete(${JSON.stringify(source)}, ${line}, ${col})`)
-    );
-  } catch { return null; }
+    completions = JSON.parse(py.runPython(`_jedi_complete(${JSON.stringify(source)}, ${line}, ${col})`));
+  } catch {
+    return null;
+  }
   if (!completions.length) return null;
 
-  // `from` = position courante : on insère le suffixe (c.complete) là où est le curseur.
+  // `from` = `to` = la position courante : jedi rend le suffixe à insérer là
+  // où est le curseur, et non le mot entier à remplacer.
   return {
     from: pos,
-    options: completions.map((c, i) => ({
-      label:  c.name,
-      apply:  c.complete || undefined,  // suffixe à insérer ; undefined = accept sans texte
-      type:   c.type   || "text",
+    to: pos,
+    items: completions.map((c, i) => ({
+      name: c.name,
+      insert: c.complete || "",
+      type: c.type || "text",
       detail: c.description || undefined,
-      // Asked for only when the entry is highlighted, and answered from the list
-      // jedi has just built -- hence the index rather than the name, which would
-      // not tell two overloads apart. docstring(raw=False) starts with the call
-      // signature, which is what one is usually after.
-      info: () => {
-        let doc = "";
+      // Demandée seulement quand l'entrée est survolée, et répondue depuis la
+      // liste que jedi vient de construire -- d'où l'indice plutôt que le nom,
+      // qui ne distinguerait pas deux surcharges. docstring(raw=False) commence
+      // par la signature, qui est ce qu'on cherche le plus souvent.
+      doc: () => {
         try {
-          if (py.globals.has('_jedi_doc')) doc = py.runPython(`_jedi_doc(${i})`);
-        } catch { return null; }
+          return py.globals.has("_jedi_doc") ? py.runPython(`_jedi_doc(${i})`) : null;
+        } catch {
+          return null;
+        }
+      },
+    })),
+  };
+}
+
+/**
+ * La source d'autocomplétion de CodeMirror, qui ne sait plus quel moteur
+ * répond : elle demande au registre, et met en forme ce qui revient.
+ */
+async function runtimeCompletionSource(context, space = SHARED_SPACE) {
+  const engine = runtime(space);
+  if (!engine?.complete) return null;
+
+  let answer = null;
+  try {
+    answer = await engine.complete(context.state.doc.toString(), context.pos, space);
+  } catch (e) {
+    console.warn("[cells] la complétion a échoué :", e);
+    return null;
+  }
+  if (!answer?.items?.length) return null;
+
+  return {
+    from: answer.from,
+    to: answer.to ?? answer.from,
+    options: answer.items.map((item) => ({
+      label: item.name,
+      apply: item.insert || undefined, // undefined = accepter sans insérer de texte
+      type: item.type || "text",
+      detail: item.detail || undefined,
+      info: async () => {
+        let doc = null;
+        try {
+          doc = await item.doc?.();
+        } catch {
+          return null;
+        }
         if (!doc) return null;
         const dom = document.createElement("div");
         dom.className = "pyodide-completion-doc";
@@ -2543,7 +2520,8 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     history(),
     indentOnInput(),
     autocompletion({
-      override: [jediCompletionSource],
+      // Le moteur actif répond, et c'est l'espace de la cellule qui dit lequel.
+      override: [(context) => runtimeCompletionSource(context, _space())],
       activateOnTyping: true,
       maxRenderedOptions: 12,
     }),
@@ -2560,8 +2538,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     // same root, shadow root included, or it would lose the editor's styles.
     tooltips({ position: "fixed", parent: tooltipParent(el) }),
     cmKeymap.of([
-      ...completionKeymap,    // Tab accepte la complétion si popup visible
-      indentWithTab,          // Tab indente sinon (4 espaces en Python)
+      ...completionKeymap, // Tab accepte la complétion si la popup est visible
+      askForCompletion, // Tab la demande s'il y a un mot sous le curseur
+      indentWithTab, // Tab indente sinon (4 espaces en Python)
     ]),
     // The configured bindings sit between the two: after completion, so Tab
     // still accepts a suggestion, and before defaultKeymap, whose
@@ -3124,35 +3103,10 @@ export function isPyodideReady() { return pyodideInstance !== null; }
 export async function snapshotNamespace(space = SHARED_SPACE) {
   const pyodide = await loadPyodideRuntime();
   pyodide.globals.set("_ns_target", getNamespace(space, pyodide));
-  const result = await pyodide.runPythonAsync(`
-import cloudpickle as _cp, base64 as _b64, io as _io, json as _json, types as _types
-_skip = frozenset({"__name__", "__doc__", "__package__", "__loader__",
-                   "__spec__", "__builtins__", "__annotations__"}
-                  | set(${JSON.stringify(RUNTIME_GLOBALS)}))
-_out = {}
-for _n, _v in list(_ns_target.items()):
-    if _n.startswith('_') or _n in _skip:
-        continue
-    # A module is not user data. cloudpickle stores it as a reference whose
-    # unpickling re-imports it, which fails in a fresh runtime whenever the
-    # package is not loaded yet -- that is what made "np" and "pd" look lost.
-    # Record the name instead and let the restore import it properly.
-    if isinstance(_v, _types.ModuleType):
-        _out[_n] = {"module": _v.__name__}
-        continue
-    try:
-        _buf = _io.BytesIO()
-        _cp.dump(_v, _buf)
-        _out[_n] = {"data": _b64.b64encode(_buf.getvalue()).decode(), "type": type(_v).__name__}
-    except Exception as _e:
-        _out[_n] = {"skipped": True, "reason": str(_e)}
-_snap_json = _json.dumps(_out)
-for _k in ['_skip', '_out', '_n', '_v', '_buf', '_e', '_cp', '_b64', '_io', '_json',
-           '_types', '_ns_target']:
-    globals().pop(_k, None)
-globals().pop('_k', None)
-_snap_json
-`);
+  const result = await pyodide.runPythonAsync(
+    `_mystral_snapshot_json(_ns_target, ${JSON.stringify(RUNTIME_GLOBALS)})`,
+  );
+  pyodide.runPython("globals().pop('_ns_target', None)");
   const snapshot = JSON.parse(result);
   const skipped = Object.entries(snapshot).filter(([, e]) => e.skipped).map(([n]) => n);
   logNamespaceEvent("snapshot", { saved: Object.keys(snapshot).length, failed: skipped, space });
@@ -3191,68 +3145,8 @@ export async function restoreNamespace(snapshot, space = SHARED_SPACE) {
   // Failures used to be swallowed here, so a variable that could not be
   // unpickled simply ceased to exist, with nothing said anywhere. Collect them
   // instead and report them: silent data loss is the one outcome to rule out.
-  const report = await pyodide.runPythonAsync(`
-import cloudpickle as _cp, base64 as _b64, json as _json, importlib as _il
-_data = _json.loads(_restore_data_json)
-_ok, _failed = [], {}
-_never_saved = {}
-for _n, _e in _data.items():
-    if _e.get('skipped'):
-        # Recorded at save time: this one could not be pickled, so it was never
-        # in the sidecar. Reporting it as a failed restore made the same alert
-        # come back at every single load, about variables the document could do
-        # nothing for. It is noted apart, and only in the console.
-        _never_saved[_n] = _e.get('reason', 'not persisted')
-        continue
-    try:
-        if 'module' in _e:
-            _ns_target[_n] = _il.import_module(_e['module'])
-        else:
-            _ns_target[_n] = _cp.loads(_b64.b64decode(_e['data']))
-        _ok.append(_n)
-    except Exception as _err:
-        # An import that fails here is not lost data: the module was installed
-        # or written by this document's own cells, which have not run yet in
-        # this fresh runtime. Running them brings it back. The same goes for an
-        # object whose class lives in such a module. That is a note, not the
-        # alarm raised for a value that really could not be rebuilt.
-        _kind = 'import' if isinstance(_err, ImportError) else 'error'
-        _failed[_n] = {'reason': type(_err).__name__ + ': ' + str(_err), 'kind': _kind}
-
-# cloudpickle rebuilds a function with a private copy of the globals it reads,
-# so a restored function stops following the namespace it came from: after a
-# reload, a cell setting CONST = 100 would leave a restored f() still reading
-# the 41 it was saved with, and two restored functions would not even share
-# their globals with each other. Rebind each one to the live namespace -- same
-# code, same closure, same defaults -- so that they stay in step, as they were
-# before the document was closed. Methods of a restored class keep their own
-# snapshot: that one is inside the class object and out of reach here.
-import types as _types_rl
-_relinked = 0
-for _n_rl in _ok:
-    _f_rl = _ns_target.get(_n_rl)
-    if not isinstance(_f_rl, _types_rl.FunctionType) or _f_rl.__globals__ is _ns_target:
-        continue
-    _g_rl = _types_rl.FunctionType(_f_rl.__code__, _ns_target, _f_rl.__name__,
-                                   _f_rl.__defaults__, _f_rl.__closure__)
-    _g_rl.__dict__.update(_f_rl.__dict__)
-    _g_rl.__kwdefaults__ = _f_rl.__kwdefaults__
-    _g_rl.__annotations__ = _f_rl.__annotations__
-    _g_rl.__qualname__ = _f_rl.__qualname__
-    _g_rl.__doc__ = _f_rl.__doc__
-    _g_rl.__module__ = _f_rl.__module__
-    _ns_target[_n_rl] = _g_rl
-    _relinked += 1
-
-_report = _json.dumps({'ok': _ok, 'failed': _failed, 'relinked': _relinked,
-                       'never_saved': _never_saved})
-for _k in ['_data', '_n', '_e', '_err', '_kind', '_ok', '_failed', '_never_saved', '_cp', '_b64', '_json', '_il',
-           '_restore_data_json', '_types_rl', '_relinked', '_n_rl', '_f_rl', '_g_rl',
-           '_ns_target']:
-    globals().pop(_k, None)
-globals().pop('_k', None)   # the cleanup loop's own variable
-_report
-`);
+  const report = await pyodide.runPythonAsync("_mystral_restore_json(_restore_data_json, _ns_target)");
+  pyodide.runPython("globals().pop('_restore_data_json', None); globals().pop('_ns_target', None)");
   const { ok, failed, relinked, never_saved: neverSaved } = JSON.parse(report);
   const neverSavedNames = Object.keys(neverSaved ?? {});
   if (neverSavedNames.length) {
@@ -3302,7 +3196,7 @@ _report
  */
 registerRuntime({
   name: "pyodide",
-  capabilities: ["expressions", "magics", "inspect", "snapshot"],
+  capabilities: ["expressions", "magics", "inspect", "snapshot", "completion"],
   ready: (packages) => loadPyodideRuntime(packages),
   isReady: () => isPyodideReady(),
   execute: (code, { packages = [], onStream = null, space = SHARED_SPACE } = {}) => executePython(code, packages, onStream, space),
@@ -3310,6 +3204,7 @@ registerRuntime({
   restart: (space) => softRestartKernel(space),
   inspect: (includeAll, space) => inspectNamespace(includeAll, space),
   forget: (names, opts) => deleteVariables(names, opts),
+  complete: (source, pos) => pyodideComplete(source, pos),
   snapshot: (space) => snapshotNamespace(space),
   restore: (snapshot, space) => restoreNamespace(snapshot, space),
 });

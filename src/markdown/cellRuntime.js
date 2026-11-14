@@ -32,6 +32,15 @@
  *   forget(names, opts)      -- remove variables from a namespace
  *   snapshot(space)          -- the namespace as something storable, for the sidecar
  *   restore(snapshot, space) -- put one back
+ *   complete(source, pos, space) -- what could be typed here, for the editor
+ *
+ * `complete` is the odd one: it answers about source, not about a namespace,
+ * and the two engines reach it by opposite routes -- Pyodide reads the text
+ * with jedi, a kernel asks its own running state. So it returns what both can
+ * say and nothing more: `{ from, to, items }`, each item carrying the text to
+ * insert and, when the engine can produce one, a `doc()` that fetches its
+ * documentation only if the editor asks. It is not `inspect`: that one is the
+ * variable panel, and a cell editor needs neither.
  *
  * ## Capabilities, declared rather than discovered
  *
@@ -95,6 +104,8 @@ export const CAPABILITIES = [
   "magics",
   /** The variable panel: listing a namespace and deleting from it. */
   "inspect",
+  /** Completion and documentation in the cell editor: the `complete` verb. */
+  "completion",
   /** Storing a namespace in the sidecar and putting it back. */
   "snapshot",
   /** Stopping a cell that will not stop by itself: the `interrupt` verb. */

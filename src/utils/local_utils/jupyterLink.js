@@ -59,9 +59,14 @@ export async function openKernel(kernelId, onMessage) {
    * d'un noyau porte, dans son `parent_header`, l'identifiant de la demande
    * qui l'a provoqué. Un lien porte plusieurs cellules, donc sans lui on ne
    * saurait pas à qui appartient une sortie.
+   *
+   * L'appelant peut l'imposer, et c'est ce qu'il doit faire s'il attend une
+   * réponse : le rendre ne suffit pas, puisqu'il ne revient qu'au retour de
+   * l'appel Tauri, alors que le noyau peut avoir déjà répondu. Un `%pip`
+   * de cinq secondes masquait cette course ; une complétion qui revient en
+   * soixante millisecondes la perd une fois sur deux.
    */
-  const send = async (msgType, content) => {
-    const msgId = crypto.randomUUID();
+  const send = async (msgType, content, msgId = crypto.randomUUID()) => {
     await invoke("jupyter_send", {
       id,
       text: JSON.stringify({
