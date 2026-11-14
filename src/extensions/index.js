@@ -49,6 +49,7 @@ import { codeBlockLanguages } from "./codeBlockLanguages";
 import { python } from "@codemirror/lang-python";
 import { mystCompletions } from "./mystCompletions";
 import { mystComments } from "./mystComments";
+import { caretFollowsTheClick } from "./focusClick";
 
 
 
@@ -178,6 +179,10 @@ export class ExtensionBuilder {
       rectangularSelection(),
       crosshairCursor(),
       highlightSelectionMatches(),
+      // Avant les gestionnaires de CodeMirror, et c'est tout l'intérêt : voir
+      // focusClick.js, qui explique pourquoi un clic de retour dans l'éditeur
+      // sélectionnait une zone entière.
+      caretFollowsTheClick,
       keymap.of([...historyKeymap, ...searchKeymap, ...foldKeymap, ...completionKeymap, ...lintKeymap]),
     ]);
   }
