@@ -15,6 +15,7 @@ import {
 import { runtime, SHARED_SPACE } from "../../markdown/cellRuntime.js";
 import { chooseEngineForSpace } from "../../markdown/engineChoice.js";
 import { evalCache } from "../../markdown/markdownPyodide";
+import { showToast } from "../utils_ui.js";
 
 /**
  * Format of the files this module writes.
@@ -233,10 +234,19 @@ export function scheduleNamespaceRestore(sidecar) {
         // disant, vaut mieux qu'une liste d'échecs dont aucun n'est
         // réparable. Les sorties des cellules, elles, sont restaurées : ce
         // sont du texte et des images, qui n'appartiennent à aucun moteur.
-        console.warn(
-          `[sidecar] les variables enregistrées viennent du moteur « ${sidecar.python_engine ?? "pyodide"} » ` +
-            `et celui-ci est « ${runtime(target).name} » : elles ne sont pas restaurées. ` +
-            `Réexécutez les cellules, ou revenez au moteur qui les a écrites.`,
+        // Dit à l'écran et pas seulement en console : la conséquence n'arrive
+        // que plus tard, sous la forme d'un `NameError` sur un nom qu'une
+        // cellule antérieure avait importé, et qui n'a l'air d'avoir aucun
+        // rapport avec un changement de moteur fait dix minutes plus tôt.
+        const written = sidecar.python_engine ?? "pyodide";
+        const now = runtime(target).name;
+        console.warn(`[sidecar] variables écrites par « ${written} », moteur courant « ${now} » : non restaurées.`);
+        showToast(
+          `The saved variables of this document were written by the "${written}" engine and it is now running on "${now}", ` +
+            `so they were not restored -- a snapshot is not portable between interpreters. ` +
+            `Re-run the cells, or switch back to the engine that wrote them.`,
+          "warning",
+          12000,
         );
       } else if (sidecar.namespace) {
         // A snapshot goes back to the namespace it was taken from, which the
