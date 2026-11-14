@@ -66,6 +66,11 @@ import "./utils/local_utils/jupyterLink.js";
 // Le moteur Jupyter s'enregistre ici. Il n'est pas choisi pour autant : Pyodide
 // s'étant enregistré le premier reste actif jusqu'à useRuntime("jupyter").
 import "./markdown/jupyterRuntime.js";
+// Le gestionnaire de widgets : importé pour son effet de bord, comme le moteur
+// au-dessus. Le module est léger -- les paquets ipywidgets ne sont chargés
+// qu'à la première demande, à l'intérieur de `widgetManagerFor` --, mais sans
+// cet import rien ne l'évalue et il n'existe pour personne.
+import "./markdown/widgetManager.js";
 
 
 export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandleInTab) {

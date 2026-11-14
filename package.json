@@ -29,6 +29,9 @@
     "@codemirror/merge": "^6.0.0",
     "@codemirror/state": "^6.2.1",
     "@codemirror/view": "^6.36.4",
+    "@jupyter-widgets/base": "^6.0.12",
+    "@jupyter-widgets/base-manager": "^1.0.13",
+    "@jupyter-widgets/controls": "^5.0.13",
     "@lezer/highlight": "^1.2.1",
     "@lezer/markdown": "^1.4.2",
     "@open-rpc/client-js": "^1.8.1",
@@ -90,5 +93,8 @@
   "alias": {
     "react": "@preact/compat",
     "react-dom": "@preact/compat"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
   }
 }
