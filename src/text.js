@@ -63,6 +63,7 @@ import { markdownFrontmatter } from "./markdown/markdownFrontmatter";
 import markdownItMath from "./markdown/markdownMath";
 import { scanTargets, getSectionLabelsSignature, getNumberedSignature } from "./markdown/scanTargets";
 import { effectiveFrontmatter, extendsCache } from "./markdown/frontmatterUtils";
+import { declareDocumentKernel, readKernelspec, kernelTagFor } from "./markdown/engineChoice.js";
 import { updateMathMacros, getMacrosSignature } from "./markdown/markdownMath";
 import { numberHeadings, flattenToLineMap, annotateHeadingLines } from "./utils/headingNumbering";
 import { nestHeadings } from "./extensions/trackHeadings";
@@ -828,17 +829,32 @@ export class TextManager {
     // `python: isolated` means one namespace per document, so it is keyed by the
     // file -- not by the tab -- which keeps a document in the same namespace
     // when it is closed and reopened, and lines it up with its sidecar.
-    const pythonSpaceValue = fm?.python;
+    // `namespace:` depuis qu'un document peut tourner ailleurs que dans
+    // Python ; `python:` reste lu, et le restera : des documents le portent,
+    // et il voulait dire la même chose quand Python était le seul interprète.
+    const pythonSpaceValue = fm?.namespace ?? fm?.python;
     // A document that has never been saved has no file key; it is then keyed by
     // its tab, so `python: isolated` still isolates it. It will not find that
     // namespace again after a reload, which is true of everything about an
     // unsaved document.
-    const pythonSpace = spaceKey(
-      pythonSpaceValue,
-      getEditorFileKey(this.options.id.value) ?? `editor:${this.options.id.value}`,
-    );
-    const pythonSpaceLabel = spaceLabel(pythonSpaceValue);
+    // Quel interprète ce document demande, et ce que cela change à son
+    // espace : un noyau d'une autre langue en impose un à lui, un espace de
+    // noms ne pouvant pas s'étendre sur deux interprètes.
+    const kernelspec = readKernelspec(fm);
+    const kernelTag = kernelTagFor(kernelspec);
+    const docKey = getEditorFileKey(this.options.id.value) ?? `editor:${this.options.id.value}`;
+    const pythonSpace = spaceKey(pythonSpaceValue, docKey, kernelTag);
+    const pythonSpaceLabel = spaceLabel(pythonSpaceValue, kernelTag);
     setEditorPythonSpace(this.options.id.value, pythonSpace);
+    // Le choix du moteur lui-même est fait plus tard, à la première
+    // exécution : il peut avoir à poser une question, et un rendu n'est pas un
+    // endroit pour cela.
+    // Par l'identifiant de l'éditeur, et non par la clé de fichier : c'est
+    // lui que la cellule connaît sous le nom d'`owner`, et les deux doivent
+    // désigner la même chose pour que le document se reconnaisse. La clé de
+    // fichier reste celle de l'espace isolé, qui doit suivre le fichier et non
+    // l'onglet.
+    declareDocumentKernel(this.options.id.value, kernelspec, pythonSpace);
 
     // The scanners below walk the text to collect labels, numbers, citations
     // and reference definitions. An {include} is one line there, so what it

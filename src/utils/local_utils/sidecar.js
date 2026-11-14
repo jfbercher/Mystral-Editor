@@ -12,14 +12,18 @@ import {
 } from "../../markdown/pyodideRunner";
 // Taking a namespace away and putting it back are verbs of the runtime
 // contract; which engine holds that namespace is not this module's business.
-import { runtime } from "../../markdown/cellRuntime.js";
+import { runtime, SHARED_SPACE } from "../../markdown/cellRuntime.js";
+import { chooseEngineForSpace } from "../../markdown/engineChoice.js";
 import { evalCache } from "../../markdown/markdownPyodide";
 
 /**
  * Format of the files this module writes.
  *
  * 2 — a snapshot names the namespace it was taken from (`python_space`), and
- *     holds only the variables and the cells of its own document.
+ *     holds only the variables and the cells of its own document. Since the
+ *     day a second engine existed it also names the engine that took it
+ *     (`python_engine`); a file written before that is read as Pyodide's,
+ *     which is what it was.
  * 1 — written when there was one namespace for every document: the snapshot was
  *     a dump of the shared globals and the cells were everyone's. Such a file
  *     cannot be told apart from a correct one by looking at its contents, so
@@ -152,6 +156,7 @@ export async function saveSidecarToFile(filePath, fileName, editorId = "") {
   }
 
   data.python_space = space;
+  data.python_engine = runtime(space).name;
   const n = Object.keys(cells).length;
   const nsCount = data.namespace ? Object.keys(data.namespace).length : 0;
 
@@ -204,9 +209,14 @@ export function scheduleNamespaceRestore(sidecar) {
 
   const hasCells = Object.keys(sidecar.cells ?? {}).length > 0;
   if (!hasCells && !sidecar.namespace) return;
+  const target = sidecar.python_space ?? SHARED_SPACE;
 
-  runtime()
-    .ready()
+  // Le moteur d'abord : la restauration vise l'espace du document, et sans
+  // cette résolution elle irait au moteur par défaut -- donc à Pyodide, qui
+  // refuserait un instantané écrit par un noyau. Le choix est retenu, si bien
+  // que la première exécution ne redemandera rien.
+  chooseEngineForSpace(target)
+    .then(() => runtime(target).ready())
     .then(async () => {
       if (sidecar.namespace && sidecar.version !== SIDECAR_VERSION) {
         console.warn(
@@ -214,13 +224,26 @@ export function scheduleNamespaceRestore(sidecar) {
             `written before a document had a namespace of its own, so they may not be this document's. ` +
             `Re-run the cells and save to write a current one.`,
         );
+      } else if (sidecar.namespace && (sidecar.python_engine ?? "pyodide") !== runtime(target).name) {
+        // Un instantané n'est pas portable d'un moteur à l'autre. Les valeurs
+        // sont du pickle produit par un interprète donné : relu par un autre,
+        // il échoue variable par variable -- classe introuvable, protocole
+        // plus récent -- et le document se plaignait alors de variables que
+        // la cellule en cours n'utilise même pas. Le refuser une fois, en le
+        // disant, vaut mieux qu'une liste d'échecs dont aucun n'est
+        // réparable. Les sorties des cellules, elles, sont restaurées : ce
+        // sont du texte et des images, qui n'appartiennent à aucun moteur.
+        console.warn(
+          `[sidecar] les variables enregistrées viennent du moteur « ${sidecar.python_engine ?? "pyodide"} » ` +
+            `et celui-ci est « ${runtime(target).name} » : elles ne sont pas restaurées. ` +
+            `Réexécutez les cellules, ou revenez au moteur qui les a écrites.`,
+        );
       } else if (sidecar.namespace) {
         // A snapshot goes back to the namespace it was taken from, which the
         // sidecar records. When `python:` has changed since the document was
         // saved, the variables return to the namespace they were computed in --
         // the old one -- and the cells, which now run elsewhere, have to be
         // re-run. That is what changing the namespace means.
-        const target = sidecar.python_space;
         await runtime(target).restore(sidecar.namespace, target);
         console.log(`[sidecar] namespace restored into ${target}`);
       }
@@ -324,6 +347,7 @@ export async function saveSidecarWithNamespace(fileKeyOrPath, editorId = "") {
     }
   }
   data.python_space = space;
+  data.python_engine = runtime(space).name;
 
   try {
     await writeSidecar(fileKeyOrPath, data);

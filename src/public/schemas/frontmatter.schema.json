@@ -274,8 +274,22 @@
     "socials": {
       "description": "Alias of `social`. Social accounts shown with the work: `twitter`, `mastodon`, and the like."
     },
+    "namespace": {
+      "description": "Which namespace this document's code cells run in: `shared` (the default), `isolated` for one of its own, or any name for a namespace shared by the documents that give the same one. A document asking for a kernel of another language always gets its own, a namespace being unable to span two interpreters.",
+      "anyOf": [
+        {
+          "enum": [
+            "shared",
+            "isolated"
+          ]
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
     "python": {
-      "description": "Which Python namespace this document's code cells run in: `shared` (the default), `isolated` for one of its own, or any name for a namespace shared by the documents that give the same one.",
+      "description": "The older spelling of `namespace`, still read when `namespace` is absent. It was named after Python when Python was the only interpreter.",
       "anyOf": [
         {
           "enum": [

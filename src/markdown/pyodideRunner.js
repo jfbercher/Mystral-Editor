@@ -11,7 +11,8 @@
 
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
-import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime } from "./cellRuntime.js";
+import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, supports } from "./cellRuntime.js";
+import { chooseEngineFor } from "./engineChoice.js";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
@@ -46,8 +47,6 @@ import {
 
 let pyodideInstance = null;
 let loadingPromise = null;
-let loadState = "idle";
-let loadError = null;
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -678,8 +677,6 @@ async function restartKernel() {
   clearNamespaces();
   pyodideInstance = null;
   loadingPromise = null;
-  loadState = "idle";
-  loadError = null;
 }
 
 // ─── Accès aux fichiers locaux (workingDirectory → Pyodide MEMFS) ──────────────
@@ -1761,6 +1758,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   // Read at each use rather than captured: a re-render restamps the host, and
   // the frontmatter may have changed `python:` in between.
   const _space = () => el.dataset.pythonSpace || SHARED_SPACE;
+  // Et de même pour `:packages:`. Capturés à la construction, ils restaient
+  // ceux du premier rendu : écrire l'option dans une cellule qui existe déjà
+  // ne change ni son code, ni son hash, ni donc la cellule elle-même, et
+  // l'option n'avait d'effet qu'au rechargement suivant. Le paramètre reste
+  // la valeur de repli, pour une cellule construite sans attribut.
+  const _packages = () => {
+    try {
+      const declared = JSON.parse(el.dataset.packages ?? "null");
+      return Array.isArray(declared) ? declared : packages;
+    } catch {
+      return packages;
+    }
+  };
   const _spaceLabel = () => el.dataset.pythonSpaceLabel || SHARED_SPACE;
 
   // Declared here, before the keymap that calls it. Imported on demand: the
@@ -2637,13 +2647,23 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         await loadPyodideRuntime();
         setStatus(statusText, "Runtime reloaded", "success");
       } else {
-        const { softened, removed } = await softRestartKernel(_space());
+        // Le verbe du contrat, et non la fonction de Pyodide : sous un noyau
+        // ce bouton redémarrait l'interprète du navigateur, qui n'exécutait
+        // rien, et laissait le noyau intact. Le même oubli que pour l'attente
+        // du moteur -- l'appel est antérieur à la couture.
+        const { softened, removed, restarted } = await runtime(_space()).restart(_space());
         const where = _spaceLabel() === SHARED_SPACE ? "" : ` in ${_spaceLabel()}`;
+        // Trois états, et non deux : un vidage de dictionnaire, qui peut dire
+        // combien de noms il a retirés ; un redémarrage de processus, qui n'a
+        // rien « vidé » mais tout recommencé, et annoncerait zéro variable
+        // effacée s'il empruntait la même phrase ; et rien à redémarrer.
         setStatus(
           statusText,
           softened
             ? `Kernel restarted — ${removed.length} variable(s) cleared${where}`
-            : "Kernel not started yet",
+            : restarted
+              ? `Kernel restarted — a new process${where}`
+              : "Kernel not started yet",
           "success",
         );
       }
@@ -2729,10 +2749,48 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     });
   });
 
-  runBtn.title = "Run this cell (⇧↵) — ⌥/Alt-click to run every cell of the document";
+  const RUN_TITLE = "Run this cell (⇧↵) — ⌥/Alt-click to run every cell of the document";
+  runBtn.title = RUN_TITLE;
+
+  /**
+   * Le bouton d'exécution devient un bouton d'arrêt pendant qu'elle dure.
+   *
+   * Promis au jalon 1 et jamais câblé : une cellule partie dans une boucle
+   * sans fin, ou dans un `%pip` qui attend une réponse impossible, n'avait
+   * aucune issue. C'est ici que les capacités déclarées servent pour la
+   * première fois -- sous Pyodide, qui ne sait pas s'interrompre, le bouton
+   * reste désactivé comme avant, plutôt que d'offrir un arrêt qui n'arrête
+   * rien.
+   *
+   * Le même bouton plutôt qu'un second : la barre est déjà pleine, et c'est
+   * le geste du notebook.
+   */
+  const setStopMode = (on) => {
+    runBtn.dataset.stop = on ? "1" : "";
+    runBtn.textContent = on ? "⏹" : "▶";
+    runBtn.title = on ? "Interrupt this cell" : RUN_TITLE;
+    runBtn.disabled = !on;
+  };
+
   runBtn.addEventListener("click", async (ev) => {
+    if (runBtn.dataset.stop) {
+      // Un clic programmé -- `runAllCells`, le raccourci ⇧↵ -- ne doit ni
+      // interrompre ni lancer une seconde exécution : le bouton était
+      // désactivé pour cela, et il ne l'est plus pendant qu'il arrête.
+      if (!ev?.isTrusted) return;
+      runBtn.disabled = true;
+      try {
+        await runtime(_space()).interrupt(_space());
+        setStatus(statusText, "Interrupting…", "info");
+      } catch (err) {
+        setStatus(statusText, `Could not interrupt: ${err}`, "error");
+        runBtn.disabled = false;
+      }
+      return;
+    }
     if (ev?.altKey) return void runAllBtn.click();
     runBtn.disabled = true;
+    setStopMode(supports("interrupt", _space()));
     wrapper.classList.add("pyodide-running");
     outputArea.hidden = true;
     widgetOutputArea.innerHTML = "";
@@ -2752,6 +2810,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       if (!isUnderWorkingDir(wanted)) {
         setStatus(statusText, `%load reads under the document's folder; "${wanted}" is outside it`, "error");
         wrapper.classList.remove("pyodide-running");
+        setStopMode(false);
         runBtn.disabled = false;
         return;
       }
@@ -2772,6 +2831,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         setStatus(statusText, why, "error");
         console.warn("[cells] %load failed:", err);
         wrapper.classList.remove("pyodide-running");
+        setStopMode(false);
         runBtn.disabled = false;
         return;
       }
@@ -2786,27 +2846,38 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     try {
-      if (loadState === "idle") {
-        loadState = "loading";
-        setStatus(statusText, "Pyodide loading (first execution)…", "info");
-        try {
-          await loadPyodideRuntime(packages);
-          loadState = "ready";
-        } catch (err) {
-          loadState = "error";
-          loadError = String(err);
-        }
+      // Quel moteur, d'abord : le document peut nommer un noyau, et la
+      // question se règle une fois par espace de noms. Avant la frappe du
+      // premier `ready`, parce qu'elle décide de ce qu'on attend.
+      // Par document : le `kernelspec` lui appartient, et deux documents
+      // peuvent se retrouver dans le même espace de noms -- c'est même le cas
+      // ordinaire. Les avoir confondus faisait exécuter le second dans le
+      // noyau du premier.
+      const chosen = await chooseEngineFor(owner);
+      if (chosen.refused) {
+        setStatus(statusText, "Not run: this document asks for a kernel that is not available here", "error");
+        return;
       }
 
-      if (loadState === "loading") {
-        setStatus(statusText, "Waiting for Pyodide…", "info");
-        while (loadState === "loading") {
-          await new Promise((r) => setTimeout(r, 150));
-        }
-      }
-
-      if (loadState === "error") {
-        setStatus(statusText, `Load failed: ${loadError}`, "error");
+      // Attendre le moteur actif, et non Pyodide.
+      //
+      // Ceci chargeait Pyodide avant chaque exécution, même quand la cellule
+      // allait tourner dans un noyau : plusieurs secondes et un
+      // téléchargement pour rien, et surtout un échec d'installation de
+      // `:packages:` par micropip qui empêchait une cellule de s'exécuter
+      // dans un noyau où le paquet était déjà installé. L'appel était
+      // antérieur à la couture et n'avait pas suivi.
+      //
+      // La machine à états qui entourait l'appel a disparu avec lui :
+      // `loadPyodideRuntime` mémorise déjà sa promesse, donc deux cellules
+      // lancées ensemble attendent la même chose sans qu'on ait à le gérer
+      // ici.
+      const engine = runtime(_space());
+      if (!engine.isReady?.()) setStatus(statusText, `${engine.name} is starting (first run)…`, "info");
+      try {
+        await engine.ready(_packages());
+      } catch (err) {
+        setStatus(statusText, `Load failed: ${String(err)}`, "error");
         return;
       }
 
@@ -2865,7 +2936,25 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         // Au registre, pas à Pyodide : c'est ici que le choix du moteur se
         // joue pour une cellule, et `runtime()` rend Pyodide tant qu'aucun
         // autre n'a été demandé.
-        result = await runtime(_space()).execute(view.state.doc.toString(), { packages, onStream, space: _space() });
+        // `cwd` : le dossier du document, pour le moteur qui a un vrai
+        // système de fichiers. Pyodide l'ignore -- il travaille sur une copie
+        // et sait déjà d'où elle vient --, un noyau s'y place. En mode web
+        // `resolveWorkingDir` rend une poignée de répertoire et non un
+        // chemin, d'où le filtre : un noyau n'existe de toute façon que sur
+        // le bureau.
+        const cwd = resolveWorkingDir();
+        await loadConfig();
+        result = await runtime(_space()).execute(view.state.doc.toString(), {
+          packages: _packages(),
+          onStream,
+          space: _space(),
+          cwd: typeof cwd === "string" ? cwd : null,
+          // La clé garde son nom, `pyodide.resetCwdOnRun`, parce que des
+          // configurations existantes la portent ; ce qu'elle dit vaut pour
+          // les deux moteurs : chaque cellule repart du dossier du document,
+          // au lieu de rester là où la précédente s'est déplacée.
+          resetCwd: Boolean(config.pyodide?.resetCwdOnRun),
+        });
       } finally {
         // Stop streaming before renderOutput() wipes textOutputArea, otherwise a
         // queued frame would append to detached nodes.
@@ -2891,6 +2980,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       setStatus(statusText, `Error : ${err}`, "error");
     } finally {
       wrapper.classList.remove("pyodide-running");
+      setStopMode(false);
       runBtn.disabled = false;
       // A run is the moment the outputs change, and the only one the editor
       // can see. Said rather than acted upon: this module knows nothing of

@@ -75,7 +75,7 @@ Within a document, all the cells share one namespace: a variable defined in one 
 Between documents, the frontmatter decides. There is a single interpreter for the whole editor, but it holds as many namespaces as documents ask for:  
 ```yaml 
 --- 
-python: shared      # the default, and what you get by writing nothing 
+namespace: shared      # the default, and what you get by writing nothing 
 --- 
 ```  
 
@@ -85,7 +85,7 @@ python: shared      # the default, and what you get by writing nothing
 
 ```yaml 
 --- 
-python: isolated 
+namespace: isolated 
 --- 
 ```  
 
@@ -93,14 +93,16 @@ A name gives a namespace shared by exactly the documents that ask for it:
 
 ```yaml 
 --- 
-python: lab3 
+namespace: lab3 
 --- 
 ```  
 
-Every document carrying `python: lab3` sees the same variables; everything else is invisible to them. Since `extends` also works on the frontmatter, a project can set this once in a shared YAML file and have all of its documents inherit it — see [frontmatter-extends](frontmatter-extends.md).  
+Every document carrying `namespace: lab3` sees the same variables; everything else is invisible to them. Since `extends` also works on the frontmatter, a project can set this once in a shared YAML file and have all of its documents inherit it — see [frontmatter-extends](frontmatter-extends.md).  
 
 The namespace in force is shown at the right end of each cell's status bar. It is an indicator and not a control: a document's namespace is a property of the document, written in its frontmatter, so there is one place to change it and no hidden state to wonder about. The shared namespace is drawn dimmed, with a dashed outline, since it is the default.  
 `shared` and `isolated` are reserved: a group cannot be called either.  
+
+The key was `python:` until a document could run on something other than Python, and that spelling is still read when `namespace:` is absent — documents carry it, and it meant the same thing when Python was the only interpreter. One thing the name change makes plain: a document asking for a kernel of another language always gets a namespace of its own, whatever it writes here, since a namespace cannot span two interpreters. The indicator says so, showing `shared (ir)` rather than `shared`.  
 
 ### What is separated, and what is not  
 
@@ -114,7 +116,7 @@ The current working directory, and the in-memory filesystem under `/local`. Two 
 
 Separating those as well would take a second interpreter — a second WebAssembly heap with its own copy of every package, paid for in memory and in loading time. The frontmatter value is a plain string, so such a mode can be added later without changing anything already written in a document.  
 
-A document that has never been saved has no file to be keyed by, so `python: isolated` there isolates it for the current tab only; the namespace is not found again after a reload.  
+A document that has never been saved has no file to be keyed by, so `namespace: isolated` there isolates it for the current tab only; the namespace is not found again after a reload.  
 
 ## The toolbar  
 
@@ -302,6 +304,30 @@ Two consequences follow. A filename built at run time, for instance by joining s
 
 The key `pyodide.resetCwdOnRun` decides whether the working directory persists between cells. See *[Customisation](customisation.md)*.
 
+### The same cells, on a local Jupyter kernel
+
+The desktop application can run cells on a Jupyter kernel installed on the machine instead of on Pyodide, when there is one. Everything above about writing cells, namespaces, parameters and the toolbar is unchanged — a cell does not know which engine answers it — but the file story is not the same, and this is the one place where behaviour differs rather than merely adds.
+
+A kernel is a real Python process with the real filesystem. Nothing is scanned, nothing is staged and nothing is copied back: the kernel is placed in the document's folder, and `open("data.csv")` opens that file. Three consequences follow. A filename built at run time works, where the scan could not see it. A file a cell writes exists on disk the moment the cell writes it, rather than at the end of the run. And a cell can reach outside the document's folder — `..`, an absolute path, anything the account can read — which Pyodide refuses by construction. That reach is the point of running locally, and it is also the reason to think before running a document someone sent you.
+
+`pyodide.resetCwdOnRun` keeps its meaning here: left off, a cell that moves elsewhere with `os.chdir` leaves the next cell where it went; turned on, every cell starts again in the document's folder.
+
+`:packages:` is treated with more care than under Pyodide, where the environment is disposable and belongs to no one. A kernel is somebody's Python, so the editor asks before touching it: it first asks the kernel which of the packages are actually absent, then names those in a dialog and installs only them, with `%pip`, whose output appears in the cell. Declining is remembered for the session and the cell runs anyway — if it really needs the package, its own `ImportError` says so better than a refusal would.
+
+What a kernel brings beyond files is a real interrupt on a runaway loop, the packages already installed on the machine including those with compiled extensions, `subprocess` and threads, and the kernel's own completion — which knows the live objects rather than deducing from the text, and therefore answers only once a cell has run. What it costs is a kernel to install, a first start of a few seconds, and a document that no longer runs for a reader who has nothing. Pyodide remains the default and the only engine of the web build, and a document that says nothing runs there.
+
+### Choosing the engine
+
+A single setting commands it: **Use a local Jupyter kernel**, in Settings. It is off by default, and deliberately so — turning it on means the editor will start a local Jupyter server the first time a cell runs, and an editor that spawns a Python process unasked would be an unpleasant surprise.
+
+With it on, each document answers for itself, which is what lets a Python document and an R one be open side by side. The document's `kernelspec` is honoured if it names a kernel installed here; failing that, the first Python kernel found is used, which covers the common case of an imported notebook asking for `python3` on a machine where the kernel is named something else; and failing that, Pyodide, which in turn chooses between its local install and the network on its own.
+
+When a document asks for a kernel that cannot be given — the setting is off, or that kernel is not installed — what happens depends on the language. A Python kernel is replaced by Pyodide without a word, Pyodide being a faithful stand-in. A kernel that is not Python is not: running R under Python would only produce syntax errors with no relation to their cause, so the editor says which kernel is missing and why, and asks whether to try Pyodide anyway. The answer holds for the session.
+
+A kernel that is not Python keeps only what owes nothing to a language: interrupting, and the document's folder. The variable panel, `{eval}`, the saved namespace and our own completion are Python sent to a Python process, so they are not offered there rather than failing when used.
+
+`window.mystralUseRuntime("jupyter")` still exists in the developer console and overrides everything, for one session.
+
 ### What it cannot do  
 
 Pyodide runs on the page's main thread. A long computation freezes the interface until it returns, and there is no way to interrupt a running cell short of reloading — keep an eye on loops without a bound.  
@@ -334,7 +360,7 @@ The desktop application is no exception. It serves its interface from an origin 
 
 Alongside a document, the editor writes a **sidecar file** holding the outputs of its cells and a snapshot of its namespace, so reopening it shows the results without re-running everything, and the variables come back. The snapshot is taken of the document's own namespace and records which one it was, so it is put back where it came from.  
 
-Changing `python:` between two sessions therefore does not move the saved variables: they return to the namespace they were computed in, and the cells, which now run elsewhere, have to be re-run. That is what changing the namespace means.  
+Changing `namespace:` between two sessions therefore does not move the saved variables: they return to the namespace they were computed in, and the cells, which now run elsewhere, have to be re-run. That is what changing the namespace means.  
 
 The snapshot has limits worth knowing. Values are serialised with `cloudpickle`, and what it cannot pickle is not saved — an open file, a JavaScript proxy, some objects holding a live resource. Those are named in the browser console when the document is reopened, with the reason, since there is nothing to be done about them at that point.  
 

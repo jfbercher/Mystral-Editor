@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "preact/hooks";
+import { KERNEL_SETTING, forgetChoices } from "../markdown/engineChoice.js";
 import styled from "styled-components";
 import { MystState } from "../mystState";
 import { Compartment } from "@codemirror/state";
@@ -229,6 +230,11 @@ const Settings = () => {
 
   function changeSetting(id, enabled) {
     userSettings.value = userSettings.value.map((s) => (s.id == id ? { ...s, enabled } : s));
+    // Le choix du moteur est résolu une fois par document puis retenu, sans
+    // quoi chaque exécution rouvrirait la question. Changer le réglage doit
+    // donc explicitement défaire ce qui a été retenu : autrement il ne vaudrait
+    // que pour les documents ouverts ensuite, et l'éditeur paraîtrait sourd.
+    if (id === KERNEL_SETTING) forgetChoices();
   }
 
   useSignalEffect(() => {

@@ -80,6 +80,16 @@ const defaultUserSettings = [
     enabled: false,
   },
   {
+    // Éteint par défaut, et il doit le rester : allumer ce réglage fait
+    // lancer un serveur Jupyter local à la première cellule exécutée, et un
+    // éditeur qui démarre un processus Python sans qu'on l'ait demandé serait
+    // une surprise désagréable. Lu par `markdown/engineChoice.js`, dans le
+    // stockage local, puisqu'une cellule n'a pas de contexte Preact.
+    id: "jupyter-kernel",
+    title: "Use a local Jupyter kernel",
+    enabled: false,
+  },
+  {
     id: "autosave",
     title: "Auto-save (each minute)",
     // Seeded from config.json; the toggle then overrides it and is remembered

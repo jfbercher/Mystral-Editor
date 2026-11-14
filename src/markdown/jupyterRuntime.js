@@ -27,6 +27,7 @@ import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY, hideNamesPy } from "./nam
 import { isTauri } from "../utils/local_utils/fs.js";
 import { startJupyter, jupyterRunning } from "../utils/local_utils/jupyterServer.js";
 import { jupyterFetch, openKernel } from "../utils/local_utils/jupyterLink.js";
+import { chosenKernel } from "./engineChoice.js";
 
 /** Un noyau vivant, par espace. */
 const kernels = new Map();
@@ -40,17 +41,43 @@ const kernels = new Map();
  */
 const pending = new Map();
 
-function route(msg) {
+function route(msg, space) {
   if (msg.mystral) {
-    // Le lien s'est fermé : toutes les demandes en cours resteraient sans
-    // réponse, ce qui bloquerait les cellules qui les attendent.
-    for (const [, waiting] of pending) waiting.fail(new Error("le lien avec le noyau s'est fermé"));
-    pending.clear();
+    // Le lien s'est fermé. Deux choses à faire, et la seconde manquait :
+    // libérer les demandes en cours, qui resteraient sinon sans réponse et
+    // bloqueraient les cellules qui les attendent ; et **oublier le noyau**,
+    // sans quoi la prochaine exécution écrirait dans un lien que Rust ne
+    // connaît plus et répondrait « no such link » indéfiniment. Oublié, il
+    // est simplement recréé au prochain passage.
+    //
+    // Les demandes sont libérées toutes ensemble : elles ne disent pas de
+    // quel espace elles viennent, et un second noyau vivant verrait les
+    // siennes tomber avec les autres. C'est une imprécision assumée, pour un
+    // évènement rare dont la suite est de toute façon une réexécution.
+    failPending("le lien avec le noyau s'est fermé");
+    if (kernels.delete(space)) console.warn(`[jupyter] lien perdu pour l'espace ${space} ; un noyau neuf sera ouvert à la prochaine exécution`);
     return;
   }
   const parent = msg.parent_header?.msg_id;
   const waiting = parent ? pending.get(parent) : null;
   if (waiting) waiting.on(msg);
+}
+
+/**
+ * Libérer tout ce qui attend une réponse.
+ *
+ * Une demande en cours n'a pas de délai de garde quand elle porte une cellule
+ * -- une cellule a le droit de tourner une heure. Il faut donc que les
+ * évènements qui rendent sa réponse impossible la libèrent explicitement,
+ * sans quoi la cellule reste « en cours » pour toujours et aucun geste ne la
+ * rend à son auteur. Un `%pip uninstall` attendant une confirmation qu'on ne
+ * peut pas donner a montré le trou : le noyau redémarré, la cellule restait
+ * bloquée, et ses voisines avec elle.
+ */
+function failPending(reason) {
+  const waiting = [...pending.values()];
+  pending.clear();
+  for (const one of waiting) one.fail(new Error(reason));
 }
 
 /** Le noyau de cet espace, créé à la première demande. */
@@ -61,14 +88,22 @@ async function kernelFor(space = SHARED_SPACE) {
   const started = await startJupyter();
   if (!started.ok) throw new Error(started.reason);
   const specs = await jupyterFetch("GET", "/api/kernelspecs");
-  const created = await jupyterFetch("POST", "/api/kernels", { name: specs.default });
-  const link = await openKernel(created.id, route);
-  const entry = { id: created.id, link, space };
+  // Le noyau que `engineChoice` a retenu pour ce document, et non le noyau par
+  // défaut du serveur : c'est toute la différence entre un document R et son
+  // voisin Python ouverts en même temps.
+  const wanted = chosenKernel(space);
+  const name = wanted?.name && specs.kernelspecs?.[wanted.name] ? wanted.name : specs.default;
+  // La langue décide de ce qu'on envoie et de ce qu'on déclare savoir faire.
+  // Lue du serveur, qui la tient de la spécification du noyau lui-même.
+  const language = String(specs.kernelspecs?.[name]?.spec?.language ?? wanted?.language ?? "python").toLowerCase();
+  const created = await jupyterFetch("POST", "/api/kernels", { name });
+  const link = await openKernel(created.id, (msg) => route(msg, space));
+  const entry = { id: created.id, link, space, name, language };
   kernels.set(space, entry);
 
-  await prepare(link);
+  await prepare(entry);
 
-  console.log(`[jupyter] noyau ${created.id} pour l'espace ${space}`);
+  console.log(`[jupyter] noyau ${name} (${language}) ${created.id} pour l'espace ${space}`);
   return entry;
 }
 
@@ -79,7 +114,7 @@ async function kernelFor(space = SHARED_SPACE) {
  * iopub, et c'est ce message-là qui clôt la collecte — pas le `execute_reply`,
  * qui peut arriver avant les dernières sorties.
  */
-function request(link, msgType, content, onMessage, { timeoutMs = 0, replyType = null } = {}) {
+function request(entry, msgType, content, onMessage, { timeoutMs = 0, replyType = null } = {}) {
   // Inscrite avant l'envoi, et non à son retour. `send` ne rend son
   // identifiant qu'une fois l'appel Tauri revenu, alors que le noyau peut
   // avoir déjà répondu : la réponse n'aurait alors trouvé personne, et la
@@ -114,7 +149,18 @@ function request(link, msgType, content, onMessage, { timeoutMs = 0, replyType =
       },
       fail: (err) => done(reject, err),
     });
-    link.send(msgType, content, msgId).catch((err) => done(reject, err));
+    // Un envoi qui échoue veut dire que le lien n'est plus : Rust ne le
+    // connaît pas (« no such link »), ou il vient de se fermer. Le noyau est
+    // oublié ici aussi, parce que la sentinelle de fermeture peut n'être
+    // jamais arrivée -- une page rechargée, un serveur arrêté -- et qu'un
+    // noyau fantôme rejouerait la même erreur à chaque exécution.
+    entry.link.send(msgType, content, msgId).catch((err) => {
+      if (kernels.get(entry.space) === entry) {
+        kernels.delete(entry.space);
+        console.warn(`[jupyter] lien inutilisable pour l'espace ${entry.space} ; il sera rouvert à la prochaine exécution`, err);
+      }
+      done(reject, new Error("le lien avec le noyau a été perdu ; la prochaine exécution ouvrira un noyau neuf, dont l'espace de noms sera vide"));
+    });
   });
 }
 
@@ -132,6 +178,45 @@ const KERNEL_BRIDGE_PY = `
 def _mystral_text64(_payload):
     import base64 as _b64x
     return _b64x.b64decode(_payload).decode('utf-8')
+
+
+def _mystral_base_name(_req):
+    # Le nom de distribution d'une exigence : "pandas>=2.1" -> "pandas",
+    # "scikit-learn[extra]" -> "scikit-learn". Sans expression reguliere, qui
+    # voyagerait mal dans un litteral JS -- ses contre-obliques y disparaissent.
+    _s = str(_req).strip().split('[')[0].split(';')[0]
+    for _sep in ('===', '==', '>=', '<=', '!=', '~=', '>', '<'):
+        _s = _s.split(_sep)[0]
+    return _s.strip()
+
+
+def _mystral_missing(_names):
+    # Ce que le document demande et que ce noyau n'a pas. La distribution
+    # d'abord, parce que c'est elle que l'exigence nomme et qu'elle connait
+    # "scikit-learn" ; le module ensuite, parce qu'un paquet pose autrement
+    # qu'avec pip s'importe sans qu'aucune distribution ne le declare.
+    import importlib.metadata as _md, importlib.util as _iu
+    _out = []
+    for _n in _names:
+        _base = _mystral_base_name(_n)
+        if not _base:
+            continue
+        try:
+            _md.version(_base)
+            continue
+        except Exception:
+            pass
+        try:
+            if _iu.find_spec(_base.replace('-', '_')):
+                continue
+        except Exception:
+            pass
+        _out.append(_n)
+    return _out
+
+
+def _mystral_missing_json(_names):
+    return _json_vi.dumps(_mystral_missing(_names))
 `;
 
 /** Les noms qu'IPython pose lui-même dans l'espace de l'utilisateur. */
@@ -151,11 +236,11 @@ function b64(text) {
  * réponse vide, parce qu'un panneau de variables qui se dit vide alors qu'il
  * n'a pas su regarder est le défaut que ce projet refuse.
  */
-async function callJson(link, code) {
+async function callJson(entry, code) {
   let out = "";
   let failure = null;
   await request(
-    link,
+    entry,
     "execute_request",
     { code, silent: false, store_history: false, user_expressions: {}, allow_stdin: false },
     (msg) => {
@@ -182,7 +267,16 @@ async function callJson(link, code) {
  * `matplotlib.use("agg")` que Pyodide pose de son côté : chaque moteur doit
  * dire où ses figures vont.
  */
-async function prepare(link) {
+async function prepare(entry) {
+  // Tout ce préambule est du Python : le backend des figures, les fonctions
+  // des services, le pont. L'envoyer à un noyau R n'en ferait pas du R, cela
+  // ferait trois erreurs et une liste de capacités mensongère. Un noyau qui
+  // n'est pas Python ne reçoit donc rien, et ne déclare rien de ce que ce
+  // Python-là apporte -- voir `capabilitiesIn`.
+  if (entry.language !== "python") {
+    console.log(`[jupyter] noyau ${entry.name} (${entry.language}) : ni figures ni services, qui sont écrits en Python`);
+    return;
+  }
   const steps = [
     ["le backend des figures", "%matplotlib inline"],
     ["les fonctions des services", [NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY, KERNEL_BRIDGE_PY, hideNamesPy(IPYTHON_NAMES)].join("\n")],
@@ -191,7 +285,7 @@ async function prepare(link) {
     try {
       let failure = null;
       await request(
-        link,
+        entry,
         "execute_request",
         { code, silent: false, store_history: false, user_expressions: {}, allow_stdin: false },
         (msg) => {
@@ -233,16 +327,185 @@ function fromMimes(data = {}) {
   return { kind: "text", value: String(data["text/plain"] ?? "") };
 }
 
-async function execute(code, { onStream = null, space = SHARED_SPACE } = {}) {
+/**
+ * Placer le noyau dans le dossier du document.
+ *
+ * C'est tout le jalon 3, et c'est une ligne de Python. Pyodide travaille sur
+ * une copie : les fichiers qu'une cellule nomme sont repérés dans son source,
+ * copiés dans un système de fichiers en mémoire sous `/local`, et recopiés
+ * au retour. Un noyau n'a besoin de rien de tout cela -- il a le vrai
+ * système de fichiers -- mais il démarre là où le serveur a été lancé, qui
+ * n'est pas le dossier du document. D'où `os.chdir`.
+ *
+ * Ce n'est pas la racine du serveur qu'on change, contrairement à ce que le
+ * plan supposait : la racine ne gouverne que les API de fichiers du serveur,
+ * dont nous ne nous servons pas, et elle interdirait d'ouvrir un document
+ * situé ailleurs. Le répertoire courant du noyau est ce qui décide de ce que
+ * `open("data.csv")` lit, et il se règle noyau par noyau -- donc espace par
+ * espace, ce qui est exactement la granularité qu'on veut.
+ *
+ * Demandé seulement quand il change : au premier passage, quand le document
+ * n'est pas celui de la dernière exécution -- deux documents peuvent partager
+ * un espace -- et à chaque exécution si `resetCwdOnRun` est posée, qui veut
+ * dire qu'une cellule repart du dossier du document même si la précédente
+ * s'est déplacée. En une demande à part, et non collée devant le code de la
+ * cellule : préfixer le source décalerait les numéros de ligne de toutes ses
+ * erreurs.
+ */
+async function placeKernel(entry, cwd, resetCwd) {
+  if (!cwd || (entry.cwd === cwd && !resetCwd)) return;
+  try {
+    await request(
+      entry,
+      "execute_request",
+      {
+        code: `import os as _os_cwd; _os_cwd.chdir(${JSON.stringify(cwd)})`,
+        silent: false,
+        store_history: false,
+        user_expressions: {},
+        allow_stdin: false,
+      },
+      () => {},
+      { timeoutMs: 15000, replyType: "execute_reply" },
+    );
+    entry.cwd = cwd;
+  } catch (err) {
+    // Un dossier devenu inaccessible, un noyau qui ne répond plus : la
+    // cellule s'exécutera là où le noyau se trouve, et ce qu'elle dira de
+    // `data.csv` sera clair. Mieux vaut cela que refuser de l'exécuter.
+    console.warn(`[jupyter] le noyau n'a pas pu se placer dans ${cwd} :`, err);
+  }
+}
+
+/**
+ * Les paquets refusés, par espace : on ne redemande pas à chaque exécution.
+ *
+ * Le refus vaut pour la session, pas pour le document : il dit « pas dans cet
+ * environnement », ce qui est une décision sur la machine, et elle ne survit
+ * pas à une fermeture — rien n'est écrit nulle part.
+ */
+const declinedPackages = new Map();
+
+/** Deux boutons, qui est tout ce que les dialogues natifs offrent. */
+async function askYesNo(message, title, okLabel, cancelLabel) {
+  if (!isTauri()) return window.confirm(`${message}\n\nOK: ${okLabel} — Cancel: ${cancelLabel}`);
+  const { ask } = await import("@tauri-apps/plugin-dialog");
+  return await ask(message, { title, kind: "warning", okLabel, cancelLabel });
+}
+
+const askToInstall = (names, kernelName) =>
+  askYesNo(
+    `This document asks for ${names.join(", ")}.\n\n` +
+      `They are not installed in the kernel (${kernelName}). Install them there with %pip?\n\n` +
+      `This changes the Python environment on this machine, not just this document.`,
+    "Install packages?",
+    "Install",
+    "Skip",
+  );
+
+/**
+ * `:packages:` sous un noyau.
+ *
+ * L'option fait installer par micropip sous Pyodide, où l'environnement est
+ * jetable et n'appartient à personne. Un noyau est l'environnement de
+ * quelqu'un : y installer sans le dire serait s'autoriser à modifier une
+ * machine parce qu'un document le demande, et un document peut venir
+ * d'ailleurs. Échouer serait l'autre excès, puisque le document n'a rien fait
+ * de mal -- il a été écrit pour Pyodide.
+ *
+ * Donc : demander, une fois, en nommant ce qui manque, et n'installer que ce
+ * qui manque. Un refus est retenu pour la session, et la cellule s'exécute
+ * quand même : si elle a vraiment besoin du paquet, son `ImportError` le dira
+ * mieux que nous.
+ */
+async function ensurePackages(entry, packages, onStream) {
+  if (!packages?.length) return;
+  const refused = declinedPackages.get(entry.space) ?? new Set();
+  const wanted = packages.filter((name) => !refused.has(name));
+  if (!wanted.length) return;
+
+  let missing;
+  try {
+    missing = await callJson(entry, `print(_mystral_missing_json(_json_vi.loads(_mystral_text64("${b64(JSON.stringify(wanted))}"))))`);
+  } catch (err) {
+    console.warn("[jupyter] impossible de savoir quels paquets manquent :", err);
+    return;
+  }
+  if (!missing?.length) return;
+
+  if (!(await askToInstall(missing, entry.name ?? "python"))) {
+    for (const name of missing) refused.add(name);
+    declinedPackages.set(entry.space, refused);
+    console.warn(`[jupyter] ${missing.join(", ")} non installés (refusé) ; la cellule s'exécute sans eux`);
+    return;
+  }
+
+  // La sortie de l'installation est diffusée dans la cellule : elle est
+  // longue, parfois bavarde, et c'est précisément ce qu'on veut voir quand on
+  // vient d'autoriser une modification de son environnement.
+  await request(
+    entry,
+    "execute_request",
+    { code: `%pip install ${missing.join(" ")}`, silent: false, store_history: false, user_expressions: {}, allow_stdin: false },
+    (msg) => {
+      if (msg.msg_type === "stream") onStream?.(msg.content?.name === "stderr" ? "stderr" : "stdout", msg.content?.text ?? "");
+    },
+    { timeoutMs: 600000 },
+  );
+}
+
+/**
+ * `%pip uninstall` sans `-y`.
+ *
+ * pip demande « Proceed (Y/n)? » sur son entrée standard. La cellule n'en a
+ * pas : `allow_stdin` est faux, ce qui fait échouer proprement un `input()`
+ * du document, mais pip est un sous-processus et sa question n'emprunte pas
+ * le protocole -- elle part dans un terminal qui n'existe pas. Rien ne revient
+ * jamais, et la cellule attend pour toujours.
+ *
+ * Ajouter `-y` d'office reviendrait à confirmer à la place de quelqu'un une
+ * opération qui retire des paquets de sa machine. On demande donc, comme pour
+ * l'installation, et on n'écrit `-y` que si la réponse est oui. La ligne du
+ * document n'est pas modifiée : seul ce qui part au noyau l'est, et sur la
+ * même ligne, donc sans décaler les numéros d'une erreur.
+ */
+const UNINSTALL_WITHOUT_YES = /^[ \t]*[%!]pip[ \t]+uninstall\b(?![^\n]*(?:^|[ \t])-(?:y\b|-yes\b))[^\n]*$/gm;
+
+async function guardUninstall(code) {
+  UNINSTALL_WITHOUT_YES.lastIndex = 0;
+  if (!UNINSTALL_WITHOUT_YES.test(code)) return code;
+  const agreed = await askYesNo(
+    "This cell runs `pip uninstall`, which asks for a confirmation the editor cannot answer: " +
+      "the question goes to a terminal that does not exist, and the cell would wait for ever.\n\n" +
+      "Run it with -y, removing the packages without further confirmation?",
+    "Uninstall packages?",
+    "Run with -y",
+    "Cancel",
+  );
+  if (!agreed) return null;
+  UNINSTALL_WITHOUT_YES.lastIndex = 0;
+  return code.replace(UNINSTALL_WITHOUT_YES, (line) => `${line.replace(/[ \t]+$/, "")} -y`);
+}
+
+async function execute(code, { packages = [], onStream = null, space = SHARED_SPACE, cwd = null, resetCwd = false } = {}) {
   const started = performance.now();
-  const { link } = await kernelFor(space);
+  const guarded = await guardUninstall(code);
+  if (guarded === null) {
+    return { stdout: "", stderr: "", error: "cancelled: pip uninstall needs -y to run here", returnValue: null, figures: [], durationMs: 0 };
+  }
+
+  const entry = await kernelFor(space);
+  await placeKernel(entry, cwd, resetCwd);
+  // Après le placement : une exigence peut nommer un chemin relatif au
+  // document, comme une roue posée à côté de lui.
+  await ensurePackages(entry, packages, onStream);
   let stdout = "";
   let stderr = "";
   let error = null;
   let returnValue = null;
   const figures = [];
 
-  await request(link, "execute_request", { code, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
+  await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
     switch (msg.msg_type) {
       case "stream": {
@@ -274,9 +537,9 @@ async function execute(code, { onStream = null, space = SHARED_SPACE } = {}) {
 }
 
 async function evaluate(expr, space = SHARED_SPACE) {
-  const { link } = await kernelFor(space);
+  const entry = await kernelFor(space);
   let value = { kind: "text", value: "" };
-  await request(link, "execute_request", { code: expr, silent: false, store_history: false, user_expressions: {}, allow_stdin: false }, (msg) => {
+  await request(entry, "execute_request", { code: expr, silent: false, store_history: false, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
     if (msg.msg_type === "execute_result" || msg.msg_type === "display_data") value = fromMimes(c.data);
     if (msg.msg_type === "error") value = { kind: "error", value: `${c.ename}: ${c.evalue}` };
@@ -295,19 +558,27 @@ async function interrupt(space = SHARED_SPACE) {
 /** Un vrai redémarrage de processus, pas un vidage de dictionnaire. */
 async function restart(space = SHARED_SPACE) {
   const entry = kernels.get(space);
-  if (!entry) return { softened: false, removed: [] };
+  // `softened` reste faux : rien n'a été adouci, et `removed` ne peut pas
+  // être rempli -- un processus neuf ne sait pas ce que le précédent tenait.
+  // `restarted` dit ce qui s'est passé, et laisse l'interface écrire la
+  // phrase juste au lieu d'annoncer zéro variable effacée.
+  if (!entry) return { softened: false, removed: [], restarted: false };
   await jupyterFetch("POST", `/api/kernels/${entry.id}/restart`);
+  // Ce que le processus d'avant devait encore est perdu avec lui : les
+  // cellules qui l'attendaient doivent l'apprendre, et c'est la seule façon
+  // de rendre la main à celle que le redémarrage venait délivrer.
+  failPending("le noyau a redémarré pendant l'exécution de cette cellule");
   // Le processus est neuf : il ne sait plus ni où vont ses figures, ni ce que
   // sont les fonctions des services. Le `kernel_info_request` sert d'attente :
   // il ne revient au repos qu'une fois le noyau debout, et prépare donc moins
   // dans le vide qu'un délai choisi au jugé.
   try {
-    await request(entry.link, "kernel_info_request", {}, () => {}, { timeoutMs: 30000, replyType: "kernel_info_reply" });
+    await request(entry, "kernel_info_request", {}, () => {}, { timeoutMs: 30000, replyType: "kernel_info_reply" });
   } catch (err) {
     console.warn("[jupyter] redémarrage : le noyau tarde à répondre", err);
   }
-  await prepare(entry.link);
-  return { softened: false, removed: [] };
+  await prepare(entry);
+  return { softened: false, removed: [], restarted: true };
 }
 
 /**
@@ -341,7 +612,7 @@ async function complete(source, pos, space = SHARED_SPACE) {
 
   let reply = null;
   await request(
-    entry.link,
+    entry,
     "complete_request",
     { code: source, cursor_pos: pos },
     (msg) => {
@@ -368,15 +639,15 @@ async function complete(source, pos, space = SHARED_SPACE) {
       // candidat. On lui soumet donc le texte tel qu'il serait si l'entrée
       // était acceptée, curseur au bout : la documentation obtenue est bien
       // celle de ce candidat-là, et non celle du mot incomplet sous le curseur.
-      doc: () => describe(entry.link, source.slice(0, from) + match, from + match.length),
+      doc: () => describe(entry, source.slice(0, from) + match, from + match.length),
     })),
   };
 }
 
-async function describe(link, probe, cursor) {
+async function describe(entry, probe, cursor) {
   let found = null;
   await request(
-    link,
+    entry,
     "inspect_request",
     { code: probe, cursor_pos: cursor, detail_level: 0 },
     (msg) => {
@@ -400,14 +671,14 @@ async function describe(link, probe, cursor) {
 async function inspect(includeAll = false, space = SHARED_SPACE) {
   const entry = kernels.get(space);
   if (!entry) return null;
-  return callJson(entry.link, `print(_mystral_varlist_json(${includeAll ? "True" : "False"}))`);
+  return callJson(entry, `print(_mystral_varlist_json(${includeAll ? "True" : "False"}))`);
 }
 
 async function forget(names, { unloadModules = false, space = SHARED_SPACE } = {}) {
   const entry = kernels.get(space);
   if (!entry || !names?.length) return [];
   const removed = await callJson(
-    entry.link,
+    entry,
     `print(_mystral_delete(_json_vi.loads(_mystral_text64("${b64(JSON.stringify(names))}")), ${unloadModules ? "True" : "False"}))`,
   );
   console.log(`[jupyter] retiré de ${space} : ${removed?.join(", ") || "rien"}`);
@@ -417,7 +688,7 @@ async function forget(names, { unloadModules = false, space = SHARED_SPACE } = {
 async function snapshot(space = SHARED_SPACE) {
   const entry = kernels.get(space);
   if (!entry) return null;
-  const saved = await callJson(entry.link, "print(_mystral_snapshot_json())");
+  const saved = await callJson(entry, "print(_mystral_snapshot_json())");
   const skipped = Object.entries(saved ?? {})
     .filter(([, e]) => e.skipped)
     .map(([n]) => n);
@@ -433,8 +704,8 @@ async function snapshot(space = SHARED_SPACE) {
 
 async function restore(saved, space = SHARED_SPACE) {
   if (!saved || Object.keys(saved).length === 0) return;
-  const { link } = await kernelFor(space);
-  const report = await callJson(link, `print(_mystral_restore_json(_mystral_text64("${b64(JSON.stringify(saved))}")))`);
+  const entry = await kernelFor(space);
+  const report = await callJson(entry, `print(_mystral_restore_json(_mystral_text64("${b64(JSON.stringify(saved))}")))`);
   const { ok = [], failed = {}, relinked = 0, never_saved: neverSaved = {} } = report ?? {};
   for (const [name, info] of Object.entries(failed)) {
     console.warn(`[jupyter] n'a pas pu restaurer « ${name} » : ${info.reason}`);
@@ -462,13 +733,37 @@ export async function closeKernels() {
 
 // Enregistré seulement là où il peut exister. Pyodide s'étant enregistré le
 // premier reste le moteur actif ; celui-ci attend `useRuntime("jupyter")`.
-if (isTauri) {
+// `isTauri` est une fonction : non appelée, elle est vraie partout, et ce
+// moteur se déclarait aussi dans le build web -- où il ne peut pas exister.
+// Sans conséquence visible, Pyodide s'enregistrant le premier et le choix
+// étant manuel, mais la condition ne disait pas ce qu'elle croyait dire.
+if (isTauri()) {
   registerRuntime({
     name: "jupyter",
     // Pas `magics` : `%load` met des fichiers dans un système de fichiers
     // virtuel qui n'existe pas ici -- c'est le jalon 3. Pas `widgets` non
     // plus. Une capacité non déclarée vaut mieux qu'un bouton qui échoue.
-    capabilities: ["expressions", "interrupt", "inspect", "snapshot", "completion"],
+    // `magics` : `%load` est une réécriture faite côté éditeur, qui lit le
+    // fichier par le même chemin quel que soit le moteur, et `%whos` est
+    // rendu ici par IPython lui-même. `localfiles` dit ce que le jalon 3
+    // apporte : les cellules lisent et écrivent le dossier du document tel
+    // qu'il est, sans copie ni recopie.
+    capabilities: ["expressions", "magics", "interrupt", "inspect", "snapshot", "completion", "localfiles"],
+    /**
+     * Ce qu'un noyau donné sait faire, qui n'est pas ce que le moteur sait
+     * faire. Nos services sont du Python envoyé à un processus Python :
+     * `{eval}`, le panneau de variables, les instantanés, la complétion de
+     * notre côté. Un noyau R garde ce qui ne dépend d'aucune langue --
+     * l'interruption, et le dossier du document.
+     */
+    capabilitiesIn: (space) => {
+      const language = kernels.get(space)?.language ?? chosenKernel(space)?.language ?? "python";
+      return String(language).toLowerCase() === "python"
+        ? ["expressions", "magics", "interrupt", "inspect", "snapshot", "completion", "localfiles"]
+        : ["interrupt", "localfiles"];
+    },
+    // `:packages:` est traité par `execute`, qui a le noyau sous la main :
+    // démarrer le serveur ne dit rien de ce qui est installé.
     ready: () => startJupyter(),
     // Un noyau vivant, et non le serveur allumé : c'est ce que le sidecar
     // demande avant d'enregistrer, et il ne doit enregistrer que s'il y a

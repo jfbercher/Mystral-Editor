@@ -166,7 +166,22 @@ export async function showVarInspector(space = "shared", spaceLabel = "shared") 
   };
 
   const load = async () => {
-    const list = await runtime(space).inspect(allBox.checked, space);
+    let list;
+    try {
+      list = await runtime(space).inspect(allBox.checked, space);
+    } catch (err) {
+      // Sans cela, une erreur du moteur -- un noyau dont le lien s'est fermé,
+      // par exemple -- laissait le panneau tourner indéfiniment sur son
+      // message d'attente, ce qui est la pire des réponses : rien ne vient,
+      // et rien ne dit pourquoi.
+      const said = document.createElement("p");
+      said.style.opacity = ".7";
+      said.textContent = `Could not read the namespace: ${err?.message ?? err}`;
+      body.replaceChildren(said);
+      total.textContent = "";
+      rows = [];
+      return;
+    }
     if (list === null) {
       body.innerHTML = `<p style="opacity:.7;">Python has not started yet — run a cell first.</p>`;
       total.textContent = "";

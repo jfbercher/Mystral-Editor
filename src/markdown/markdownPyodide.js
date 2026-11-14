@@ -254,6 +254,13 @@ function ensureObserver(parent, owner = "") {
         // this attribute, so the reused widget has to be told to rebuild it.
         evictedHost.dataset.params = el.dataset.params ?? "";
         evictedHost.dataset.tags = el.dataset.tags ?? "";
+        // `:packages:` manquait, et le défaut était complet : l'option écrite
+        // dans une cellule déjà construite n'arrivait jamais jusqu'à
+        // l'exécution, puisqu'elle ne change pas le code, donc pas le hash,
+        // donc pas la cellule. Elle n'avait d'effet qu'après un rechargement
+        // du document -- sous les deux moteurs, le noyau n'ayant fait que le
+        // rendre visible en demandant une installation qui ne venait pas.
+        evictedHost.dataset.packages = el.dataset.packages ?? "[]";
         // Line numbers travel the same way as the rest: the reused editor is
         // reconfigured rather than rebuilt, which is what makes `:linenos:`
         // take effect on the cell in front of the author instead of at the
