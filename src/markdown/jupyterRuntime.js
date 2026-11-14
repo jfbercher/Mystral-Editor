@@ -41,6 +41,74 @@ const kernels = new Map();
  */
 const pending = new Map();
 
+/**
+ * Les comms : le canal que les widgets empruntent.
+ *
+ * Préparation du terrain, pas encore les widgets eux-mêmes. Ce qui manquait
+ * n'était pas le rendu mais le **routage** : tout ce qui revient d'un noyau
+ * était rendu à la demande en cours, et un message sans demande était perdu.
+ * Or un widget vit précisément après la fin de la cellule qui l'a créé --
+ * chaque déplacement d'un curseur envoie un `comm_msg` qui ne répond à rien.
+ * Ils arrivaient donc dans le vide, et aucun gestionnaire n'aurait pu les
+ * rattraper après coup.
+ *
+ * Trois messages : `comm_open` quand le noyau déclare un objet partagé,
+ * `comm_msg` pour chaque changement d'état dans un sens ou dans l'autre,
+ * `comm_close` à la fin. Ils sont routés par `comm_id` et non par
+ * `parent_header`, ce qui est leur seule identité durable.
+ *
+ * Ce que cela ne fait pas, et qu'il faudra : rendre les vues. Un
+ * `display_data` de widget porte `application/vnd.jupyter.widget-view+json`
+ * avec un `model_id` ; le relier à un modèle demande
+ * `@jupyter-widgets/html-manager`, qui est la seule dépendance lourde du
+ * sujet. D'ici là, la cellule dit qu'un widget est passé plutôt que de ne
+ * rien montrer.
+ */
+const comms = new Map();
+const commListeners = new Set();
+
+/** S'abonner à ce qui passe sur les comms. Rend de quoi se désabonner. */
+export function onComm(listener) {
+  commListeners.add(listener);
+  return () => commListeners.delete(listener);
+}
+
+/** Écrire sur un comm : ouvrir, envoyer un état, fermer. */
+export function sendComm(space, msgType, content) {
+  const entry = kernels.get(space);
+  if (!entry) throw new Error(`aucun noyau pour l'espace ${space}`);
+  return entry.link.send(msgType, content);
+}
+
+/** Ce qui est ouvert, pour la console et pour un gestionnaire qui arriverait en cours de route. */
+export const listComms = () => [...comms.entries()].map(([id, c]) => ({ id, ...c }));
+
+// Exposés pour la console : `onComm` y est joint parce qu'un `import()` depuis
+// la console peut rendre une autre instance du module -- dont la liste
+// d'abonnés serait vide, et l'essai muet sans qu'on sache pourquoi.
+if (typeof window !== "undefined") {
+  window.mystralComms = listComms;
+  window.mystralOnComm = onComm;
+}
+
+function routeComm(msg, space) {
+  const kind = msg.msg_type;
+  if (kind !== "comm_open" && kind !== "comm_msg" && kind !== "comm_close") return false;
+  const id = msg.content?.comm_id;
+  if (id) {
+    if (kind === "comm_open") comms.set(id, { target: msg.content?.target_name ?? "", space, openedAt: Date.now() });
+    else if (kind === "comm_close") comms.delete(id);
+  }
+  for (const listener of commListeners) {
+    try {
+      listener(msg, space);
+    } catch (err) {
+      console.warn("[jupyter] un abonné aux comms a échoué :", err);
+    }
+  }
+  return true;
+}
+
 function route(msg, space) {
   if (msg.mystral) {
     // Le lien s'est fermé. Deux choses à faire, et la seconde manquait :
@@ -58,6 +126,8 @@ function route(msg, space) {
     if (kernels.delete(space)) console.warn(`[jupyter] lien perdu pour l'espace ${space} ; un noyau neuf sera ouvert à la prochaine exécution`);
     return;
   }
+  // Avant le routage par demande : un comm n'en a pas, ou plus.
+  if (routeComm(msg, space)) return;
   const parent = msg.parent_header?.msg_id;
   const waiting = parent ? pending.get(parent) : null;
   if (waiting) waiting.on(msg);
@@ -513,6 +583,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
   let returnValue = null;
   const figures = [];
   const htmls = [];
+  const widgets = [];
 
   await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
@@ -533,8 +604,10 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
         // est le nôtre : une image d'abord, puis le HTML d'un objet qui sait
         // se rendre -- un DataFrame, une table --, le texte en dernier. Sous
         // Pyodide il faut aller interroger l'objet ; ici il a déjà répondu.
+        const view = c.data?.["application/vnd.jupyter.widget-view+json"];
         const image = figureUrl(c.data);
-        if (image) figures.push(image);
+        if (view?.model_id) widgets.push(view.model_id);
+        else if (image) figures.push(image);
         else if (c.data?.["text/html"]) htmls.push(c.data["text/html"]);
         else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
         break;
@@ -547,7 +620,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
     }
   });
 
-  return { stdout, stderr, error, returnValue, figures, htmls, durationMs: Math.round(performance.now() - started) };
+  return { stdout, stderr, error, returnValue, figures, htmls, widgets, durationMs: Math.round(performance.now() - started) };
 }
 
 async function evaluate(expr, space = SHARED_SPACE) {

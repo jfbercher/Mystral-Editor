@@ -1556,6 +1556,18 @@ function renderOutput(outputArea, result) {
     outputArea.appendChild(block);
   }
 
+  // Un widget est passé, et nous ne savons pas encore le rendre : le dire
+  // vaut mieux qu'une cellule qui paraît n'avoir rien produit. Le modèle vit
+  // dans le noyau, son canal est ouvert et écouté (voir les comms dans
+  // jupyterRuntime.js) ; il ne manque que la vue.
+  for (const modelId of result.widgets ?? []) {
+    hasContent = true;
+    const note = document.createElement("div");
+    note.className = "pyodide-widget-note";
+    note.textContent = `ipywidget (${String(modelId).slice(0, 8)}…) — this editor does not display widgets yet`;
+    outputArea.appendChild(note);
+  }
+
   if (!hasContent) outputArea.hidden = true;
 }
 

@@ -144,6 +144,7 @@
    résumé de modèle. Contenu dans la largeur de la cellule et défilant plutôt
    que débordant, comme la sortie texte et le code le font déjà. */
 .pyodide-html{max-width:100%;overflow-x:auto;margin:.5rem 0;font-size:.85em}
+.pyodide-widget-note{margin:.4rem 0;padding:.25em .5em;font-size:.78rem;font-style:italic;color:var(--color-foreground-muted,#57606a);border-left:2px solid var(--border,#ccc)}
 .pyodide-html table{border-collapse:collapse}
 .pyodide-html th,.pyodide-html td{border:1px solid var(--border,#ccc);padding:.15em .45em;text-align:right}
 .pyodide-html th{font-weight:600}
