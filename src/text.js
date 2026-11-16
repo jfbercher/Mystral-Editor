@@ -537,8 +537,18 @@ export class TextManager {
         indent = found.indent;
       }
 
+      // Le séparateur dépend de ce qui entoure le point d'insertion, et il le
+      // faut : quand deux cellules se suivent sans ligne vide, `blockEnd`
+      // tombe au début de la ligne de la suivante. Un bloc posé là sans rien
+      // derrière lui collait son `:::` de fermeture au `:::{code-cell}` du
+      // voisin -- six deux-points sur une ligne, et deux cellules fondues en
+      // une. Symétriquement, une ligne vide de trop s'ajoutait devant quand on
+      // était déjà en début de ligne.
+      const atLineStart = insertPos === 0 || src[insertPos - 1] === "\n";
+      const before = atLineStart ? "\n" : "\n\n";
+      const after = insertPos < src.length && src[insertPos] !== "\n" ? "\n\n" : "";
       view.dispatch({
-        changes: { from: insertPos, to: insertPos, insert: "\n\n" + indentBody(":::{code-cell}\n\n:::", indent) },
+        changes: { from: insertPos, to: insertPos, insert: before + indentBody(":::{code-cell}\n\n:::", indent) + after },
       });
     };
     document.addEventListener("pyodide-insert-cell-below", this._pyodideInsertBelowHandler);
