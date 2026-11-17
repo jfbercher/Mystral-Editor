@@ -144,6 +144,11 @@
    résumé de modèle. Contenu dans la largeur de la cellule et défilant plutôt
    que débordant, comme la sortie texte et le code le font déjà. */
 .pyodide-html{max-width:100%;overflow-x:auto;margin:.5rem 0;font-size:.85em}
+/* Which interpreter runs this cell, beside the namespace it runs in. Quieter
+   than the namespace: it is the usual answer that matters least. */
+.pyodide-engine-tag{font-size:.68rem;color:var(--color-foreground-muted,#8c959f);border:1px solid var(--color-border,#ccc);border-radius:3px;padding:0 .35em;white-space:nowrap;flex:0 0 auto}
+.pyodide-engine-tag[data-engine="jupyter"]{border-style:solid;font-weight:600}
+
 .pyodide-widget{margin:.4rem 0;max-width:100%}
 /* Les widgets s'habillent avec les variables --jp-* de leur propre feuille.
    Plutôt que de corriger élément par élément -- ce qui laissait le nombre d'un

@@ -11,6 +11,7 @@
  * nothing has to be told which tab is active.
  */
 import { useContext, useEffect, useRef, useState } from "preact/hooks";
+import { availableInterpreters, currentChoice, pickInterpreter, onEngineChange, interpreterMenuEnabled } from "../markdown/engineChoice.js";
 import { useSignalEffect } from "@preact/signals";
 import styled from "styled-components";
 import { MystState } from "../mystState";
@@ -215,7 +216,6 @@ function useCounts(text, options) {
   return { counts, tooLong, countNow: () => compute(text.text.peek()) };
 }
 
-
 //Whether this runs in the desktop build.
 const onDesktop = isTauri();
 
@@ -275,9 +275,82 @@ const DictionaryMenu = ({ options, declared, onClose }) => {
   );
 };
 
+/**
+ * The menu of interpreters, opened from the bar.
+ *
+ * Shown only where there is something to choose: the desktop build, with
+ * "Use local Jupyter kernel" turned on. The list is asked for when the menu
+ * opens, as the dictionaries are and for the same reason -- a kernel is
+ * installed by a command in a terminal, which nothing notifies us of.
+ *
+ * The choice holds for the session. A lasting one belongs in the document's
+ * `kernelspec`, which is also what its namespace is derived from, and that is
+ * why a kernel of another language is refused here rather than applied: two
+ * interpreters cannot share a namespace, and only the frontmatter can say so.
+ */
+const InterpreterMenu = ({ docKey, onClose }) => {
+  const [kernels, setKernels] = useState(null);
+  const [reason, setReason] = useState("");
+  const [refused, setRefused] = useState("");
+  const current = currentChoice(docKey);
+
+  useEffect(() => {
+    let alive = true;
+    availableInterpreters()
+      .then((found) => {
+        if (!alive) return;
+        setKernels(found.kernels);
+        setReason(found.reason);
+      })
+      .catch(() => alive && setKernels([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const pick = (kernel) => {
+    const { ok, reason: why } = pickInterpreter(docKey, kernel);
+    if (!ok) return setRefused(why);
+    onClose();
+  };
+
+  const isActive = (name) => (name ? current.engine === "jupyter" && current.kernel?.name === name : current.engine === "pyodide");
+
+  return (
+    <div className="menu" onClick={(ev) => ev.stopPropagation()}>
+      <div className="menu-title">Interpreter — {current.settled ? "for this session" : "not started yet"}</div>
+      <button type="button" onClick={() => pick(null)}>
+        {isActive(null) ? "\u2022 " : "\u00a0\u00a0"}
+        pyodide
+      </button>
+      {kernels === null && <div className="menu-title">looking…</div>}
+      {kernels?.length === 0 && <div className="menu-title">{reason || "no kernel found"}</div>}
+      {kernels?.map((kernel) => (
+        <button key={kernel.name} type="button" onClick={() => pick(kernel)}>
+          {isActive(kernel.name) ? "\u2022 " : "\u00a0\u00a0"}
+          {/* The kernelspec name first, because it is the identifier: unique,
+              shown by the indicators, and the one a document writes in its
+              `kernelspec`. Its human label follows, quietly -- it is what
+              tells two Pythons apart, but it is not what anything else in
+              this editor calls them. */}
+          {kernel.name}
+          {kernel.displayName && kernel.displayName !== kernel.name ? <span className="muted"> {kernel.displayName}</span> : null}
+        </button>
+      ))}
+      {refused && (
+        <>
+          <hr />
+          <div className="menu-title">{refused}</div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export const StatusBar = () => {
   const { options, text } = useContext(MystState);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [engineMenuOpen, setEngineMenuOpen] = useState(false);
 
   // A click anywhere else closes it, which is what a menu does.
   useEffect(() => {
@@ -286,6 +359,19 @@ export const StatusBar = () => {
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!engineMenuOpen) return;
+    const close = () => setEngineMenuOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [engineMenuOpen]);
+
+  // Redrawn when an engine is settled or changed, which happens on the first
+  // run rather than when the document opens.
+  const [, bumpEngine] = useState(0);
+  useEffect(() => onEngineChange(() => bumpEngine((n) => n + 1)), []);
+  const engine = currentChoice(options.id.value);
   const { counts, tooLong, countNow } = useCounts(text, options);
 
   const git = gitSummary.value;
@@ -336,6 +422,27 @@ export const StatusBar = () => {
         </button>
         {menuOpen && <DictionaryMenu options={options} declared={text.language.value} onClose={() => setMenuOpen(false)} />}
       </span>
+
+      {onDesktop && interpreterMenuEnabled() && (
+        <span className="menu-anchor">
+          <button
+            type="button"
+            className="item"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              setEngineMenuOpen((open) => !open);
+            }}
+            title={
+              engine.engine === "jupyter"
+                ? `Code cells run on the kernel "${engine.kernel?.displayName || engine.kernel?.name || "jupyter"}" — click to choose another`
+                : "Code cells run on Pyodide — click to choose a local kernel"
+            }
+          >
+            {engine.engine === "jupyter" ? (engine.kernel?.name ?? "jupyter") : <span className="muted">pyodide</span>}
+          </button>
+          {engineMenuOpen && <InterpreterMenu docKey={options.id.value} onClose={() => setEngineMenuOpen(false)} />}
+        </span>
+      )}
 
       <span className="spacer" />
 

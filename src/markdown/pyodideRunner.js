@@ -11,8 +11,8 @@
 
 import IMurMurHash from "imurmurhash";
 import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/fs.js";
-import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, supports } from "./cellRuntime.js";
-import { chooseEngineFor } from "./engineChoice.js";
+import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, runtimeNameFor, supports } from "./cellRuntime.js";
+import { chooseEngineFor, chosenKernel, onEngineChange } from "./engineChoice.js";
 import DOMPurify from "dompurify";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
@@ -1870,6 +1870,38 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
           "Imported modules, matplotlib state and the current directory stay common.";
   };
   refreshSpaceTag();
+
+  /**
+   * Who runs this cell: `pyodide`, or the kernel's own name.
+   *
+   * Beside the namespace, and for the same reason -- it says what is true of
+   * this cell rather than offering a way to change it, the menu in the
+   * editor's status bar being where one chooses. It reacts rather than being
+   * stamped once: the engine is only settled on the first run, so a cell
+   * displayed before that would otherwise claim Pyodide for ever.
+   */
+  const engineTag = document.createElement("span");
+  engineTag.className = "pyodide-engine-tag";
+  const refreshEngineTag = () => {
+    const space = _space();
+    const engine = runtimeNameFor(space);
+    const kernel = chosenKernel(space);
+    const name = engine === "jupyter" ? (kernel?.name ?? "jupyter") : engine;
+    engineTag.textContent = name;
+    engineTag.dataset.engine = engine;
+    engineTag.title =
+      engine === "jupyter"
+        ? `Runs on the local Jupyter kernel "${kernel?.displayName || name}"${kernel?.language ? ` (${kernel.language})` : ""}.`
+        : "Runs on Pyodide, in the page. Turn on “Use local Jupyter kernel” in Settings to use an installed kernel.";
+  };
+  refreshEngineTag();
+  // Unsubscribes itself once its cell has left the page: a cell is reused
+  // across renders, so there is no single moment at which to tidy up, and a
+  // listener per cell would otherwise pile up for the length of a session.
+  const stopWatchingEngine = onEngineChange(() => {
+    if (!el.isConnected) return stopWatchingEngine();
+    refreshEngineTag();
+  });
   // A re-render restamps the host in place -- the widget is reused -- so the
   // label has to follow the attribute rather than being read once.
   new MutationObserver(refreshSpaceTag).observe(el, {
@@ -2007,7 +2039,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   // here rather than in the toolbar: it is a piece of status, not a control.
   const ranAt = document.createElement("span");
   ranAt.className = "pyodide-ran-at";
-  statusBar.append(statusText, ranAt, timing, spaceTag);
+  statusBar.append(statusText, ranAt, timing, engineTag, spaceTag);
   /**
    * Two controls for the output, at the left of the status bar.
    *

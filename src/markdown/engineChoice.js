@@ -38,6 +38,7 @@
  * « python3 » et « Python 3.11 » sans se prononcer sur le reste.
  */
 import { assignRuntime, runtimeNameFor, kernelTagOf, SHARED_SPACE } from "./cellRuntime.js";
+export { kernelSettingOn as interpreterMenuEnabled };
 import { listJupyterKernels } from "../utils/local_utils/jupyterKernels.js";
 import { isTauri } from "../utils/local_utils/fs.js";
 
@@ -129,6 +130,79 @@ export function declareDocumentKernel(docKey, spec, space) {
   decided.delete(docKey);
 }
 
+/**
+ * Listeners for "the engine of some document is now settled, or changed".
+ *
+ * The choice is resolved on the first run, not when the document opens, so
+ * anything that displays it has to react rather than read once.
+ */
+const engineListeners = new Set();
+
+export function onEngineChange(listener) {
+  engineListeners.add(listener);
+  return () => engineListeners.delete(listener);
+}
+
+function announce() {
+  for (const listener of engineListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn("[runtime] an engine listener failed:", err);
+    }
+  }
+}
+
+/** What is running this document, for an indicator or a menu. */
+export function currentChoice(docKey) {
+  const entry = declared.get(docKey);
+  const space = entry?.space ?? SHARED_SPACE;
+  const decision = decided.get(docKey);
+  return {
+    space,
+    engine: decision?.engine ?? runtimeNameFor(space),
+    kernel: decision?.kernel ?? null,
+    settled: Boolean(decision),
+    declared: entry?.spec ?? null,
+  };
+}
+
+/** Pyodide, plus whatever kernels this machine has. */
+export async function availableInterpreters() {
+  if (!isTauri() || !kernelSettingOn()) return { kernels: [], reason: "le réglage « Use local Jupyter kernel » est éteint" };
+  const { available, kernels, reason } = await installedKernels();
+  return { kernels: available ? kernels : [], reason: available ? "" : reason };
+}
+
+/**
+ * Choose an interpreter for this document, for this session.
+ *
+ * Session-scoped on purpose: a lasting choice belongs in the document's
+ * `kernelspec`, which is also what the namespace is derived from. Which is
+ * why a kernel of another language is refused here rather than applied: its
+ * namespace must be separate -- two interpreters cannot share one -- and only
+ * the frontmatter can say so. Saying it plainly beats letting an R kernel
+ * quietly take over the namespace a Python document is using.
+ */
+export function pickInterpreter(docKey, kernel = null) {
+  const { space } = currentChoice(docKey);
+  const tag = kernelTagOf(space);
+  if (kernel) {
+    const language = String(kernel.language ?? "").toLowerCase();
+    const wanted = language === "python" ? "" : kernel.name.toLowerCase();
+    if (wanted !== tag) {
+      return {
+        ok: false,
+        reason: `« ${kernel.displayName || kernel.name} » n'est pas un Python : son espace de noms doit être à part. Déclarez-le dans le frontmatter (kernelspec), d'où l'espace est dérivé.`,
+      };
+    }
+  }
+  decided.set(docKey, { engine: kernel ? "jupyter" : "pyodide", kernel, refused: false, space });
+  assignRuntime(space, kernel ? "jupyter" : "pyodide");
+  announce();
+  return { ok: true };
+}
+
 /** Le noyau retenu pour un espace, pour qui doit l'ouvrir. */
 export function chosenKernel(space) {
   const choice = decided.get(lastDocOf.get(space));
@@ -145,6 +219,7 @@ export function chosenKernel(space) {
 export function forgetChoices() {
   for (const choice of decided.values()) assignRuntime(choice.space, null);
   decided.clear();
+  announce();
 }
 
 /** La liste des noyaux installés, demandée une fois par session. */
@@ -188,6 +263,7 @@ export async function chooseEngineFor(docKey) {
   const settle = (choice) => {
     decided.set(docKey, { ...choice, space });
     assignRuntime(space, choice.engine);
+    announce();
     return choice;
   };
 
