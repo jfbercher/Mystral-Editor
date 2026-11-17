@@ -26,7 +26,7 @@
  * exemple) voyagent en trames binaires que notre relais, qui ne passe que du
  * texte, laisse tomber.
  */
-import { onComm, sendCommMessage, listComms } from "./jupyterRuntime.js";
+import { onComm, onCommOutput, claimOutputParent, releaseOutputParent, isOutputParent, sendCommMessage, listComms, wdbg } from "./jupyterRuntime.js";
 import DOMPurify from "dompurify";
 import { SHARED_SPACE } from "./cellRuntime.js";
 
@@ -123,6 +123,50 @@ async function adoptWidgetStyles(root) {
 }
 
 /**
+ * Typeset the maths a widget shows, with the editor's own renderer.
+ *
+ * ipywidgets calls MathJax 2 and does nothing when it is absent, so an
+ * `HTMLMath` or a `Label` showed its `$E=mc^2$` as plain text. Rather than
+ * bring MathJax into a page that already renders maths with KaTeX -- and
+ * rather than install a global `MathJax` shim that other code might mistake
+ * for the real thing -- the view's own element is typeset here, and again
+ * whenever its content changes, which is how a widget updates.
+ *
+ * The observer is disconnected while rendering: KaTeX rewrites the very DOM
+ * it watches, and listening to oneself is a loop.
+ */
+let renderMath = null;
+
+async function typesetWidget(el) {
+  if (!el) return;
+  try {
+    renderMath ??= (await import("katex/dist/contrib/auto-render.mjs")).default;
+  } catch (err) {
+    return console.warn("[widgets] maths not typeset:", err);
+  }
+  const options = {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "\\[", right: "\\]", display: true },
+      { left: "$", right: "$", display: false },
+      { left: "\\(", right: "\\)", display: false },
+    ],
+    throwOnError: false,
+  };
+  const observer = new MutationObserver(() => run());
+  const run = () => {
+    observer.disconnect();
+    try {
+      renderMath(el, options);
+    } catch (err) {
+      console.warn("[widgets] maths not typeset:", err);
+    }
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+  };
+  run();
+}
+
+/**
  * Monter la vue d'un modèle dans un élément.
  *
  * Le gestionnaire fabrique la vue, Lumino la pose. `Widget.attach` veut un
@@ -134,6 +178,8 @@ export async function mountWidget(space, modelId, host) {
   const manager = await widgetManagerFor(space);
   const model = await manager.get_model(modelId);
   if (!model) throw new Error(`modèle inconnu : ${modelId}`);
+  registerHosts(model, host);
+  wdbg("montage", String(modelId).slice(0, 8), model.get?.("_model_name"));
   await adoptWidgetStyles(host.getRootNode?.());
   const view = await manager.create_view(model);
   const panel = view.luminoWidget ?? view.pWidget ?? null;
@@ -143,7 +189,128 @@ export async function mountWidget(space, modelId, host) {
   } else {
     host.appendChild(view.el);
   }
+  typesetWidget(view.el);
   return view;
+}
+
+/**
+ * One output item, drawn the way a cell draws its own.
+ *
+ * Shared by the `Output` view and by the fallback below, so that what a
+ * callback prints looks the same wherever it ends up. The shapes are
+ * notebook's: a stream, a MIME bundle, an error.
+ */
+/** Markdown, rendered by the same library the preview uses. */
+let markdownIt = null;
+
+async function renderMarkdownInto(el, text) {
+  try {
+    markdownIt ??= new (await import("markdown-it")).default({ html: true, linkify: true });
+    el.innerHTML = DOMPurify.sanitize(markdownIt.render(String(text ?? "")));
+  } catch (err) {
+    // Rendering is a convenience; the text itself is the content, and showing
+    // it raw beats showing nothing.
+    el.textContent = String(text ?? "");
+    console.warn("[widgets] markdown not rendered:", err);
+  }
+}
+
+function renderOutputItem(container, out, space = SHARED_SPACE) {
+  const kind = out?.output_type;
+  if (kind === "stream") {
+    const pre = document.createElement("pre");
+    pre.className = out.name === "stderr" ? "pyodide-stderr" : "pyodide-stdout";
+    pre.textContent = Array.isArray(out.text) ? out.text.join("") : (out.text ?? "");
+    container.appendChild(pre);
+    return;
+  }
+  if (kind === "error") {
+    const pre = document.createElement("pre");
+    pre.className = "pyodide-stderr";
+    pre.textContent = (out.traceback ?? []).join("\n") || `${out.ename}: ${out.evalue}`;
+    container.appendChild(pre);
+    return;
+  }
+  if (!out?.data) return;
+  // A widget displayed inside an `Output` -- a quiz showing its score as an
+  // `HTML` widget, a form rebuilding itself. Its bundle carries a view and a
+  // `text/plain` repr; falling through to the latter is what printed
+  // `HTML(value=...)` where the widget belonged.
+  const view = out.data["application/vnd.jupyter.widget-view+json"];
+  if (view?.model_id) {
+    const sub = document.createElement("div");
+    sub.className = "pyodide-widget";
+    container.appendChild(sub);
+    mountWidget(space, view.model_id, sub).catch((err) => {
+      sub.className = "pyodide-widget-note";
+      sub.textContent = `ipywidget (${String(view.model_id).slice(0, 8)}…) — ${err?.message ?? err}`;
+    });
+    return;
+  }
+  const png = out.data["image/png"];
+  const html = out.data["text/html"];
+  const markdown = out.data["text/markdown"];
+  if (png) {
+    const img = document.createElement("img");
+    img.src = `data:image/png;base64,${png}`;
+    img.className = "pyodide-figure";
+    container.appendChild(img);
+  } else if (html) {
+    const block = document.createElement("div");
+    block.className = "pyodide-html";
+    block.innerHTML = DOMPurify.sanitize(html);
+    container.appendChild(block);
+  } else if (markdown) {
+    // `display(Markdown(...))` sends `text/markdown` and, as its plain-text
+    // alternative, the object's repr -- which is how
+    // `<IPython.core.display.Markdown object>` ended up on screen.
+    const block = document.createElement("div");
+    block.className = "pyodide-html";
+    container.appendChild(block);
+    renderMarkdownInto(block, markdown);
+  } else {
+    const pre = document.createElement("pre");
+    pre.className = "pyodide-stdout";
+    pre.textContent = String(out.data["text/plain"] ?? "");
+    container.appendChild(pre);
+  }
+}
+
+/** An iopub message, in the shape a notebook stores its outputs. */
+function toOutputItem(msg) {
+  const c = msg.content ?? {};
+  switch (msg.msg_type) {
+    case "stream":
+      return { output_type: "stream", name: c.name, text: c.text };
+    case "display_data":
+      return { output_type: "display_data", data: c.data, metadata: c.metadata };
+    case "execute_result":
+      return { output_type: "execute_result", data: c.data, metadata: c.metadata };
+    case "error":
+      return { output_type: "error", ename: c.ename, evalue: c.evalue, traceback: c.traceback };
+    default:
+      return null;
+  }
+}
+
+/** Where each mounted view lives, so an unclaimed output has somewhere to go. */
+const hosts = new Map();
+
+/**
+ * Map a whole widget tree to its host, not just its root.
+ *
+ * The message comes from the widget the user touched -- a button inside a
+ * `VBox` -- while what was mounted is the box. Keyed by the root alone, the
+ * lookup would miss every nested control, which is to say nearly all of them.
+ * A box exposes its `children` as models, so the tree is walkable; `seen`
+ * guards the cycle a layout can make.
+ */
+function registerHosts(model, host, seen = new Set()) {
+  const id = model?.model_id;
+  if (!id || seen.has(id)) return;
+  seen.add(id);
+  hosts.set(id, host);
+  for (const child of model.get?.("children") ?? []) registerHosts(child, host, seen);
 }
 
 /** Un gestionnaire par espace de noms, comme les noyaux eux-mêmes. */
@@ -162,6 +329,19 @@ export function widgetManagerFor(space = SHARED_SPACE) {
     ]);
 
     const comms = new Map();
+    /** `msg_id` -> the `Output` model capturing under it. */
+    const outputTargets = new Map();
+    /**
+     * Outputs that arrived before their model existed.
+     *
+     * The claim is registered the moment the kernel announces it, which is
+     * what makes it reliable; building the model behind it is a promise, and
+     * on the very first widget of a session it is still a promise when the
+     * first outputs land. Held here by parent, and handed over when the model
+     * finally claims that parent -- which is why a first `Output` was empty
+     * while every one after it worked.
+     */
+    const earlyOutputs = new Map();
 
     class MystralWidgetManager extends baseManager.ManagerBase {
       /**
@@ -222,6 +402,52 @@ export function widgetManagerFor(space = SHARED_SPACE) {
      * l'état porte une liste `outputs`. C'est le noyau qui la remplit.
      */
     class OutputModel extends base.DOMWidgetModel {
+      /**
+       * An `Output` claims a `msg_id`, and that is the whole mechanism.
+       *
+       * `with output:` does not fill the `outputs` trait: the kernel writes
+       * its own current parent id into `msg_id`, emits everything under that
+       * parent, then clears it. The front end is what must listen. Hence this
+       * register, kept in step with the trait.
+       */
+      initialize(attributes, options) {
+        super.initialize(attributes, options);
+        this.on("change:msg_id", this.claimMsgId, this);
+        this.claimMsgId();
+        // What arrived before this model existed, kept under its comm id and
+        // claimed here. Being born is the one moment at which a model is
+        // certainly able to answer for itself -- `get_model` cannot, since
+        // its own construction is what we are inside of.
+        const waiting = earlyOutputs.get(this.model_id);
+        if (waiting?.length) {
+          earlyOutputs.delete(this.model_id);
+          wdbg("Output récupère", String(this.model_id).slice(0, 8), waiting.length, "sortie(s) en réserve");
+          this.set("outputs", [...(this.get("outputs") ?? []), ...waiting]);
+        }
+      }
+
+      claimMsgId() {
+        wdbg("modèle Output revendique", String(this.get("msg_id") ?? "").slice(0, 8) || "(rien)");
+        for (const [id, model] of outputTargets) {
+          if (model === this) {
+            outputTargets.delete(id);
+            releaseOutputParent(id);
+          }
+        }
+        const id = this.get("msg_id");
+        if (id) {
+          outputTargets.set(id, this);
+          // Told to the router as well: the claim has to hold for a cell
+          // execution too, not only for a comm message.
+          claimOutputParent(id);
+          const waiting = earlyOutputs.get(id);
+          if (waiting?.length) {
+            earlyOutputs.delete(id);
+            this.set("outputs", [...(this.get("outputs") ?? []), ...waiting]);
+          }
+        }
+      }
+
       defaults() {
         return {
           ...super.defaults(),
@@ -243,55 +469,10 @@ export function widgetManagerFor(space = SHARED_SPACE) {
       }
 
       draw() {
-        this.el.textContent = "";
         const outputs = this.model.get("outputs") ?? [];
-        // Un `with output:` ne remplit pas ce trait : le noyau pose un
-        // `msg_id` sur le modèle et émet les sorties sur iopub avec ce
-        // `msg_id` pour parent, à charge du client de les capter. Notre
-        // routage sait le faire -- c'est ce que `pending` fait pour une
-        // cellule -- mais la vue n'y est pas encore branchée. Le dire plutôt
-        // que de laisser un cadre vide : c'est le même silence qui nous a
-        // fait croire que le modèle ne se chargeait pas.
-        if (!outputs.length && this.model.get("msg_id")) {
-          const note = document.createElement("div");
-          note.className = "pyodide-widget-note";
-          note.textContent = "Output widget: the kernel is capturing into it, but this editor does not tap iopub for it yet";
-          this.el.appendChild(note);
-          return;
-        }
-        for (const out of outputs) {
-          const kind = out?.output_type;
-          if (kind === "stream") {
-            const pre = document.createElement("pre");
-            pre.className = out.name === "stderr" ? "pyodide-stderr" : "pyodide-stdout";
-            pre.textContent = Array.isArray(out.text) ? out.text.join("") : (out.text ?? "");
-            this.el.appendChild(pre);
-          } else if (kind === "error") {
-            const pre = document.createElement("pre");
-            pre.className = "pyodide-stderr";
-            pre.textContent = (out.traceback ?? []).join("\n") || `${out.ename}: ${out.evalue}`;
-            this.el.appendChild(pre);
-          } else if (out?.data) {
-            const png = out.data["image/png"];
-            const html = out.data["text/html"];
-            if (png) {
-              const img = document.createElement("img");
-              img.src = `data:image/png;base64,${png}`;
-              img.className = "pyodide-figure";
-              this.el.appendChild(img);
-            } else if (html) {
-              const block = document.createElement("div");
-              block.className = "pyodide-html";
-              block.innerHTML = DOMPurify.sanitize(html);
-              this.el.appendChild(block);
-            } else {
-              const pre = document.createElement("pre");
-              pre.className = "pyodide-stdout";
-              pre.textContent = String(out.data["text/plain"] ?? "");
-              this.el.appendChild(pre);
-            }
-          }
-        }
+        wdbg("vue Output dessine", String(this.model.model_id ?? "").slice(0, 8), outputs.length, "sortie(s)");
+        this.el.textContent = "";
+        for (const out of outputs) renderOutputItem(this.el, out, space);
       }
     }
 
@@ -305,6 +486,7 @@ export function widgetManagerFor(space = SHARED_SPACE) {
       if (msgSpace !== space) return;
       const id = msg.content?.comm_id;
       if (!id) return;
+      wdbg("manager", msg.msg_type, String(id).slice(0, 8), msg.content?.target_name ?? "");
       if (msg.msg_type === "comm_open") {
         if (msg.content?.target_name !== WIDGET_TARGET) return;
         const comm = new KernelComm(space, id);
@@ -316,6 +498,71 @@ export function widgetManagerFor(space = SHARED_SPACE) {
       if (!comm) return;
       comm.deliver(msg);
       if (msg.msg_type === "comm_close") comms.delete(id);
+    });
+
+    /**
+     * What a comm message provokes, put where it belongs.
+     *
+     * An `Output` that has claimed this parent takes it -- that is
+     * `with output:`, and `interact`, which builds one. Otherwise it goes to
+     * the cell that holds the widget which sent the message: a bare `observe`
+     * that prints has no `Output` to call its own, and printing into the void
+     * is what made it look broken.
+     *
+     * The outputs are set on the model but never saved back: they come from
+     * the kernel, and returning them would echo its own words at it.
+     */
+    onCommOutput((msg, { msgId, commId, space: msgSpace }) => {
+      if (msgSpace !== space) return;
+      wdbg(
+        "tap",
+        msg.msg_type,
+        "parent =",
+        String(msgId ?? "").slice(0, 8),
+        "cible =",
+        Boolean(outputTargets.get(msgId)),
+        "revendiqué =",
+        isOutputParent(msgId),
+      );
+      const deliver = (model) => {
+        if (!model) return wdbg("livraison sans modèle", String(commId ?? "").slice(0, 8));
+        if (msg.msg_type === "clear_output") return void model.set("outputs", []);
+        const item = toOutputItem(msg);
+        if (item) model.set("outputs", [...(model.get("outputs") ?? []), item]);
+        wdbg("livré à", String(model.model_id ?? "").slice(0, 8), model.get("_model_name"), "→", (model.get("outputs") ?? []).length, "sortie(s)");
+      };
+
+      const target = outputTargets.get(msgId);
+      if (target) return deliver(target);
+
+      // No live claim, but the message carries the comm that claimed it when
+      // it was diverted. A comm id names its model for good, where a `msg_id`
+      // names it only for the length of a `with output:` block -- and that
+      // block is long over by the time a buffered message is replayed.
+      if (commId) {
+        const known = manager.get_model(commId);
+        if (known) {
+          known.then(deliver).catch(() => {});
+          return;
+        }
+        // The claiming model is still being built -- on a session's first
+        // widget, its construction is still in flight when its first outputs
+        // land. Held under its **comm** id, which it will answer to as soon
+        // as it exists; held under the `msg_id`, as before, nothing ever came
+        // to collect it, the kernel having already released the claim.
+        if (msg.msg_type === "clear_output") {
+          earlyOutputs.set(commId, []);
+          return;
+        }
+        const early = toOutputItem(msg);
+        if (early) earlyOutputs.set(commId, [...(earlyOutputs.get(commId) ?? []), early]);
+        wdbg("mise en réserve sous", String(commId).slice(0, 8), earlyOutputs.get(commId)?.length ?? 0);
+        return;
+      }
+      if (isOutputParent(msgId)) return;
+      const item = toOutputItem(msg);
+      const host = commId ? hosts.get(commId) : null;
+      if (item && host?.parentElement) renderOutputItem(host.parentElement, item, space);
     });
 
     console.log(`[widgets] gestionnaire prêt pour l'espace ${space}`);

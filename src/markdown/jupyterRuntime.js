@@ -29,6 +29,24 @@ import { startJupyter, jupyterRunning } from "../utils/local_utils/jupyterServer
 import { jupyterFetch, openKernel } from "../utils/local_utils/jupyterLink.js";
 import { chosenKernel } from "./engineChoice.js";
 
+/**
+ * Tracing for the widget path, behind a switch.
+ *
+ * `localStorage.mystWidgetDebug = "1"` in the console, then reload. The same
+ * convention as the inline preview's own tracing: this path has three layers
+ * -- protocol, routing, model -- and a defect in one of them looks exactly
+ * like a defect in the others from outside.
+ */
+export const wdbg = (...args) => {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.mystWidgetDebug) console.log("[wdbg]", ...args);
+  } catch {
+    /* no storage, no tracing */
+  }
+};
+
+const short = (id) => (id ? String(id).slice(0, 8) : "—");
+
 /** Un noyau vivant, par espace. */
 const kernels = new Map();
 
@@ -67,6 +85,89 @@ const pending = new Map();
 const comms = new Map();
 const commListeners = new Set();
 
+/**
+ * Listeners for what a comm message provokes on iopub.
+ *
+ * Distinct from `onComm`, which carries the comm protocol itself -- open,
+ * update, close. This one carries what the kernel *printed, drew or raised*
+ * while handling such a message, under its parent. The widget layer needs it
+ * to fill an `Output`, and to show a plain `observe` that merely prints.
+ */
+const commOutputListeners = new Set();
+
+/**
+ * Parents an `Output` widget has claimed.
+ *
+ * Consulted by both routes, and that is the point. `interact` calls its
+ * function once while the cell is still running, so that first figure travels
+ * under the *cell's* parent rather than a comm's: collected as a cell output,
+ * it appeared above the widget, and then again inside it on the next move.
+ * A claimed parent belongs to the widget, wherever it was sent from.
+ */
+const claimedParents = new Set();
+
+export function claimOutputParent(msgId) {
+  if (msgId) claimedParents.add(msgId);
+}
+
+export function releaseOutputParent(msgId) {
+  if (msgId) claimedParents.delete(msgId);
+}
+
+/** Does this parent belong to an `Output`, even if no model answers for it yet? */
+export const isOutputParent = (msgId) => Boolean(msgId) && claimedParents.has(msgId);
+
+/**
+ * Which comm claims this parent, asked while the claim still stands.
+ *
+ * A claim is transient: the kernel clears `msg_id` as soon as the
+ * `with output:` block ends, which is before a message buffered during the
+ * widget layer's loading gets replayed. Asking then finds nothing -- neither
+ * the register nor the model, whose trait is empty again -- and the content
+ * of a first `Output` was lost exactly there. So the claiming comm is
+ * resolved at the moment the message is diverted and carried along with it:
+ * a comm id is permanent, a `msg_id` is not.
+ */
+function claimingComm(parent) {
+  if (!parent) return null;
+  for (const [commId, claimed] of outputClaims) if (claimed === parent) return commId;
+  return null;
+}
+
+/** Hand a message to the widget layer, whichever route it arrived by. */
+function tellCommOutput(msg, msgId, commId, space) {
+  wdbg(
+    "tellCommOutput",
+    msg.msg_type,
+    "parent =",
+    short(msgId),
+    "comm =",
+    short(commId),
+    "ready =",
+    widgetsReady,
+    "listeners =",
+    commOutputListeners.size,
+  );
+  // Same queue as the comm messages, and for the same reason: a first
+  // `Output` is filled while its manager is still being fetched.
+  if (!widgetsReady && widgetBoot) {
+    commBacklog.push(() => tellCommOutput(msg, msgId, commId, space));
+    return;
+  }
+  for (const listener of commOutputListeners) {
+    try {
+      listener(msg, { msgId, commId, space });
+    } catch (err) {
+      console.warn("[widgets] a comm-output listener failed:", err);
+    }
+  }
+}
+
+export function onCommOutput(listener) {
+  commOutputListeners.add(listener);
+  return () => commOutputListeners.delete(listener);
+}
+
 /** S'abonner à ce qui passe sur les comms. Rend de quoi se désabonner. */
 export function onComm(listener) {
   commListeners.add(listener);
@@ -98,22 +199,27 @@ export function sendCommMessage(space, msgType, content, callbacks = null) {
   const entry = kernels.get(space);
   if (!entry) throw new Error(`aucun noyau pour l'espace ${space}`);
   const msgId = crypto.randomUUID();
-  if (callbacks) {
-    pending.set(msgId, {
-      on: (msg) => {
-        const handler = callbacks.iopub?.[msg.msg_type];
-        if (handler) {
-          try {
-            handler(msg);
-          } catch (err) {
-            console.warn("[widgets] un rappel iopub a échoué :", err);
-          }
+  // Always registered, callbacks or not. What a comm message provokes on
+  // iopub is the whole of what `observe`, `interact` and `with output:`
+  // produce: the kernel runs the callback under *this* parent and streams its
+  // prints, figures and errors there. Keeping only the idle, as before, threw
+  // all of it away -- which is why an observer looked dead when it was merely
+  // speaking into a void.
+  pending.set(msgId, {
+    on: (msg) => {
+      const handler = callbacks?.iopub?.[msg.msg_type];
+      if (handler) {
+        try {
+          handler(msg);
+        } catch (err) {
+          console.warn("[widgets] an iopub callback failed:", err);
         }
-        if (msg.msg_type === "status" && msg.content?.execution_state === "idle") pending.delete(msgId);
-      },
-      fail: () => pending.delete(msgId),
-    });
-  }
+      }
+      tellCommOutput(msg, msgId, claimingComm(msgId) ?? content?.comm_id ?? null, space);
+      if (msg.msg_type === "status" && msg.content?.execution_state === "idle") pending.delete(msgId);
+    },
+    fail: () => pending.delete(msgId),
+  });
   entry.link.send(msgType, content, msgId).catch((err) => {
     pending.delete(msgId);
     console.warn(`[jupyter] ${msgType} non envoyé :`, err);
@@ -143,34 +249,79 @@ if (typeof window !== "undefined") {
  * côté puis rejoué dans l'ordre, ce même `comm_open` en tête.
  */
 let widgetBoot = null;
+let widgetsReady = false;
+
+/**
+ * What arrives while the widget layer loads, kept in order.
+ *
+ * Thunks rather than messages, because two kinds queue here: the comm
+ * protocol itself, and the outputs a comm provokes. They have to be replayed
+ * in the order they arrived -- a `comm_open` before the state that fills it,
+ * a claim before what it captures -- and only one queue can promise that.
+ * Buffering the first kind alone is what left the very first `Output` empty:
+ * its content arrived during the loading and had no one to hear it.
+ */
 const commBacklog = [];
 
-function bootWidgets(msg, space) {
-  commBacklog.push([msg, space]);
+function bootWidgets(space) {
   if (widgetBoot) return;
   widgetBoot = import("./widgetManager.js")
     .then((mod) => mod.widgetManagerFor(space))
     .then(() => {
-      for (const [queued, queuedSpace] of commBacklog.splice(0)) {
-        for (const listener of commListeners) listener(queued, queuedSpace);
-      }
+      widgetsReady = true;
+      wdbg("boot terminé, rejeu de", commBacklog.length, "message(s)");
+      for (const replay of commBacklog.splice(0)) replay();
     })
     .catch((err) => {
-      console.warn("[widgets] gestionnaire indisponible :", err);
+      console.warn("[widgets] manager unavailable:", err);
       commBacklog.length = 0;
     });
+}
+
+/** The parent each `Output` comm currently captures under. */
+const outputClaims = new Map();
+
+/**
+ * Register an `Output`'s claim the instant it is announced.
+ *
+ * Reading it off the model would be too late: the state travels through the
+ * widget machinery, which is asynchronous, while the output it is about to
+ * capture arrives in the very next websocket message. The claim would land
+ * after the figure it was meant to catch -- which is exactly what happened,
+ * leaving `interact`'s first plot above the widget instead of inside it.
+ * The raw message says it plainly and says it now.
+ */
+function noteOutputClaim(msg) {
+  const state = msg.content?.data?.state;
+  if (!state || !("msg_id" in state)) return;
+  wdbg("claim", short(msg.content?.comm_id), "msg_id =", short(state.msg_id) || "(libéré)");
+  const commId = msg.content?.comm_id;
+  const previous = outputClaims.get(commId);
+  if (previous) releaseOutputParent(previous);
+  const claimed = String(state.msg_id ?? "");
+  if (claimed) {
+    outputClaims.set(commId, claimed);
+    claimOutputParent(claimed);
+  } else {
+    outputClaims.delete(commId);
+  }
 }
 
 function routeComm(msg, space) {
   const kind = msg.msg_type;
   if (kind !== "comm_open" && kind !== "comm_msg" && kind !== "comm_close") return false;
+  noteOutputClaim(msg);
   const id = msg.content?.comm_id;
   // Personne n'écoute encore : soit c'est le premier widget et il faut
   // charger de quoi l'accueillir, soit le chargement est en cours et ce
   // message attend son tour.
-  if (commListeners.size === 0 && (widgetBoot || msg.content?.target_name === "jupyter.widget")) {
+  wdbg("routeComm", kind, short(id), msg.content?.target_name ?? "", "ready =", widgetsReady);
+  if (!widgetsReady && (widgetBoot || msg.content?.target_name === "jupyter.widget")) {
     if (id && kind === "comm_open") comms.set(id, { target: msg.content?.target_name ?? "", space, openedAt: Date.now() });
-    bootWidgets(msg, space);
+    commBacklog.push(() => {
+      for (const listener of commListeners) listener(msg, space);
+    });
+    bootWidgets(space);
     return true;
   }
   if (id) {
@@ -665,6 +816,24 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
 
   await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
+    // An `Output` widget may have claimed this very execution as its parent --
+    // `interact` does it, before its first call draws anything. What it has
+    // claimed is its own: it goes to the widget layer and not into the cell's
+    // outputs, which otherwise showed the first figure twice, once above the
+    // widget and once inside it.
+    const parent = msg.parent_header?.msg_id;
+    const isWidgetView = Boolean(c.data?.["application/vnd.jupyter.widget-view+json"]);
+    if (msg.msg_type !== "status") {
+      wdbg("cellule", msg.msg_type, "parent =", short(parent), "revendiqué =", claimedParents.has(parent), isWidgetView ? "(vue de widget)" : "");
+    }
+    // A widget view always belongs to the cell: it is what says *where* the
+    // widget is to be drawn. Diverting it to the `Output` left the cell with
+    // nothing to mount, and `interact` lost its slider along with the plot it
+    // was meant to drive.
+    if (msg.msg_type !== "status" && !isWidgetView && parent && claimedParents.has(parent)) {
+      tellCommOutput(msg, parent, claimingComm(parent), space);
+      return;
+    }
     switch (msg.msg_type) {
       case "stream": {
         if (c.name === "stderr") stderr += c.text;
