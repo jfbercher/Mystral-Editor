@@ -29,31 +29,49 @@ const HASH_SEED = 42;
  */
 export const evalCache = {
   _map: new Map(),
+  /** Keys whose value is still shown but has to be computed again. */
+  _stale: new Set(),
+  /** Keys whose evaluation is in flight, so a second render does not ask twice. */
+  _pending: new Set(),
   _listeners: new Set(),
-  _epoch: 0,   // incremented on clear() to invalidate in-flight resolve() promises
+  _epoch: 0,   // incremented on clear()/invalidate() to discard in-flight resolve() promises
   has(key) { return this._map.has(key); },
   get(key) { return this._map.get(key); },
+  isStale(key) { return this._stale.has(key); },
+  /**
+   * Record a value, and tell the listeners only if it is not the one already
+   * shown. A listener means a re-render of the whole document, so an answer
+   * that confirms what is on screen has to stay silent.
+   */
   set(key, value) {
+    const before = this._map.get(key);
     this._map.set(key, value);
-    this._listeners.forEach(fn => fn(key));
+    this._stale.delete(key);
+    this._pending.delete(key);
+    const same = before !== undefined && before?.kind === value?.kind && before?.value === value?.value;
+    if (!same) this._listeners.forEach(fn => fn(key));
   },
   /**
-   * Kick off async evaluation if not already cached.
-   * Captures the current epoch: if clear() is called before the promise
-   * settles, the result is discarded (stale) rather than re-poisoning the cache.
+   * Kick off async evaluation unless the value is current, or already being
+   * computed. Captures the current epoch: if the cache is cleared or
+   * invalidated before the promise settles, the result is discarded rather
+   * than re-poisoning the cache.
    */
   resolve(key, promise) {
-    if (this._map.has(key)) return;
+    if (this._pending.has(key)) return;
+    if (this._map.has(key) && !this._stale.has(key)) return;
+    this._pending.add(key);
     const epoch = this._epoch;
+    const settle = (result) => {
+      if (this._epoch !== epoch) {
+        this._pending.delete(key);   // a newer pass owns this key now
+        return;
+      }
+      this.set(key, result);
+    };
     Promise.resolve(promise)
-      .then(result => {
-        if (this._epoch !== epoch) return;   // clear() happened — discard stale result
-        this.set(key, result);
-      })
-      .catch(err => {
-        if (this._epoch !== epoch) return;   // clear() happened — discard stale error
-        this.set(key, { kind: "error", value: String(err) });
-      });
+      .then(settle)
+      .catch(err => settle({ kind: "error", value: String(err) }));
   },
   /** Subscribe to results; returns an unsubscribe function. */
   onChange(fn) {
@@ -61,26 +79,48 @@ export const evalCache = {
     return () => this._listeners.delete(fn);
   },
   /**
-   * Clear all cached results and bump epoch so in-flight resolves are discarded.
+   * Mark every result as needing a new evaluation, without throwing away what
+   * is on screen.
    *
-   * Silent when there was nothing cached, and that silence is the point: this
-   * is called after every cell run, and telling the listeners means a full
-   * re-render of the document. A document with no `{eval}` has nothing to
-   * recompute, so it was being rebuilt for nothing -- which in presentation
-   * mode rebuilt the slide one was standing on. The epoch still moves, so an
-   * answer in flight is still discarded.
+   * This is what a cell run calls, and it used to empty the cache outright.
+   * The emptying was visible: every `{eval}` fell back to its placeholder, so
+   * the chunk holding it was rewritten, and then rewritten again when the
+   * value came back -- which in presentation mode rebuilt the slide one was
+   * standing on, cell host included, although only the cell's output had
+   * changed. Keeping the old value means the re-render below produces exactly
+   * the html already in the document, so nothing is touched; and if the new
+   * value turns out to be the same, `set` says nothing and there is no second
+   * render either. A value that really did change still goes through, which
+   * is the whole point of invalidating.
+   *
+   * The render is still needed: an expression is only re-submitted when the
+   * role runs, and the role only runs during a render.
+   */
+  invalidate() {
+    this._epoch++;
+    this._pending.clear();
+    if (this._map.size === 0) return;
+    for (const key of this._map.keys()) this._stale.add(key);
+    this._listeners.forEach(fn => fn(null));
+  },
+  /**
+   * Forget everything, for when the values cannot be trusted at all -- a
+   * namespace restored from a sidecar, say. Silent when there was nothing
+   * cached, since there is then nothing to re-render.
    */
   clear() {
     this._epoch++;
+    this._stale.clear();
+    this._pending.clear();
     const had = this._map.size > 0;
     this._map.clear();
     if (had) this._listeners.forEach(fn => fn(null));
   }
 };
 
-// Invalidate all {eval} results whenever a code-cell is executed,
+// Mark every {eval} result for re-evaluation whenever a code-cell is executed,
 // so expressions that read Python variables pick up the new state.
-onCellExecuted(() => evalCache.clear());
+onCellExecuted(() => evalCache.invalidate());
 
 // ─── {eval} role ──────────────────────────────────────────────────────────────
 
@@ -138,11 +178,16 @@ export class EvalRole extends Role {
     const space = this.state.env.pythonSpace ?? "shared";
     const cacheKey = `${space}\u0000${expr}`;
 
-    if (evalCache.has(cacheKey)) {
+    // A known value is shown even when it is marked stale: it is the last
+    // thing this expression answered, and showing a placeholder instead
+    // would rewrite the chunk twice for a value that may well be unchanged.
+    const known = evalCache.has(cacheKey);
+    if (!known || evalCache.isStale(cacheKey)) {
+      evalCache.resolve(cacheKey, runtime(space).evaluate(expr, space));
+    }
+    if (known) {
       token.content = renderEvalValue(evalCache.get(cacheKey));
     } else {
-      // Kick off async evaluation; return a placeholder for now.
-      evalCache.resolve(cacheKey, runtime(space).evaluate(expr, space));
       const safeExpr = expr.replace(/"/g, "&quot;");
       token.content = `<span class="eval-pending" title="{eval} ${safeExpr}">⋯</span>`;
     }
