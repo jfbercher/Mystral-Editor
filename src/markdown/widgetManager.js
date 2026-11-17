@@ -276,6 +276,65 @@ function renderOutputItem(container, out, space = SHARED_SPACE) {
   }
 }
 
+/**
+ * What an output is, as far as redrawing is concerned.
+ *
+ * Two renders whose items have the same kinds in the same order can be
+ * updated in place instead of being thrown away and rebuilt -- which is what
+ * an animated `interact` does twenty times a second.
+ */
+function kindOfOutput(out) {
+  const kind = out?.output_type;
+  if (kind === "stream") return `stream:${out.name || "stdout"}`;
+  if (kind === "error") return "error";
+  const data = out?.data ?? {};
+  const view = data["application/vnd.jupyter.widget-view+json"];
+  if (view?.model_id) return `widget:${view.model_id}`;
+  if (data["image/png"]) return "png";
+  if (data["text/html"]) return "html";
+  if (data["text/markdown"]) return "markdown";
+  return "text";
+}
+
+/**
+ * Update one already-drawn output in place.
+ *
+ * The point is the image: replacing the node makes the browser drop the old
+ * one at once and give the new one no height until it has decoded, so the
+ * text below jumps up and comes back down -- the flicker of an animation.
+ * Setting `src` on the node that is already there keeps the old frame until
+ * the new one is ready. A widget is left strictly alone: its view is mounted
+ * and alive, and rebuilding it would be a far worse flicker.
+ */
+function patchOutputItem(node, out, kind) {
+  if (kind.startsWith("widget:")) return true;
+  if (kind === "png") {
+    node.src = `data:image/png;base64,${out.data["image/png"]}`;
+    return true;
+  }
+  if (kind === "html") {
+    node.innerHTML = DOMPurify.sanitize(out.data["text/html"]);
+    return true;
+  }
+  if (kind === "markdown") {
+    renderMarkdownInto(node, out.data["text/markdown"]);
+    return true;
+  }
+  if (kind === "error") {
+    node.textContent = (out.traceback ?? []).join("\n") || `${out.ename}: ${out.evalue}`;
+    return true;
+  }
+  if (kind.startsWith("stream:")) {
+    node.textContent = Array.isArray(out.text) ? out.text.join("") : (out.text ?? "");
+    return true;
+  }
+  if (kind === "text") {
+    node.textContent = String(out.data?.["text/plain"] ?? "");
+    return true;
+  }
+  return false;
+}
+
 /** An iopub message, in the shape a notebook stores its outputs. */
 function toOutputItem(msg) {
   const c = msg.content ?? {};
@@ -331,6 +390,8 @@ export function widgetManagerFor(space = SHARED_SPACE) {
     const comms = new Map();
     /** `msg_id` -> the `Output` model capturing under it. */
     const outputTargets = new Map();
+    /** Models owing a clear, to be done when their next output arrives. */
+    const deferredClear = new WeakSet();
     /**
      * Outputs that arrived before their model existed.
      *
@@ -470,9 +531,22 @@ export function widgetManagerFor(space = SHARED_SPACE) {
 
       draw() {
         const outputs = this.model.get("outputs") ?? [];
+        const kinds = outputs.map(kindOfOutput);
         wdbg("vue Output dessine", String(this.model.model_id ?? "").slice(0, 8), outputs.length, "sortie(s)");
+
+        // Same shape as last time: update what is there rather than rebuild.
+        // An animation redraws the same single image over and over, and it is
+        // the rebuilding, not the drawing, that made the page jump.
+        const children = [...this.el.children];
+        const sameShape = this.kinds?.length === kinds.length && children.length === kinds.length && this.kinds.every((k, i) => k === kinds[i]);
+        if (sameShape && outputs.every((out, i) => patchOutputItem(children[i], out, kinds[i]))) {
+          this.kinds = kinds;
+          return;
+        }
+
         this.el.textContent = "";
         for (const out of outputs) renderOutputItem(this.el, out, space);
+        this.kinds = kinds;
       }
     }
 
@@ -526,9 +600,22 @@ export function widgetManagerFor(space = SHARED_SPACE) {
       );
       const deliver = (model) => {
         if (!model) return wdbg("livraison sans modèle", String(commId ?? "").slice(0, 8));
-        if (msg.msg_type === "clear_output") return void model.set("outputs", []);
+        if (msg.msg_type === "clear_output") {
+          // `wait` is the whole of what makes an animation watchable: it means
+          // "clear when the next output is here", not "clear now". Emptying at
+          // once is what let the text below ride up into the space the figure
+          // had just left. `interact` always asks for it.
+          if (msg.content?.wait) deferredClear.add(model);
+          else {
+            deferredClear.delete(model);
+            model.set("outputs", []);
+          }
+          return;
+        }
         const item = toOutputItem(msg);
-        if (item) model.set("outputs", [...(model.get("outputs") ?? []), item]);
+        if (!item) return;
+        const base = deferredClear.delete(model) ? [] : (model.get("outputs") ?? []);
+        model.set("outputs", [...base, item]);
         wdbg("livré à", String(model.model_id ?? "").slice(0, 8), model.get("_model_name"), "→", (model.get("outputs") ?? []).length, "sortie(s)");
       };
 
