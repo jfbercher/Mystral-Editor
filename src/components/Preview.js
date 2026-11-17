@@ -959,6 +959,14 @@ const SlideStyles = css`
   & > html-chunk .pyodide-editor .cm-editor {
     max-height: var(--slide-code-max, calc(var(--slide-h, 720px) * 0.45));
   }
+  /* Unless the reader has resized the box by hand: the inline height a drag
+     writes says what is wanted here, and the cap would fight it. Spelled out
+     in this sheet rather than left to the cells stylesheet, because the rule
+     above is more specific than anything that sheet can say. */
+  & > html-chunk .pyodide-editor[style*="height"] .cm-editor {
+    max-height: none;
+    height: 100%;
+  }
 
   /* The header and the footer, which are real elements put there by the
      slide view: both pseudo-elements of a slide are already spoken for, and

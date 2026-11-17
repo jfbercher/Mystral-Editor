@@ -2391,7 +2391,51 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     }
   };
 
-  wrapper.append(header, editorRow, paramsBar, statusBar, outputArea);
+  /**
+   * The bar between the source and what follows, dragged to give the listing
+   * more or less room.
+   *
+   * A grip of its own rather than the browser's `resize` handle: that handle
+   * sits in the bottom-right corner, where the status bar and the output
+   * crowd it, and catching it was a matter of luck. This one spans the width
+   * of the cell at the edge the gesture is about.
+   *
+   * It writes the height on the editor container, which the stylesheet hands
+   * down to CodeMirror. A double click takes it back: a height set by hand
+   * has to have a way home, and there is no other one -- it lives on the
+   * element and nothing records it.
+   */
+  const sourceGrip = document.createElement("div");
+  sourceGrip.className = "pyodide-source-grip";
+  sourceGrip.title = "Drag to resize the source (double-click to restore)";
+  sourceGrip.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    // Without this the drag selects the text of the cell on its way down.
+    ev.preventDefault();
+    const startY = ev.clientY;
+    const startH = editorContainer.getBoundingClientRect().height;
+    // Captured, so the pointer keeps reporting to the grip once it has left
+    // the seven pixels it occupies -- which it does immediately.
+    sourceGrip.setPointerCapture(ev.pointerId);
+    sourceGrip.classList.add("pyodide-grip-active");
+    const move = (e) => {
+      editorContainer.style.height = `${Math.max(48, startH + e.clientY - startY)}px`;
+    };
+    const done = () => {
+      sourceGrip.classList.remove("pyodide-grip-active");
+      sourceGrip.removeEventListener("pointermove", move);
+      sourceGrip.removeEventListener("pointerup", done);
+      sourceGrip.removeEventListener("pointercancel", done);
+    };
+    sourceGrip.addEventListener("pointermove", move);
+    sourceGrip.addEventListener("pointerup", done);
+    sourceGrip.addEventListener("pointercancel", done);
+  });
+  sourceGrip.addEventListener("dblclick", () => {
+    editorContainer.style.height = "";
+  });
+
+  wrapper.append(header, editorRow, sourceGrip, paramsBar, statusBar, outputArea);
   editorRow.appendChild(editorContainer);
   el.innerHTML = "";
   el.appendChild(wrapper);

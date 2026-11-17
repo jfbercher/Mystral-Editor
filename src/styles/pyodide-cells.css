@@ -110,6 +110,25 @@
 .pyodide-lang-badge{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--color-foreground-muted,#57606a);letter-spacing:.04em}
 .pyodide-editor-row{display:flex;position:relative;width:100%}
 .pyodide-editor{flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column}
+/* The source is resized by dragging the grip below it. The gesture writes an
+   inline height here, and that height has to be handed down: CodeMirror's
+   editor sizes itself to its content, so a box made shorter than the listing
+   would clip it rather than scroll it. Given a definite height it fills the
+   box and its own scroller -- already `overflow: auto` -- does the scrolling.
+   The inline height is also the signal that the reader has taken over, which
+   is why the cap a slide puts on a listing is lifted here, exactly as it is
+   on the output. */
+.pyodide-editor[style*="height"]{min-height:3rem}
+.pyodide-editor[style*="height"] > .cm-editor{height:100%;max-height:none}
+/* The grip itself: a full-width strip at the one place where the gesture
+   means something, the edge between the code and its result. A corner handle
+   was tried first and was all but uncatchable, hemmed in by the status bar
+   and the output. It shows a short bar on hover rather than standing out all
+   the time -- it is furniture, not a control. */
+.pyodide-source-grip{height:7px;cursor:ns-resize;position:relative;touch-action:none}
+.pyodide-source-grip::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:2.5rem;height:2px;border-radius:2px;background:var(--pyodide-cell-border,var(--color-border,#c4d4e6));opacity:0;transition:opacity .12s}
+.pyodide-source-grip:hover::after,.pyodide-source-grip.pyodide-grip-active::after{opacity:1}
+.pyodide-wrapper.pyodide-folded .pyodide-source-grip{display:none}
 .pyodide-output{font-size:var(--pyodide-output-font-size,var(--pyodide-cell-font-size,0.8rem));min-height:2.5rem;max-height:var(--pyodide-output-max-height,25rem);overflow:auto;padding:.7rem .75rem;border-top:1px solid var(--pyodide-cell-border,var(--color-border,#c4d4e6));background:var(--pyodide-output-bg,#e8f0f8);resize:vertical}
 /* The cap keeps a long output from pushing the document away, but it also
    stopped the resize handle: dragging clamped at 25rem and a tall figure
