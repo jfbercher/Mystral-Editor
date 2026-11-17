@@ -559,7 +559,20 @@ const pinContentWidth = ViewPlugin.fromClass(
 
     schedule() {
       this.view.requestMeasure({
-        read: (view) => Math.round(view.scrollDOM.clientWidth - (view.dom.querySelector(".cm-gutters")?.offsetWidth ?? 0)),
+        read: (view) => {
+          const room = view.scrollDOM.clientWidth - (view.dom.querySelector(".cm-gutters")?.offsetWidth ?? 0);
+          // Minus what the line itself takes. A projected block sits inside a
+          // `.cm-line`, which carries CodeMirror's own horizontal padding --
+          // 6px left, 2px right. Pinned to the full room, the block made its
+          // line 8px wider than the pane: the content overflowed by exactly
+          // that, the scroller slid sideways, and everything looked shifted
+          // left by about a character. On a hard wrap the caret went out to
+          // the far right and came back, which was the same 8px seen moving.
+          const line = view.contentDOM.querySelector(".cm-line");
+          const style = line ? getComputedStyle(line) : null;
+          const inset = style ? parseFloat(style.paddingLeft || 0) + parseFloat(style.paddingRight || 0) : 0;
+          return Math.round(room - (Number.isFinite(inset) ? inset : 0));
+        },
         write: (width, view) => {
           if (width <= 0 || width === this.width) return;
           this.width = width;
@@ -1232,7 +1245,23 @@ export const inlinePreview = (/** @type {TextManager} */ text, options) => {
   const decorationsField = StateField.define({
     create: buildDecorations,
     update: (value, tr) => {
-      if (tr.docChanged) return value.map(tr.changes);
+      if (tr.docChanged) {
+        const mapped = value.map(tr.changes);
+        // Mapping keeps the widgets of the older document, which is the point
+        // of not rebuilding here -- but a line that has just been born is
+        // covered by nothing, and the source styling only reached it when the
+        // next render triggered a rebuild. In the meantime it was drawn as an
+        // ordinary line, 6px of padding against the 1.5em a source line
+        // carries: the caret appeared hard left and everything slid right a
+        // moment later, on every Enter and every edit on a fresh line.
+        if (!tr.state.field(focusedField)) return mapped;
+        const line = tr.state.doc.lineAt(tr.state.selection.main.head);
+        let already = false;
+        mapped.between(line.from, line.from, (from, to, deco) => {
+          if (deco.spec?.class?.includes("cm-inline-source-line")) already = true;
+        });
+        return already ? mapped : mapped.update({ add: [Decoration.line({ class: "cm-inline-source-line" }).range(line.from)], sort: true });
+      }
       // Keep the current widgets while the blocks describe an older document: rebuilding from them
       // would drop every widget until the next render lands.
       if (!projectionMatches(tr.state)) return value;
