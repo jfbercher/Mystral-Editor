@@ -60,11 +60,21 @@ export const evalCache = {
     this._listeners.add(fn);
     return () => this._listeners.delete(fn);
   },
-  /** Clear all cached results and bump epoch so in-flight resolves are discarded. */
+  /**
+   * Clear all cached results and bump epoch so in-flight resolves are discarded.
+   *
+   * Silent when there was nothing cached, and that silence is the point: this
+   * is called after every cell run, and telling the listeners means a full
+   * re-render of the document. A document with no `{eval}` has nothing to
+   * recompute, so it was being rebuilt for nothing -- which in presentation
+   * mode rebuilt the slide one was standing on. The epoch still moves, so an
+   * answer in flight is still discarded.
+   */
   clear() {
     this._epoch++;
+    const had = this._map.size > 0;
     this._map.clear();
-    this._listeners.forEach(fn => fn(null));
+    if (had) this._listeners.forEach(fn => fn(null));
   }
 };
 

@@ -381,6 +381,8 @@ export function attachSlideView(preview, getSettings = () => null) {
   // its breaks have been passed -- 0 meaning only the part before the first.
   // Cumulative, so revealing never takes anything away.
   let presenting = false;
+  /** The slide last stamped as current, to tell a move from a redraw. */
+  let shownIndex = -1;
   let slide = 0;
   let fragment = 0;
 
@@ -497,6 +499,16 @@ export function attachSlideView(preview, getSettings = () => null) {
         // reveal triggers, which would replay the whole slide each time a
         // line is uncovered.
         if (el.dataset.slideCurrent !== "1") el.dataset.slideCurrent = "1";
+        // Moved to, or merely redrawn? Running a cell clears the {eval} cache
+        // and re-renders the document, so this slide is a new element holding
+        // the same slide: stamping it current replayed its entrance, a
+        // transition onto itself in front of an audience. The mark says which
+        // of the two this is, and the stylesheet skips the animation for the
+        // second. Tracked by index rather than by element, precisely because
+        // the element is what changes.
+        if (shownIndex === i) el.dataset.slideStill = "1";
+        else delete el.dataset.slideStill;
+        shownIndex = i;
         el.dataset.fragment = String(fragment);
       } else {
         delete el.dataset.slideCurrent;
@@ -580,6 +592,9 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const stopPresenting = () => {
     presenting = false;
+    // Leaving the deck forgets where we were, so re-entering plays the
+    // entrance of the slide one comes back to, as it should.
+    shownIndex = -1;
     dismissPopup();
     preview.classList.remove("presenting");
     if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});

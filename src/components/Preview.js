@@ -1191,11 +1191,28 @@ const SlideStyles = css`
     animation-name: myst-slide-from-above;
   }
 
+  /* A slide redrawn in place is not a slide one has moved to. Running a cell
+     clears the {eval} cache, which re-renders the document, so the current
+     slide becomes a brand-new element and its entrance played again -- a
+     transition of the slide onto itself, under the eyes of an audience. The
+     view marks such a pass, and the animation is skipped for it; moving to
+     another slide is unaffected, which is the only time a transition means
+     anything. */
+  /* The important keyword on purpose, and in both rules below. The transitions above
+     each carry two or three attributes on the preview itself, so any plain
+     rule meant to overrule them loses on specificity -- which is why the
+     reduced-motion rule below, written before this one, never suppressed
+     anything either. What these two say outranks what a deck declares, and
+     saying so with a keyword is clearer than racing the selectors. */
+  &.presenting > html-chunk[data-slide-current][data-slide-still] {
+    animation-name: none !important;
+  }
+
   /* Someone who asked their system for less movement gets none, whatever the
      deck declares. */
   @media (prefers-reduced-motion: reduce) {
     &.presenting > html-chunk[data-slide-current] {
-      animation-name: none;
+      animation-name: none !important;
     }
   }
   &.presenting .slide-present-btn {

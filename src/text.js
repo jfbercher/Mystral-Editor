@@ -641,6 +641,12 @@ export class TextManager {
       // and leaves the stale rendering in place. That is what showed cells in
       // their old order, or not at all, until an edit happened to make one
       // chunk's html differ again. What was not shown has to be remembered.
+      // TEMPORARY PROBE -- localStorage.mystRenderDebug = "1"
+      if (typeof localStorage !== "undefined" && localStorage.mystRenderDebug) {
+        const changed = this.chunks.length == newChunks.length ? newChunks.map((c, i) => (c.html !== this.chunks[i].html ? i : -1)).filter((i) => i >= 0) : "n/a";
+        const why = this.previewStale ? "previewStale" : this.chunks.length != newChunks.length ? "chunk count" : chunkEls.some((el) => !el) ? "missing element" : "patch";
+        console.log(`[render] useCache ${useCache} | path ${why} | chunks ${this.chunks.length}->${newChunks.length} | html changed at`, changed, "| from", new Error().stack.split("\n").slice(2, 6).join(" <- "));
+      }
       if (this.previewStale || this.chunks.length != newChunks.length || chunkEls.some((el) => !el)) {
         const toRemove = [...this.preview.value.childNodes].filter((c) => !c.classList || !c.classList.contains("cm-previewFocus"));
         toRemove.forEach((c) => this.preview.value.removeChild(c));
