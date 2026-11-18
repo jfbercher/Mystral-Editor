@@ -146,12 +146,29 @@ export async function initApp(options = {}) {
       await appWindow.onCloseRequested(async (event) => {
         if (leaving) return; // the second pass, after we asked to close
         const { siteRunning, stopSite } = await import("./utils/local_utils/mystExport.js");
-        if (!siteRunning()) return;
+        const { jupyterRunning, stopJupyter } = await import("./utils/local_utils/jupyterServer.js");
+        // Two servers now, and the Jupyter one was being forgotten: it is a
+        // child of the application rather than of the page, and its kernels
+        // are children of it in turn, so a window closed without this left a
+        // whole tree running and its ports held -- a hundred and seventy
+        // processes, in the end, and no free port for a new kernel.
+        const site = siteRunning();
+        const jupyter = jupyterRunning();
+        if (!site && !jupyter) return;
         event.preventDefault();
-        try {
-          await stopSite();
-        } catch (err) {
-          console.warn("[quit] the site could not be stopped:", err);
+        if (site) {
+          try {
+            await stopSite();
+          } catch (err) {
+            console.warn("[quit] the site could not be stopped:", err);
+          }
+        }
+        if (jupyter) {
+          try {
+            await stopJupyter();
+          } catch (err) {
+            console.warn("[quit] the Jupyter server could not be stopped:", err);
+          }
         }
         leaving = true;
         await appWindow.close();

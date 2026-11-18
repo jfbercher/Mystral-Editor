@@ -174,6 +174,18 @@ export function makeButtons(tab, getAllEditorIds, updateTabLabel, openFileHandle
                 console.warn("[reload] the site could not be stopped:", err);
               }
             }
+            // The Jupyter server too, and for a sharper reason: it is not the
+            // port of a preview that it keeps but the kernels themselves. A
+            // reloaded page knows of no server and starts another, so each
+            // reload used to leave a whole tree behind.
+            const jupyterServer = await import("./utils/local_utils/jupyterServer.js");
+            if (jupyterServer.jupyterRunning()) {
+              try {
+                await jupyterServer.stopJupyter();
+              } catch (err) {
+                console.warn("[reload] the Jupyter server could not be stopped:", err);
+              }
+            }
             window.location.reload();
           },
         },

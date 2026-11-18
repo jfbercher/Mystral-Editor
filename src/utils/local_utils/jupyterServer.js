@@ -27,6 +27,51 @@ import { showToast } from "../utils_ui.js";
 const PGID_MARK = "MYSTRAL_JUPYTER_PGID=";
 const PGID_RE = new RegExp(`${PGID_MARK}(\\d+)`);
 
+/**
+ * Where the process group is written down, so that it outlives the page.
+ *
+ * A server started here is a child of the application, not of the page, and
+ * nothing about a reload reaches it: the new page knows of no server, starts
+ * one of its own, and the old one keeps its port and its kernels. Done twenty
+ * times over a few days that is a hundred and seventy processes and no free
+ * port left, which is how this was found.
+ *
+ * The group number is therefore kept where the next page can read it --
+ * storage survives a reload and a crash, which is precisely the pair of cases
+ * no handler catches.
+ */
+const STALE_KEY = "myst/jupyter-pgid";
+
+const rememberGroup = (value) => {
+  try {
+    if (value) localStorage.setItem(STALE_KEY, String(value));
+    else localStorage.removeItem(STALE_KEY);
+  } catch {
+    // Private windows and blocked storage: the net is lost, nothing else is.
+  }
+};
+
+/**
+ * Kill what a previous life of this page left running.
+ *
+ * Called before starting, so the cleanup happens at the one moment it can do
+ * no harm: nothing of ours is running yet. A group that no longer exists
+ * makes `kill` fail, which is the ordinary case and says nothing.
+ */
+async function killStaleGroup() {
+  if (isWindows) return;
+  let stale = null;
+  try {
+    stale = localStorage.getItem(STALE_KEY);
+  } catch {
+    return;
+  }
+  if (!stale) return;
+  rememberGroup(null);
+  console.log(`[jupyter] groupe laissé par une session précédente : ${stale}, on le retire`);
+  await runShell(`kill -KILL -${stale}`).catch(() => {});
+}
+
 let child = null;
 let pgid = null;
 let port = null;
@@ -48,12 +93,14 @@ export const jupyterToken = () => token;
  * demande — la leçon est celle de `myst start`, qui déménage quand son port
  * est pris.
  */
-export async function startJupyter({ dir, timeoutMs = 30000 } = {}) {
+async function doStart({ dir, timeoutMs = 30000 } = {}) {
   if (!isTauri) return { ok: false, reason: "le build web n'a pas de machine où lancer un serveur" };
   if (child) return { ok: true, url: jupyterUrl(), token };
 
   // La même invocation que celle qui a trouvé les noyaux : `jupyter` n'est pas
   // toujours sur le PATH là où le module l'est.
+  await killStaleGroup();
+
   const found = await listJupyterKernels();
   if (!found.available) return { ok: false, reason: found.reason || "aucun noyau Jupyter sur cette machine" };
   const invocation = (found.via ?? "jupyter kernelspec list --json").replace(" kernelspec list --json", "");
@@ -94,6 +141,10 @@ export async function startJupyter({ dir, timeoutMs = 30000 } = {}) {
     port = null;
     token = null;
     stopping = false;
+    // Gone of its own accord: there is no group left to clean up after, and
+    // leaving the number written down would have the next start fire a kill
+    // at a stranger.
+    rememberGroup(null);
     if (unexpected) showToast(`le serveur Jupyter s'est arrêté seul (code ${data?.code ?? "?"})`, "error", 0);
   });
 
@@ -139,9 +190,34 @@ export async function startJupyter({ dir, timeoutMs = 30000 } = {}) {
   // Le port annoncé, et à défaut celui demandé : cette version écrit parfois
   // zéro dans sa liste, et zéro n'est l'adresse de rien.
   port = entry.port > 0 ? entry.port : wanted;
+  rememberGroup(pgid);
   console.log("[jupyter] entrée de la liste :", JSON.stringify(entry));
   console.log(`[jupyter] à l'écoute sur ${jupyterUrl()}`);
   return { ok: true, url: jupyterUrl(), token };
+}
+
+/** The start in flight, if there is one. */
+let starting = null;
+
+/**
+ * Start the server, once.
+ *
+ * The guard inside `doStart` is `if (child)`, and `child` is only set when
+ * the spawn returns -- a second of a second later, in which a second caller
+ * walks straight past it and starts a server of its own. There are three
+ * callers, and two documents opening together are enough: this is how one
+ * ends up with more servers than one asked for, each holding kernels.
+ *
+ * The promise is the guard: whoever arrives while a start is in flight waits
+ * on that start rather than beginning another. Cleared when it settles, so a
+ * start that failed can be tried again.
+ */
+export function startJupyter(options) {
+  if (child) return Promise.resolve({ ok: true, url: jupyterUrl(), token });
+  starting ??= doStart(options).finally(() => {
+    starting = null;
+  });
+  return starting;
 }
 
 /**
@@ -170,6 +246,24 @@ export async function stopJupyter() {
       console.warn("[jupyter] arrêt :", err);
     }
   }
+  rememberGroup(null);
+}
+
+/**
+ * The last resort, for a reload nobody announced -- the browser's own, the
+ * keyboard shortcut, a crash of the page.
+ *
+ * Fire and forget, because nothing can be awaited here: the page is going.
+ * The request still reaches Rust, which runs in its own process and is not
+ * going anywhere, so the kill happens even though no one is left to hear
+ * about it. The group is left written down all the same: if this did not
+ * work, the next start reads it and finishes the job.
+ */
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    if (!pgid || isWindows) return;
+    runShell(`kill -KILL -${pgid}`).catch(() => {});
+  });
 }
 
 // Appelable depuis la console, comme la sonde des noyaux :
