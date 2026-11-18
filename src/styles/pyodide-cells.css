@@ -104,6 +104,46 @@
    and every hand-run answer is one more place to forget to call. */
 .pyodide-btn-move{display:none}
 .cm-inline-rendered-md .pyodide-btn-move{display:inline-flex}
+/* The toolbar in the manner of the two output controls further down: nothing
+   filled, no frame until the pointer is on it, and what used to be said by a
+   coloured pill said by the glyph itself. A cell belongs to the document, and
+   a row of framed buttons made it read as an application pasted into the page.
+
+   Written here, after the rules that paint the buttons, so that it is those
+   that give way. Reverting is deleting this block.
+
+   Nothing about runall and clearall: those two are no longer in the bar. They
+   survive as detached elements, the targets the Alt-click grammar clicks, and
+   the rules above that still paint them are dead along with them. */
+.pyodide-btn{background:none;border-color:transparent;opacity:.72}
+.pyodide-btn:hover:not(:disabled){opacity:1;border-color:var(--pyodide-cell-border,var(--color-border,#c4d4e6))}
+.pyodide-btn:disabled{opacity:.35}
+/* The colours, which are now the one thing this bar says loudly: run, undo,
+   destroy, add.
+
+   Qualified by the wrapper, and that is not decoration. The editor's own
+   stylesheet carries `button, input, dialog, textarea { color: inherit }`,
+   which styled-components compiles against its container class -- one class
+   and one element, which outranks a single class. Every `color` written for
+   these buttons as `.pyodide-btn-something` has therefore never applied; the
+   green and the blue showed only because they were backgrounds, which that
+   rule says nothing about. Two classes put it right, and `!important` would
+   have hidden the reason. */
+.pyodide-wrapper .pyodide-btn-run{color:#1a7f37}
+.pyodide-wrapper .pyodide-btn-restart,.pyodide-wrapper .pyodide-btn-delete{color:#cf222e}
+.pyodide-wrapper .pyodide-btn-insert{color:#1b3f7a}
+/* Opacity is for the neutral glyphs. A coloured one already says something,
+   and dimming it says it less. */
+.pyodide-btn-run,.pyodide-btn-restart,.pyodide-btn-delete,.pyodide-btn-insert{opacity:1}
+/* These two asked for less attention than the rest even before; with
+   everything else quietened they would have disappeared. */
+.pyodide-btn-fold,.pyodide-btn-font{opacity:.72}
+/* Closer together: the frames used to hold the buttons apart, and without
+   them the old gap reads as a gap between groups that do not exist. The
+   original value is on the .pyodide-controls rule further up; the width
+   reserved for each glyph is on the rule that sizes the icon buttons. */
+.pyodide-controls{gap:.22rem}
+.pyodide-btn-run,.pyodide-btn-clear,.pyodide-btn-restart,.pyodide-btn-insert,.pyodide-btn-source,.pyodide-btn-delete{min-width:1.55rem;padding-left:.3rem;padding-right:.3rem}
 /* The side panel of the completion popup carries .pyodide-completion-doc, but
    its size and wrapping are set inline in pyodideRunner.js: it is rendered in
    the tooltip host, outside the preview, where this sheet may not reach. */
