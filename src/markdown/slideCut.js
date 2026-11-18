@@ -285,6 +285,15 @@ export function resolveSlideSettings(frontmatter, defaults = {}) {
     headerStyle: text(fm.headerStyle, fm.headerstyle, fm["header-style"], defaults.headerStyle),
     footerStyle: text(fm.footerStyle, fm.footerstyle, fm["footer-style"], defaults.footerStyle),
     background: text(fm.background, defaults.background),
+    // The progress bar, shown unless the deck says otherwise. YAML gives a
+    // boolean, and a writer who types `off` or `no` means the same thing and
+    // is not made to guess which word this one understands.
+    progress: (() => {
+      const wanted = fm.progress ?? defaults.progress;
+      if (wanted === undefined || wanted === null) return true;
+      return !(wanted === false || /^(false|off|no|none)$/i.test(String(wanted)));
+    })(),
+    progressColor: text(fm.progressColor, fm.progresscolor, fm["progress-color"], defaults.progressColor),
     cutAtHeading: Number.isFinite(cutLevel) ? Math.max(0, Math.min(6, Math.trunc(cutLevel))) : 0,
     marker: MARKERS.includes(String(fm.marker ?? defaults.marker ?? "")) ? String(fm.marker ?? defaults.marker) : "both",
     ...(() => {

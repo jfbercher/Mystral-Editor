@@ -151,6 +151,23 @@ Both lines are part of the slide's column, so they reserve their own space and t
 
 The header and footer are **text**. They cannot hold MyST — a link, a date computed for you, a logo — because of how they are built, and widening that would be a different feature rather than a bigger string.
 
+### How far through the deck one is
+
+A footer that reads `Slide 7/24` is a count, and a count has to be read and then turned into a sense of where one stands. The same line also carries that sense directly: its background is filled, left to right, to the share of the deck already shown.
+
+Nothing has to be asked for. The fill appears as soon as a deck has a header or a footer, since it is their background it borrows — a deck with neither shows none, there being nowhere to put it that would not cost height a slide cannot spare.
+
+It is drawn while presenting, and only then: in the slide view the slides are laid out one after another and there is no *where one stands* to show.
+
+```yaml
+slides:
+  footer: "J.-F. Bercher | | {n}/{total}"
+  progress: true          # the default; false turns it off
+  progressColor: "#2f6fd0"
+```
+
+The footer carries it when there is one, and the header otherwise — the line at the bottom is where an audience looks for this, but a deck with only a header should not be left without it. The default fill is a translucent blue, chosen so the text written over it stays readable; a solid colour reads more sharply and is the better choice for a line that carries no text. A `headerStyle` or `footerStyle` that sets a background of its own wins, being applied to the element directly.
+
 ### Settings for one slide  
 
 A slide can answer for itself, in a block of MyST comments written directly under its marker:
@@ -315,6 +332,8 @@ One function decides where a cut falls, and both halves of the feature call it. 
 | `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
 | `slides.footerStyle` | `""` | The same, for the footer. |
 | `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
+| `slides.progress` | `true` | Fill the footer — or the header, when a deck has no footer — to the share of the deck already shown, as a progress bar that costs no height. `false` turns it off. A deck with neither line shows none. |
+| `slides.progressColor` | `""` | The fill of that bar, as any CSS colour. Empty uses a translucent blue, chosen so a line written over it stays readable; a solid colour reads more sharply when the furniture carries no text. A `headerStyle` or `footerStyle` that sets a background wins over both, being applied inline. |
 | `slides.marker` | `"both"` | Which spelling cuts a slide: `"both"`, `"plus"` (only `+++`) or `"dash"` (only `---`). Slide cuts only — `----` and `++++` are always fragments. |
 | `slides.transition` | `"slide"` | How one slide gives way to the next while presenting: `"none"`, `"fade"`, `"slide"`, `"slideUp"` or `"zoom"`, optionally followed by a duration on the same line — `"fade 700ms"`, `"slideUp 1.2s"`, or a bare number read as milliseconds. 450ms without one, clamped to 3s. An unknown name falls back to `"slide"`. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |

@@ -983,6 +983,23 @@ const SlideStyles = css`
     line-height: 1.3;
     opacity: 0.7;
   }
+  /* How far through the deck one is, drawn as the furniture's own background
+     filled to the share already shown. A bar of its own was the alternative;
+     this one costs no height, which on a slide is the scarcest thing there
+     is. The footer carries it, or the header when there is no footer -- the
+     line at the bottom is where an audience looks for this, and a deck with
+     only a header should not be left without it. A hard stop rather than a
+     gradient: what is wanted is a reading, not a fade. The deck's own
+     headerStyle or footerStyle is written inline and so still wins, which is
+     the right way round. */
+  &[data-slide-progress] > html-chunk > .slide-footer,
+  &[data-slide-progress] > html-chunk:not(:has(> .slide-footer)) > .slide-header {
+    background-image: linear-gradient(
+      to right,
+      var(--slide-progress-color, rgba(47, 111, 208, 0.35)) calc(var(--slide-progress, 0) * 100%),
+      var(--slide-progress-track, transparent) 0
+    );
+  }
   /* Three columns rather than two ends, which is what lets the left-hand part
      be centred *on the slide* and not merely in the space the template leaves
      it. The outer columns are equal, so the middle one is the middle. */

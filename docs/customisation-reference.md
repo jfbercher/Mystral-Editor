@@ -184,6 +184,8 @@ One section for both, deliberately: the view, the fullscreen presentation and th
 | `slides.headerStyle` | `""` | CSS declarations applied to the header — `"font-size: 18px; color: #888; border-bottom: 1px solid #ddd"`. |
 | `slides.footerStyle` | `""` | The same, for the footer. |
 | `slides.background` | `""` | The slide's background, as any CSS colour. Empty follows the theme. |
+| `slides.progress` | `true` | Fill the footer — or the header, when a deck has no footer — to the share of the deck already shown, as a progress bar that costs no height. `false` turns it off. A deck with neither line shows none. |
+| `slides.progressColor` | `""` | The fill of that bar, as any CSS colour. Empty uses a translucent blue, chosen so a line written over it stays readable; a solid colour reads more sharply when the furniture carries no text. A `headerStyle` or `footerStyle` that sets a background wins over both, being applied inline. |
 | `slides.verticalAlign` | `"top"` | Where the content sits in the box: `"top"` or `"center"`. |
 | `slides.cellFontSize` | `18` | Size of a code cell's text on a slide, same nominal pixels as `fontSize`. Separate because a cell's stylesheet is written in rem, which is rooted at the document rather than at the slide, so it cannot follow the prose on its own. |
 | `slides.cutAtHeading` | `0` | Also start a slide at every heading of this level or above — `2` cuts at `h1` and `h2`. `0` means only the explicit markers cut. |

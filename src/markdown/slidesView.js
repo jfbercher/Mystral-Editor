@@ -84,6 +84,8 @@ function slideSize(settings) {
     },
     background: s.background ?? "",
     padding: s.padding ?? "",
+    progress: s.progress !== false,
+    progressColor: s.progressColor ?? "",
     cutAtHeading: Number(s.cutAtHeading) || 0,
     transition: s.transition ?? "slide",
     transitionMs: Number(s.transitionMs) || 450,
@@ -417,7 +419,7 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const measure = () => {
     frame = 0;
-    const { w, h, font, codeFont, align, furniture, background, padding, transition, transitionMs, cutAtHeading } =
+    const { w, h, font, codeFont, align, furniture, background, padding, transition, transitionMs, cutAtHeading, progress, progressColor } =
       slideSize(getSettings());
     if (preview.dataset.slideTransition !== transition) preview.dataset.slideTransition = transition;
     preview.style.setProperty("--slide-anim-time", `${transitionMs}ms`);
@@ -446,6 +448,13 @@ export function attachSlideView(preview, getSettings = () => null) {
     const pad = cssValue("padding", padding);
     if (pad) preview.style.setProperty("--slide-padding", pad);
     else preview.style.removeProperty("--slide-padding");
+    // How far through the deck one is, as the background of the header or the
+    // footer. A flag and a colour here; the proportion itself is written with
+    // the current slide below, since that is when it changes.
+    if (progress) preview.dataset.slideProgress = "1";
+    else delete preview.dataset.slideProgress;
+    if (progressColor) preview.style.setProperty("--slide-progress-color", progressColor);
+    else preview.style.removeProperty("--slide-progress-color");
     if (presenting) {
       // Projecting: one slide, as large as the display allows. The zoom does
       // not apply -- there is nothing to zoom towards once the slide fills the
@@ -510,6 +519,14 @@ export function attachSlideView(preview, getSettings = () => null) {
         else delete el.dataset.slideStill;
         shownIndex = i;
         el.dataset.fragment = String(fragment);
+        // The share of the deck already shown, as a bare number: CSS can read
+        // `n` and `N` from the slide's attributes but cannot divide one by
+        // the other, so the division is done here. On the preview rather than
+        // on the slide, because one slide shows at a time and the rules that
+        // read it are the preview's own -- and because a chunk's style
+        // attribute is rewritten wholesale at each render, which would carry
+        // this away with it.
+        preview.style.setProperty("--slide-progress", String((i + 1) / all.length));
       } else {
         delete el.dataset.slideCurrent;
         delete el.dataset.fragment;
@@ -761,6 +778,9 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.style.removeProperty("--slide-bg");
     preview.style.removeProperty("--slide-padding");
     preview.style.removeProperty("--slide-anim-time");
+    preview.style.removeProperty("--slide-progress");
+    preview.style.removeProperty("--slide-progress-color");
+    delete preview.dataset.slideProgress;
     delete preview.dataset.slideTransition;
     delete preview.dataset.slideDir;
     preview.classList.remove("measuring-slides");

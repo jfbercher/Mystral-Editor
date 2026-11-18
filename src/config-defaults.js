@@ -313,6 +313,19 @@ export const DEFAULT_CONFIG = {
     footerStyle: "",
     // The slide's own background, as any CSS colour. Empty follows the theme.
     background: "",
+    // How far through the deck one is, drawn as the background of the footer
+    // -- or of the header, when a deck has no footer -- filled to the share
+    // already shown. A bar of its own was the alternative; this one costs no
+    // height, which on a slide is the scarcest thing there is. It needs a
+    // header or a footer to live in, so a deck with neither simply does not
+    // show one.
+    progress: true,
+    // The fill of that bar, as any CSS colour. Empty uses a translucent blue,
+    // chosen so the line written over it stays readable; a solid colour reads
+    // more sharply and is the better choice when the furniture carries no
+    // text. The deck's headerStyle or footerStyle is applied inline and so
+    // still wins over both.
+    progressColor: "",
     // Where the content of a slide sits in its box: "top" or "center".
     // Centring suits a deck of short slides; a lecture whose slides are uneven
     // reads better flush to the top, where the titles line up from one slide

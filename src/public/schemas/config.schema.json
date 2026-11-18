@@ -224,6 +224,14 @@
           "description": "The slide's own background, as any CSS colour. Empty follows the theme.",
           "type": "string"
         },
+        "progress": {
+          "description": "Fill the header or the footer to the share of the deck already shown, as a progress bar that costs no height. The footer carries it, or the header when there is no footer. True unless a deck turns it off.",
+          "type": "boolean"
+        },
+        "progressColor": {
+          "description": "The fill of that bar, as any CSS colour. Empty uses a translucent blue, chosen so the line over it stays readable; a solid colour is fine if the furniture carries no text.",
+          "type": "string"
+        },
         "verticalAlign": {
           "description": "Where the content of a slide sits in its box: \"top\" or \"center\". Centring suits a deck of short slides; a lecture whose slides are uneven reads better flush to the top, where the titles line up from one slide to the next instead of drifting up and down.",
           "enum": [

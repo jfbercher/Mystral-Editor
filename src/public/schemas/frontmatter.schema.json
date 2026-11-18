@@ -391,6 +391,14 @@
           "description": "Slide background, as a CSS colour.",
           "type": "string"
         },
+        "progress": {
+          "description": "Fill the header or footer to show how far through the deck one is. True by default.",
+          "type": "boolean"
+        },
+        "progressColor": {
+          "description": "Colour of that fill, as a CSS colour. Empty uses a translucent blue.",
+          "type": "string"
+        },
         "header": {
           "description": "Header line. Three parts separated by `|`.",
           "type": "string"
