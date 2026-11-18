@@ -251,6 +251,37 @@ window.testComputeSectionRange = computeSectionRange;
 
 
 export const markdownUpdatedEffect = StateEffect.define();
+
+/**
+ * When the document or the caret was last moved by something other than the
+ * reader's own hand in the editor.
+ *
+ * The dual pane scrolls the preview onto the cursor when the cursor moves, or
+ * when a render arrives shortly after a keystroke. Both are right when the
+ * reader is working in the source. Both are wrong when the gesture came from
+ * the preview, and two defects came of it:
+ *
+ * Folding a cell writes `:fold:` into the source. The clock that says "the
+ * reader is typing" is set by the Yjs observer, which sees every local change
+ * alike, so the fold passed for typing -- and the pane re-aligned on a cursor
+ * whose line had just moved down by one. Fold the same cell again and the
+ * pane walks up the document a line at a time.
+ *
+ * And a click in the preview scrolls the editor to the line it came from and
+ * places the caret there, which is the right direction: the pane one is
+ * reading stays put and the other follows. But placing the caret woke the
+ * sync the other way, which scrolled the preview back onto it -- while the
+ * editor's own smooth scroll was still in flight, so it aimed at a position
+ * that was about to stop being true.
+ *
+ * Both gestures therefore say so here, and the pane leaves the scroll alone
+ * for as long as it would otherwise have taken the change for the reader's.
+ */
+let programmaticChangeAt = 0;
+export const markProgrammaticChange = () => {
+  programmaticChangeAt = performance.now();
+};
+export const sinceProgrammaticChange = () => performance.now() - programmaticChangeAt;
 /** Re-project Inline widgets after external data changes (transforms that don't touch the doc text). */
 export const inlineRefreshEffect = StateEffect.define();
 let timing_debug = false;
@@ -459,7 +490,12 @@ export class TextManager {
       const found = findFenceBlock(src, String(code ?? "").trim(), this._posFromLineId(lineId));
       if (!found) return;
       const change = foldOptionChange(src, found, folded);
-      if (change) view.dispatch({ changes: change });
+      // Not a keystroke: see `markProgrammaticChange`. Without this the pane
+      // follows the cursor one line further up at every fold.
+      if (change) {
+        markProgrammaticChange();
+        view.dispatch({ changes: change });
+      }
     };
     /**
      * Merge a cell with the one next to it, and split one in two.

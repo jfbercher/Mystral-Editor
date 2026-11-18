@@ -1,5 +1,5 @@
 import { EditorView } from "codemirror";
-import { markdownUpdatedEffect } from "../text";
+import { markdownUpdatedEffect, markProgrammaticChange, sinceProgrammaticChange } from "../text";
 import { findNearestElementForLine, getLineById } from "../markdown/markdownSourceMap";
 import { EditorSelection } from "@codemirror/state";
 
@@ -24,6 +24,11 @@ export const syncPreviewWithCursor = (text, lastTyped) => {
     if (update.docChanged || (!selectionChanged && !markdownUpdated && !resized)) {
       return;
     }
+    // Something other than the reader's hand in the source moved the caret or
+    // the text just now -- a click in the preview, a cell folded from it. The
+    // preview is then the pane being read and the one that must stay put: see
+    // `markProgrammaticChange` in text.js for the two defects this answers.
+    if (sinceProgrammaticChange() < typedToUpdateThreshold) return;
 
     function sync() {
       const preview = text.preview.peek();
@@ -101,6 +106,12 @@ export function handlePreviewClickToScroll(ev, lineMap, preview, editor) {
   const line = editor.state.doc.line(lineNumber);
   const visible = editor.visibleRanges[0];
   function setCursor() {
+    // The caret lands here because the reader clicked in the preview, not
+    // because they went looking for it in the source. Saying so keeps the
+    // sync above from answering by scrolling the preview onto the caret --
+    // which it did while this pane's own smooth scroll was still in flight,
+    // so it aimed at a position that was about to stop being true.
+    markProgrammaticChange();
     editor.dispatch({
       selection: EditorSelection.create([EditorSelection.range(line.to, line.to)]),
     });

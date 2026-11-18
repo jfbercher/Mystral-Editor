@@ -142,7 +142,7 @@
    them the old gap reads as a gap between groups that do not exist. The
    original value is on the .pyodide-controls rule further up; the width
    reserved for each glyph is on the rule that sizes the icon buttons. */
-.pyodide-controls{gap:.22rem}
+.pyodide-controls{gap:.05rem}
 .pyodide-btn-run,.pyodide-btn-clear,.pyodide-btn-restart,.pyodide-btn-insert,.pyodide-btn-source,.pyodide-btn-delete{min-width:1.55rem;padding-left:.3rem;padding-right:.3rem}
 /* The side panel of the completion popup carries .pyodide-completion-doc, but
    its size and wrapping are set inline in pyodideRunner.js: it is rendered in
