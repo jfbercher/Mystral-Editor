@@ -1143,6 +1143,55 @@ const SlideStyles = css`
     border-radius: 0;
     box-shadow: none;
   }
+  /* The panorama: the whole deck at once, to jump by sight rather than by
+     counting. A grid of fixed tracks, each the size of a reduced slide, with
+     the slide itself scaled into it from its top-left corner. A scaled box
+     still takes its full size in the layout, which is why the tracks are
+     given that size explicitly instead of being left to the items -- and why
+     the view scrolls the cursor into sight by arithmetic rather than by
+     asking the element where it is.
+
+     A thumbnail is the slide, not a picture of it: the same element, the same
+     stylesheet, the same figures and cell outputs. Which also means a cell
+     goes on running while one looks for the next slide, as it should. */
+  &.presenting.panorama {
+    display: grid;
+    grid-template-columns: repeat(var(--pano-cols, 4), calc(var(--slide-w, 1280px) * var(--pano-scale, 0.2)));
+    grid-auto-rows: calc(var(--slide-h, 720px) * var(--pano-scale, 0.2));
+    gap: var(--pano-gap, 16px);
+    align-content: start;
+    justify-content: center;
+    /* Each slide sits at the top-left of its cell, which is where the scale
+       above takes its origin. Without this, the centring the presentation
+       mode sets would centre the unscaled box -- 720 pixels of it in a
+       180-pixel row -- and every thumbnail would be drawn a few hundred
+       pixels above its own cell. */
+    align-items: start;
+    justify-items: start;
+    padding: var(--pano-gap, 16px);
+    overflow: auto;
+  }
+  &.presenting.panorama > html-chunk {
+    display: flex;
+    transform: scale(var(--pano-scale, 0.2));
+    transform-origin: top left;
+    /* The entrance belongs to a slide one has moved to, not to twenty drawn
+       side by side. */
+    animation: none !important;
+    box-shadow: 0 1px 6px var(--box-shadow);
+  }
+  /* Divided by the scale, so the ring is the same thickness whatever the
+     thumbnails are: it is drawn on the slide and shrinks with it. */
+  &.presenting.panorama > html-chunk[data-pano-cursor] {
+    outline: calc(3px / var(--pano-scale, 0.2)) solid var(--slide-progress-color, #2f6fd0);
+    outline-offset: calc(2px / var(--pano-scale, 0.2));
+  }
+  /* The zoom badge is positioned against the window and would otherwise take
+     a cell of the grid for itself. */
+  &.presenting.panorama > .slide-zoom-badge {
+    display: none;
+  }
+
   &.presenting > html-chunk[data-slide-current] {
     display: flex;
     animation-duration: var(--slide-anim-time, 450ms);

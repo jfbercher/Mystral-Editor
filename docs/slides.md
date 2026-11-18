@@ -269,11 +269,29 @@ They apply while presenting — the stacked editing view scrolls, so there is no
 | `←` `↑` `Backspace` | previous |
 | `Home`, `End` | first slide, last slide fully revealed |
 | click on the slide | next |
+| `o` | the panorama — the whole deck at once |
 | `Escape` | leave |
 
 Each step reveals the next fragment if the slide has one left, and otherwise moves on. Going back to a slide shows it as you left it — fully revealed — rather than making you uncover it again.
 
 A click advances, except on something that was clearly aimed at: a cell's buttons or editor, a link, a figure to open.
+
+### Finding a slide: the panorama
+
+A question from the room is rarely about the slide one is on. `o` lays the whole deck out as a grid of thumbnails — *o* for overview — and the arrows move a cursor through it: left and right by one slide, up and down by one row, `Home` and `End` to the ends. The mouse moves the same cursor, so pointing and typing never disagree.
+
+| | |
+|---|---|
+| `Enter`, `Space`, a click | leave on the slide under the cursor |
+| `Escape`, `o` | leave, back to the slide the panorama was opened from |
+
+The two ways out differ on purpose. Leaving by `Escape` is a change of mind and takes you back where you were; leaving by `Enter` or a click is a move, and the slide you land on arrives with its transition like any other.
+
+The thumbnails *are* the slides — the same elements, reduced — so what is on them is what the room will see: figures, cell outputs, everything. A cell left running goes on running while you look, and its output appears in the thumbnail. Nothing is suspended, there being nothing to gain by it.
+
+How many columns the grid uses is not a setting: it takes the arrangement that makes the thumbnails largest while still showing the whole deck, up to four. A deck too long to fit that way scrolls rather than shrinking into stamps — one reads the titles to find a slide, and ninety unreadable rectangles answer nothing.
+
+The panorama belongs to the presentation inside the editor. The standalone HTML export is a different deck, with its own keys, and does not have it.
 
 ### Cells during the lecture  
 

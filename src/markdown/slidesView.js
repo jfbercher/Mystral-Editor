@@ -388,6 +388,26 @@ export function attachSlideView(preview, getSettings = () => null) {
   let slide = 0;
   let fragment = 0;
 
+  // The panorama: the whole deck at once, to jump by sight rather than by
+  // counting. `from` is where it was opened, which is where Escape goes back
+  // to -- leaving by Escape is a change of mind, not a move. `cursor` is the
+  // slide the keyboard is on, which the mouse also moves so that pointing and
+  // typing never disagree. The cells go on running throughout: a figure being
+  // computed while one looks for the next slide is the ordinary case, and
+  // suspending it would be a surprise with nothing to gain.
+  let panorama = false;
+  let panoramaFrom = 0;
+  let cursor = 0;
+  let panoCols = 1;
+  let panoCell = { w: 0, h: 0 };
+  const PANO_GAP = 16;
+  /** Four at most: past that a thumbnail is too small to recognise. */
+  const PANO_MAX_COLS = 4;
+  /** Below this, a thumbnail is not worth the absence of scrolling. */
+  const PANO_MIN_SCALE = 0.18;
+  /** And above this it is no longer a thumbnail but a slide on its own. */
+  const PANO_MAX_SCALE = 0.45;
+
   const badge = document.createElement("div");
   badge.className = "slide-zoom-badge";
   badge.hidden = true;
@@ -496,6 +516,10 @@ export function attachSlideView(preview, getSettings = () => null) {
 
     if (centred) preview.classList.remove("measuring-slides");
 
+    // The panorama is laid out here rather than when it opens, so a window
+    // resized while it is up re-flows like everything else.
+    if (panorama) layoutPanorama(all.length, w, h);
+
     // Which slide is showing, and how much of it. Attributes rather than
     // inline styles, because what they drive is a stylesheet: everything
     // except the current slide is hidden, and inside it everything past the
@@ -568,6 +592,115 @@ export function attachSlideView(preview, getSettings = () => null) {
     return best;
   };
 
+  /**
+   * The grid: how many columns, and how small a slide has to be drawn.
+   *
+   * The number of columns is the one that makes the thumbnails largest while
+   * still showing the whole deck, up to four. Past four a slide stops being
+   * readable and the grid stops being useful -- one reads the titles to find
+   * a slide, and a wall of stamps answers nothing. A long deck therefore
+   * scrolls, which it would have to do anyway.
+   *
+   * Scaled rather than resized, like everything else here: a slide is laid
+   * out at its nominal size and reduced optically, so a thumbnail is the
+   * slide and not an approximation of it.
+   */
+  const layoutPanorama = (n, w, h) => {
+    const availW = Math.max(240, preview.clientWidth - 2 * PANO_GAP);
+    const availH = Math.max(240, preview.clientHeight - 2 * PANO_GAP);
+    const byWidth = (c) => (availW - PANO_GAP * (c - 1)) / (c * w);
+    let cols = 1;
+    let scale = 0;
+    for (let c = 1; c <= Math.min(PANO_MAX_COLS, Math.max(1, n)); c++) {
+      const rows = Math.ceil(n / c);
+      // Capped here rather than at the end, so that two arrangements which
+      // both reach the ceiling are judged on what distinguishes them: with
+      // `>=`, the wider one wins, and two slides stand side by side instead
+      // of one above the other.
+      const s = Math.min(PANO_MAX_SCALE, byWidth(c), (availH - PANO_GAP * (rows - 1)) / (rows * h));
+      if (s >= scale) {
+        scale = s;
+        cols = c;
+      }
+    }
+    // A deck too long to fit at a size worth looking at: stop trying to fit
+    // it. Showing all ninety slides at once sounds like the point of the view
+    // and is not -- one reads the titles to find a slide, and ninety stamps
+    // answer nothing. The widest grid, as large as the width allows, and the
+    // rest is a scroll away.
+    if (scale < PANO_MIN_SCALE) {
+      cols = Math.min(PANO_MAX_COLS, Math.max(1, n));
+      scale = byWidth(cols);
+    }
+    scale = Math.max(0.08, Math.min(PANO_MAX_SCALE, scale));
+    panoCols = cols;
+    panoCell = { w: w * scale, h: h * scale };
+    preview.style.setProperty("--pano-cols", String(cols));
+    preview.style.setProperty("--pano-scale", String(scale));
+    preview.style.setProperty("--pano-gap", `${PANO_GAP}px`);
+  };
+
+  /** Which thumbnail the keyboard is on, and keeping it in sight. */
+  const markCursor = () => {
+    const all = slides();
+    cursor = Math.max(0, Math.min(all.length - 1, cursor));
+    all.forEach((el, i) => {
+      if (i === cursor) el.dataset.panoCursor = "1";
+      else delete el.dataset.panoCursor;
+    });
+    // Computed rather than asked of the element: a thumbnail is a scaled
+    // slide, so its layout box is still 1280 by 720 and scrollIntoView would
+    // aim at that box rather than at what is on screen.
+    if (!panoCell.h) return;
+    const row = Math.floor(cursor / panoCols);
+    const top = PANO_GAP + row * (panoCell.h + PANO_GAP);
+    const bottom = top + panoCell.h;
+    if (top < preview.scrollTop) preview.scrollTop = Math.max(0, top - PANO_GAP);
+    else if (bottom > preview.scrollTop + preview.clientHeight) preview.scrollTop = bottom - preview.clientHeight + PANO_GAP;
+  };
+
+  const enterPanorama = () => {
+    if (!presenting || panorama) return;
+    panorama = true;
+    panoramaFrom = slide;
+    cursor = slide;
+    dismissPopup();
+    preview.classList.add("panorama");
+    schedule();          // measure() lays the grid out, and keeps it on resize
+    // After that pass, not before it: bringing the cursor into view needs the
+    // cell size the pass computes, and a deck opened at its fortieth slide
+    // should not open on its first.
+    requestAnimationFrame(() => markCursor());
+  };
+
+  /**
+   * Leave the panorama. `target` is the slide to land on; `null` means the
+   * one it was opened from, which is what Escape asks for.
+   *
+   * Landing somewhere else counts as a move, so the slide plays its entrance:
+   * `shownIndex` still holds the slide one left, and the stylesheet reads the
+   * difference by itself.
+   */
+  const leavePanorama = (target) => {
+    if (!panorama) return;
+    panorama = false;
+    preview.classList.remove("panorama");
+    preview.style.removeProperty("--pano-cols");
+    preview.style.removeProperty("--pano-scale");
+    preview.style.removeProperty("--pano-gap");
+    for (const el of slides()) delete el.dataset.panoCursor;
+    preview.scrollTop = 0;
+    const to = target == null ? panoramaFrom : target;
+    if (to !== slide) {
+      preview.dataset.slideDir = to > slide ? "next" : "prev";
+      slide = to;
+      // A slide one has just chosen by sight is shown whole, not at the
+      // fragment count of the slide one happened to be on.
+      fragment = 0;
+    }
+    schedule();
+  };
+
   const go = (dir) => {
     const all = slides();
     if (!all.length) return;
@@ -608,6 +741,10 @@ export function attachSlideView(preview, getSettings = () => null) {
   };
 
   const stopPresenting = () => {
+    // Fullscreen can end from outside -- the system gesture, another window --
+    // and the panorama must not outlive the presentation it belongs to. Back
+    // to the slide it was opened from, since no choice was made.
+    if (panorama) leavePanorama(null);
     presenting = false;
     // Leaving the deck forgets where we were, so re-entering plays the
     // entrance of the slide one comes back to, as it should.
@@ -624,6 +761,43 @@ export function attachSlideView(preview, getSettings = () => null) {
   const onKey = (ev) => {
     if (!presenting) return;
     if (ev.repeat) return;
+
+    // The panorama first, and alone: while it is up it is what the keys act
+    // on, including the two a presenter remote sends -- which there move the
+    // cursor, the nearest thing to what the hand means by them.
+    if (panorama) {
+      const n = slideCount();
+      const move = (d) => {
+        cursor = Math.max(0, Math.min(n - 1, cursor + d));
+        markCursor();
+      };
+      const act = {
+        Escape: () => leavePanorama(null),
+        // The key that opened it closes it, and on the same terms as Escape:
+        // back where one came from. A toggle is worth having on its own, and
+        // here it is also the way out that does not depend on the browser --
+        // Escape is the key fullscreen keeps for itself.
+        o: () => leavePanorama(null),
+        O: () => leavePanorama(null),
+        Enter: () => leavePanorama(cursor),
+        " ": () => leavePanorama(cursor),
+        ArrowRight: () => move(1),
+        ArrowLeft: () => move(-1),
+        PageDown: () => move(1),
+        PageUp: () => move(-1),
+        ArrowDown: () => move(panoCols),
+        ArrowUp: () => move(-panoCols),
+        Home: () => move(-n),
+        End: () => move(n),
+      }[ev.key];
+      // Everything else is swallowed rather than passed on: the deck is not
+      // being presented at this moment, it is being looked through.
+      if (act) {
+        ev.preventDefault();
+        act();
+      }
+      return;
+    }
 
     // PageUp and PageDown first, and unconditionally: that is what every
     // presenter remote sends, and a remote has to keep working while the
@@ -666,6 +840,11 @@ export function attachSlideView(preview, getSettings = () => null) {
       slide = Math.max(0, slideCount() - 1);
       fragment = fragmentCount(slides()[slide] ?? preview);
       schedule();
+    } else if (ev.key === "o" || ev.key === "O") {
+      // `o` for overview, and here rather than above because a letter typed
+      // into a cell is a letter: the guard on the editor has already run.
+      ev.preventDefault();
+      enterPanorama();
     }
   };
 
@@ -678,6 +857,18 @@ export function attachSlideView(preview, getSettings = () => null) {
 
   const onClick = (ev) => {
     if (!presenting) return;
+    // In the panorama every click is a choice, including one that lands on a
+    // cell's button or a link: a thumbnail is a picture of a slide, not a
+    // slide one can work in.
+    if (panorama) {
+      const chunk = ev.target instanceof Element ? ev.target.closest("html-chunk") : null;
+      const idx = chunk ? slides().indexOf(chunk) : -1;
+      if (idx >= 0) {
+        ev.preventDefault();
+        leavePanorama(idx);
+      }
+      return;
+    }
     // A click advances, as in every other presenter -- but not one that was
     // aimed at something: a cell's button, its editor, a link, a figure to
     // open full screen, the summary of a dropdown, or anything inside one that
@@ -703,9 +894,21 @@ export function attachSlideView(preview, getSettings = () => null) {
   // slide sits at the far end of that scroll rather than in the corner.
   preview.insertBefore(present, preview.firstChild);
 
+  /** The mouse moves the cursor too, so pointing and typing never disagree. */
+  const onHover = (ev) => {
+    if (!panorama) return;
+    const chunk = ev.target instanceof Element ? ev.target.closest("html-chunk") : null;
+    const idx = chunk ? slides().indexOf(chunk) : -1;
+    if (idx >= 0 && idx !== cursor) {
+      cursor = idx;
+      markCursor();
+    }
+  };
+
   document.addEventListener("keydown", onKey);
   document.addEventListener("fullscreenchange", onFullscreen);
   preview.addEventListener("click", onClick);
+  preview.addEventListener("mouseover", onHover);
 
   // Ctrl/Cmd and the wheel: the gesture every viewer already knows, and one
   // that needs no focus -- the cursor is in the source, which is where it
@@ -751,6 +954,11 @@ export function attachSlideView(preview, getSettings = () => null) {
     preview.removeEventListener("wheel", onWheel);
     preview.removeEventListener("click", onClick);
     document.removeEventListener("keydown", onKey);
+    preview.removeEventListener("mouseover", onHover);
+    preview.classList.remove("panorama");
+    preview.style.removeProperty("--pano-cols");
+    preview.style.removeProperty("--pano-scale");
+    preview.style.removeProperty("--pano-gap");
     document.removeEventListener("fullscreenchange", onFullscreen);
     if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});
     preview.classList.remove("presenting");
@@ -764,6 +972,7 @@ export function attachSlideView(preview, getSettings = () => null) {
       delete el.dataset.slideTotal;
       delete el.dataset.slideOverflow;
       delete el.dataset.slideCurrent;
+      delete el.dataset.panoCursor;
       delete el.dataset.fragment;
       delete el.dataset.footerPage;
       el.querySelector(":scope > .slide-header")?.remove();
