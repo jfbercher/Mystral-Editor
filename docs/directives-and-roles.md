@@ -405,10 +405,20 @@ Not directives or roles, but part of what the editor renders, and all added in t
   never closed swallows the rendering down to the next heading -- CommonMark's
   rule for an unterminated HTML block, which mystmd applies as well. See
   [document organisation](./document-organisation.md).
+- `~~struck out~~` and `==highlighted==`. Both are rendered in the preview and both survive an export. Striking out becomes a `delete` node, which every writer knows, so it comes out struck in LaTeX, on the site and in Word alike. Highlighting has no node: the MyST syntax tree offers none, and a plugin may add transforms but no renderer, so there is nowhere to teach a writer about one. What it becomes therefore depends on where the build is going: a `span` the site's stylesheet colours, or — for the file exports, which the editor marks as such — the text itself between two raw LaTeX fragments, coloured in LaTeX, where the editor adds `soul` to the preamble of a document that uses it. The reason for the split is that the Word writer drops a node it does not know *together with its children*, and it does not know `span`: a highlight written as a span does not reach Word without its colour, it does not reach Word at all. Two reservations follow from it, both about builds run by hand outside the editor, which sets no such mark: `myst build --docx` takes the site's shape and loses the highlighted words themselves, and `myst build --pdf` keeps the words but not the colour. Prefix either with `MYSTRAL_STATIC=1` to get what the editor gets. The editor's own exports are sound. The roles `` {del}`…` `` and `` {u}`…` `` remain, and are what mystmd understands on its own.
 - footnotes (`[^1]`)
 - reference-style links (`[text][ref]`),
 - BibTeX citations (`[@key]`) with a `[bibliography]` marker,
 - and heading numbering driven by the *Number headers* setting.
+
+**Highlights in a LaTeX build of your own.** `MYSTRAL_STATIC=1` is enough for Word, and only half of what LaTeX needs. The colour comes from `\hl`, which belongs to the `soul` package, and a plugin cannot ask for a package: it emits nodes of the document's body, while `\usepackage` lives in the preamble, which belongs to the template. The editor adds it afterwards, as a post-processing pass of its own, which is why its own exports come out coloured. To get the same from your own command line, add the two lines once to your LaTeX template's preamble:
+
+```latex
+\usepackage{soul}
+\sethlcolor{yellow!35}
+```
+
+Without them, LaTeX meets a command it does not know: in its usual non-interactive mode it reports the error and typesets the argument, so the words remain and the colour does not. Under pdfLaTeX, add `\usepackage{soulutf8}` as well — `soul` reads its argument character by character, which is what lets a highlight break across a line and also what makes it stumble on accented letters. XeLaTeX and LuaLaTeX neither need it nor want it.
 
 Mermaid diagrams (as a fenced `mermaid` block) were added upstream. 
 

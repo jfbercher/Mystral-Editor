@@ -29,6 +29,7 @@ import { readRule } from "../shortCaption.js";
 import { LOGIN_SHELL, WINDOWS_SHELL, windowsScript, shq, q, runShell as runShellWithEnv } from "./shell.js";
 import { rewriteFloats } from "./texFloats.js";
 import { rewriteGrids } from "./texGrids.js";
+import { addHighlightPreamble } from "./texHighlight.js";
 import { writePyodideOutputs, refreshPyodideOutputs } from "./pyodideExport.js";
 // The two mystmd plugins, embedded in the bundle as text rather than shipped
 // as files: `?raw` means they travel with the application, always of the same
@@ -39,6 +40,7 @@ import pyodideOutputsSource from "../../../extras/myst-plugins/pyodide-outputs.m
 import floatListsSource from "../../../extras/myst-plugins/float-lists.mjs?raw";
 import quizSource from "../../../extras/myst-plugins/quiz.mjs?raw";
 import cardsGridsSource from "../../../extras/myst-plugins/cards-grids.mjs?raw";
+import marksSource from "../../../extras/myst-plugins/marks.mjs?raw";
 import siteStyleSource from "../../../extras/myst-plugins/mystral-site.css?raw";
 
 /**
@@ -912,6 +914,7 @@ const PROJECT_PLUGINS = [
   ["float-lists.mjs", floatListsSource],
   ["quiz.mjs", quizSource],
   ["cards-grids.mjs", cardsGridsSource],
+  ["marks.mjs", marksSource],
 ];
 
 /** The site's style sheet, kept in the same folder as the plugins. */
@@ -1673,14 +1676,20 @@ async function postProcessTexFile(texPath, sourcePath) {
   // it out earlier would shift every pairing the passes above counted on.
   const quizzes = stripQuizListings(floats.text);
   if (quizzes.removed) console.debug(`[export] ${quizzes.removed} quiz listing(s) removed from the .tex`);
-  await writeTextFile(bodyPath, separateEnvironments(quizzes.text));
+  // Last of all: it adds a preamble rather than rewriting the body, so it has
+  // nothing to disturb and nothing that could be disturbed by the passes
+  // above -- and it has to see the `\hl` the marks plugin wrote, wherever
+  // they ended up.
+  const marks = addHighlightPreamble(quizzes.text);
+  await writeTextFile(bodyPath, separateEnvironments(marks.text));
 
   // In a multi-file export the body carries no preamble; the packages and the
   // box definitions have to go in the file that has `\begin{document}`.
   const pendingPreamble =
     (styled.preambleWritten ? "" : styled.preamble ?? "") +
     (floats.preambleWritten ? "" : floats.preamble ?? "") +
-    (grids.preambleWritten ? "" : grids.preamble ?? "");
+    (grids.preambleWritten ? "" : grids.preamble ?? "") +
+    (marks.preambleWritten ? "" : marks.preamble ?? "");
   if (split && pendingPreamble) {
     const at = main.indexOf("\\begin{document}");
     if (at === -1) {
@@ -1702,6 +1711,7 @@ async function postProcessTexFile(texPath, sourcePath) {
   if (captions.declared) parts.push(`${captions.declared} short caption${captions.declared === 1 ? "" : "s"} as declared`);
   if (captions.shortened) parts.push(`${captions.shortened} shortened`);
   if (floats.floated) parts.push(`${floats.floated} float${floats.floated === 1 ? "" : "s"} wrapped`);
+  if (marks.highlights) parts.push(`${marks.highlights} highlight${marks.highlights === 1 ? "" : "s"}`);
   if (styled.labelled) parts.push(`${styled.labelled} labelled`);
   if (proof.repaired) parts.push(`${proof.repaired} proof label${proof.repaired === 1 ? "" : "s"} restored`);
   // Said rather than left to be discovered: the other parts belong to other

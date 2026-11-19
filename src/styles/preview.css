@@ -26,6 +26,18 @@
    font-variant: small-caps;
  }
 
+ /* `==highlighted==`, from markdownMark.js. The browser's own yellow is a
+    flat background that reads as an error marker in a dark theme and burns
+    through a printed page; this is the same idea drawn as a highlighter
+    stroke, and it takes the document's own text colour so it works in both
+    themes without a second rule. */
+ mark {
+   background: var(--highlight-bg, rgba(255, 213, 0, 0.42));
+   color: inherit;
+   padding: 0 0.12em;
+   border-radius: 0.15em;
+ }
+
  .myst-preview-popup {
    position: absolute;
    z-index: 1000;

@@ -71,6 +71,7 @@ import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
 import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdownIndex";
 import { collectFloatLists, floatListsSignature } from "./markdown/markdownFigureLists";
 import { readAbbreviations, abbreviationsSignature, markdownAbbreviations } from "./markdown/markdownAbbreviations";
+import markdownMark from "./markdown/markdownMark.js";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
@@ -395,6 +396,7 @@ export class TextManager {
         .use(markdownSlideBreaks)
         .use(markdownIndexRole)
         .use(markdownAbbreviations)
+        .use(markdownMark)
         .use(markdownItHeadings)
         .use(markdownItFootnoteDefs)
         .use(markdownItFootnoteRefs)

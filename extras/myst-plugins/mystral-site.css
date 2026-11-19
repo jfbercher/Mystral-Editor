@@ -130,3 +130,14 @@ h3,
 h4 {
   clear: both;
 }
+
+/* `==highlighted==`, which the marks plugin turns into a span of this class
+   when it is building a site. A file export gets the text bare instead: the
+   Word writer drops a node it does not know together with its children, and
+   it does not know `span`. The colour here is the preview's, so a document
+   looks the same in the editor and on the site. */
+span.highlight {
+  background: rgba(255, 213, 0, 0.42);
+  padding: 0 0.12em;
+  border-radius: 0.15em;
+}
