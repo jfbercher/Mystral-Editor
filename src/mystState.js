@@ -80,6 +80,18 @@ const defaultUserSettings = [
     enabled: false,
   },
   {
+    // The third state of the dual pane's scroll sync, and only the third:
+    // `syncScroll` in the configuration says whether the panes follow each
+    // other at all, this says how. Off, the preview goes to the caret when
+    // the caret moves -- a jump, when one is writing. On, the two panes stay
+    // level while either is scrolled, the first line showing in one being the
+    // line that produced what shows in the other. Read in CodeMirror.jsx,
+    // which is where the extension is chosen.
+    id: "scroll-sync-continuous",
+    title: "Sync scrolling of dual pane",
+    enabled: false,
+  },
+  {
     // Éteint par défaut, et il doit le rester : allumer ce réglage fait
     // lancer un serveur Jupyter local à la première cellule exécutée, et un
     // éditeur qui démarre un processus Python sans qu'on l'ait demandé serait

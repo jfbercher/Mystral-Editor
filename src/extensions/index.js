@@ -23,6 +23,23 @@ import {
 } from "@codemirror/language";
 import { frontmatterFoldService, frontmatterFoldMemory } from "./frontmatterFold";
 import { syncPreviewWithCursor } from "./syncDualPane";
+import { syncScrollContinuously } from "./syncScrollContinuous.js";
+
+/**
+ * How the two panes follow each other, as one extension to put in a
+ * compartment.
+ *
+ * Three states and two extensions: none at all, the preview going to the
+ * caret when the caret moves, or the two panes staying level while either is
+ * scrolled. The continuous one replaces the other rather than joining it --
+ * two mechanisms scrolling the same pane is the one arrangement guaranteed
+ * not to work -- which is why this is a choice made in one place and not two
+ * conditions written side by side.
+ */
+export const scrollSyncExtension = ({ on, continuous, text, lastTyped }) => {
+  if (!on) return [];
+  return continuous ? syncScrollContinuously(text) : syncPreviewWithCursor(text, lastTyped);
+};
 import { cursorIndicator } from "./cursorIndicator";
 import { yaml, yamlFrontmatter } from "@codemirror/lang-yaml";
 import { ySync } from "./collab";

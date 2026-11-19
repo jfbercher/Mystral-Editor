@@ -1,4 +1,4 @@
-import { foldValue, optionIsOn } from "./cellFold.js";
+import { foldAttr, optionIsOn } from "./cellFold.js";
 import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
@@ -1170,9 +1170,16 @@ class CodeCellDirective extends Directive {
     // comme options inconnues.
     enumerated: directiveOptions.unchanged,
     numbered:   directiveOptions.unchanged,  // alias de enumerated
-    // L'état du chevron, écrit par le chevron lui-même : `:fold:` replie,
-    // `:fold: false` ouvre une cellule que `:tags: hide-input` replierait.
-    // Voir src/markdown/cellFold.js.
+    // Whether the code shows. `:open: false` opens the cell folded, and a
+    // cell with no such option opens showing its code. `:fold:` is the older
+    // spelling of the same thing the other way round, still read because
+    // documents carry it; `:open:` wins when both are written.
+    //
+    // The chevron does not write either of them. It used to, and the writing
+    // was the whole trouble: an edit made in answer to a view gesture
+    // re-renders the document under the hand that made it. The option belongs
+    // to the author, the chevron to the reader. See src/markdown/cellFold.js.
+    open:     directiveOptions.unchanged,
     fold:     directiveOptions.unchanged,
     packages: directiveOptions.unchanged,    // paquets supplémentaires, virgule-séparés
     tags:     directiveOptions.unchanged,    // tags de cellule (métadonnées)
@@ -1232,7 +1239,7 @@ class CodeCellDirective extends Directive {
       `data-label="${escapeHtml(label)}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
-      `data-fold="${data.options?.fold === undefined ? "" : foldValue(data.options.fold)}" ` +
+      `data-fold="${foldAttr(data.options)}" ` +
       `data-linenos="${linenos}">` +
       `</div>\n`;
 

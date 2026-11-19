@@ -161,7 +161,7 @@ const DIRECTIVE_OPTIONS = {
   "code-block": ["filename", "linenos", "lineno-start", "emphasize-lines"],
   // `align`, `caption` and `label` only matter to an export: they turn the
   // figure a cell produced into a figure of the document.
-  "code-cell": ["tags", "linenos", "packages", "params", "figwidth", "align", "caption", "label", "enumerated", "enumerator"],
+  "code-cell": ["tags", "linenos", "fold", "open", "packages", "params", "figwidth", "align", "caption", "label", "enumerated", "enumerator"],
   "quiz": ["button", "dropdown", "label", "caption"],
   // `url` is the specification's own name and `link` its alias; the alias is
   // what its examples use, and what is proposed here.
@@ -200,6 +200,7 @@ const OPTION_VALUES = {
   enumerated: ["true", "false"],
   depth: ["1", "2", "3", "4", "5", "6"],
   open: ["true", "false"],
+  fold: ["true", "false"],
   icon: ["true", "false"],
   linenos: ["true", "false"],
   literal: ["true", "false"],

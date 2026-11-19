@@ -61,7 +61,8 @@ The options understood are:
 
 - `:linenos:` numbers the lines of the cell.
 - `:packages: pandas, scipy` loads those packages before the cell runs, in addition to the ones always present. Names are comma-separated.
-- `:tags: hide-input` opens the cell with its code folded away, showing the toolbar and the output alone. Other tags are stored and round-tripped but not otherwise interpreted.  
+- `:open: false` opens the cell with its code folded away, showing the toolbar and the output alone -- for a cell whose result is the point and whose code is a detail. A cell that says nothing opens showing its code. The chevron in the toolbar folds and unfolds as you read, and writes nothing: how a cell *opens* is the author's to say, what is showing right now is the reader's. In a fence, whose flags sit in the info string with nowhere to put a value, the spelling is `:fold:`; it is also the older spelling of the same thing in a directive, still read, with `:open:` winning when both appear.
+- `:tags: hide-input` is metadata for the export and does not fold anything here: a cell may well be read open and exported without its input. Other tags are stored and round-tripped but not otherwise interpreted.  
 - `:params: n = 1..100 step 1` puts a control under the cell -- a slider for a range, a checkbox for `name = true`, a dropdown for `name = ['a', 'b']` -- and `:params: auto, …` makes the cell run on its own when a control is released. See *Parameters*, below.
 - `:figwidth: 60%` sets how wide the figures the cell draws are rendered. Any CSS length does -- a percentage of the output area, `20em`, `480px`. Without it the figure keeps its natural size, bounded by the width of the cell, and `pyodide.figureWidth` in `config.json` sets the default for every cell.  
 

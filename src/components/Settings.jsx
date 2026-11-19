@@ -114,6 +114,16 @@ const Toggle = ({ ...props }) => {
 };
 
 export const userExtensionsCompartment = new Compartment();
+/**
+ * The dual pane's scroll sync, which of the three states it is in.
+ *
+ * A compartment of its own, because this setting chooses between two
+ * extensions rather than adding one: it cannot travel with the others, and
+ * reading it where the editor is built would subscribe that effect to every
+ * setting there is -- so toggling "Number headers" would tear the editor down
+ * and build it again.
+ */
+export const scrollSyncCompartment = new Compartment();
 
 /**
  * Install, show and remove the local Pyodide.

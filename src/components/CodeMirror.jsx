@@ -2,11 +2,11 @@ import { useContext, useRef } from "preact/hooks";
 import { EditorView } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import styled, { css } from "styled-components";
-import { ExtensionBuilder, skipAndFoldAll, foldMarkedHeadings } from "../extensions";
+import { ExtensionBuilder, scrollSyncExtension, skipAndFoldAll, foldMarkedHeadings } from "../extensions";
 import { YCommentsParent } from "./Comment";
 import commentIcon from "../icons/comment.svg?raw";
 import { MystState } from "../mystState";
-import { userExtensionsCompartment } from "./Settings";
+import { userExtensionsCompartment, scrollSyncCompartment } from "./Settings";
 import { useSignalEffect } from "@preact/signals";
 import { FoldChevron, MdStyles } from "./Preview";
 import { Logger } from "../logger";
@@ -453,7 +453,18 @@ const CodeMirror = () => {
   useSignalEffect(() => {
     const userExtensions = userSettings.value.filter((s) => s.enabled && s.extension).map((s) => s.extension);
     editorView.value?.dispatch?.({
-      effects: userExtensionsCompartment.reconfigure(userExtensions),
+      effects: [
+        userExtensionsCompartment.reconfigure(userExtensions),
+        // The one setting that chooses an extension rather than adding one.
+        scrollSyncCompartment.reconfigure(
+          scrollSyncExtension({
+            on: options.syncScroll.value && options.mode.value === "Both",
+            continuous: userSettings.value.find((s) => s.id === "scroll-sync-continuous")?.enabled ?? false,
+            text,
+            lastTyped,
+          }),
+        ),
+      ],
     });
   });
 
@@ -511,7 +522,26 @@ const tA = performance.now();
         .useFixFoldingScroll(focusScroll)
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))
-        .if(options.syncScroll.value && options.mode.value === "Both", (b) => b.useSyncPreviewWithCursor({ text, lastTyped }))
+        // Three states, and the two settings that make them: `syncScroll` says
+        // whether the panes follow each other at all, the toggle says how. The
+        // continuous follower replaces the one that chases the caret rather
+        // than joining it -- both of them scroll the preview, and two things
+        // scrolling the same pane is the one arrangement guaranteed not to
+        // work.
+        // In a compartment, so that the toggle takes effect on the spot
+        // rather than at the next rebuild -- and so that reading the setting
+        // does not subscribe this effect to every other one. `peek` for the
+        // same reason: the value is the starting state, the effect below
+        // owns the changes.
+        .useCompartment(
+          scrollSyncCompartment,
+          scrollSyncExtension({
+            on: options.syncScroll.value && options.mode.value === "Both",
+            continuous: userSettings.peek().find((s) => s.id === "scroll-sync-continuous")?.enabled ?? false,
+            text,
+            lastTyped,
+          }),
+        )
         .if(options.yamlSchema.value && options.language.value !== "json", (b) =>
           b.useYamlLSPExtension(options.yamlSchema.value, editorView, linter, options.language.value),
         )

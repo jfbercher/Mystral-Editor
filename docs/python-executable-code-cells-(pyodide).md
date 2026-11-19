@@ -56,9 +56,13 @@ Supported options:
 Captioned cells are numbered, under a counter of their own -- `Code 1`, `Code 2` -- rather than among the figures. mystmd counts them as figures when it builds the site, so the two numberings differ by design; change `kind` to `"fig"` for `code-cell` in `data_directives` to follow mystmd instead. The label shown can be changed the same way.
 
 Note that `:caption:` and `:label:` are deliberately not passed to the exporter a second time: mystmd reads them from the source itself, and sending them again produced two nested floats and the caption twice.
-- `:fold:` — the cell opens with its code folded away
+- `:open: false` — the cell opens with its code folded away
 
-The chevron that folds a cell's code **writes this option itself**. Folding a cell adds `:fold:` to its source, unfolding one removes it, so the way a document was left is the way it opens the next time -- on another machine, or for whoever the document is sent to. The option says one thing and only that, and is independent of `:tags: hide-input`, which concerns the export rather than what the editor shows: a cell may well be read open and exported without its input. The fence form carries the flag in its info line, beside `:linenos:`:
+How a cell *opens* is the author's to say; what is showing right now is the reader's. `:open: false` folds the code away at opening, for a cell whose result is the point and whose code is a detail; a cell that says nothing opens showing its code. The chevron in the toolbar folds and unfolds as you read, and **writes nothing** -- so nothing is marked modified, nothing re-renders, and nothing moves under your eyes.
+
+It used to write the state back into the source, which seemed a kindness: a document reopened a week later came back tidied. The mechanism was wrong, though, and in a way that took a while to see. An edit made in answer to a view gesture re-renders the document, and a re-render moves what one is looking at -- the pane creeping up a line at each fold, the preview jumping to wherever the source happened to be, a slide replaying its entrance in the middle of a sentence. Each was fixed in turn and another took its place, because the fault was the writing itself.
+
+`:fold:` is the older spelling, the same thing the other way round, and is still read; `:open:` wins when both appear. A fence carries its flags in its info line, where a value has nowhere to go, so `:fold:` remains the spelling there:
 
 ````markdown
 ```code-cell python :linenos: :fold:
@@ -66,7 +70,7 @@ import numpy as np
 ```
 ````
 
-Each fold is an edit like any other: it marks the document modified and can be undone with the usual shortcut.
+`:tags: hide-input` is a separate matter: it is metadata for the export and folds nothing here, a cell being perfectly able to be read open and exported without its input.
 
 ℹ️ **Access to local-files** in read/write mode is supported, restricted to the Working Directory with explicit permissions (web), or in the same directory as the current file (Tauri local app).
 

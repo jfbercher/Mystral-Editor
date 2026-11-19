@@ -1,4 +1,3 @@
-import { foldOptionChange } from "./markdown/cellFold.js";
 import { cellsAreNeighbours, mergeCellsText, splitCellText } from "./markdown/cellSplitMerge.js";
 import { computed, effect, signal } from "@preact/signals";
 import markdownIt from "markdown-it";
@@ -258,24 +257,23 @@ export const markdownUpdatedEffect = StateEffect.define();
  *
  * The dual pane scrolls the preview onto the cursor when the cursor moves, or
  * when a render arrives shortly after a keystroke. Both are right when the
- * reader is working in the source. Both are wrong when the gesture came from
- * the preview, and two defects came of it:
+ * reader is working in the source, and wrong when the gesture came from the
+ * preview.
  *
- * Folding a cell writes `:fold:` into the source. The clock that says "the
- * reader is typing" is set by the Yjs observer, which sees every local change
- * alike, so the fold passed for typing -- and the pane re-aligned on a cursor
- * whose line had just moved down by one. Fold the same cell again and the
- * pane walks up the document a line at a time.
- *
- * And a click in the preview scrolls the editor to the line it came from and
+ * A click in the preview scrolls the editor to the line it came from and
  * places the caret there, which is the right direction: the pane one is
  * reading stays put and the other follows. But placing the caret woke the
  * sync the other way, which scrolled the preview back onto it -- while the
  * editor's own smooth scroll was still in flight, so it aimed at a position
  * that was about to stop being true.
  *
- * Both gestures therefore say so here, and the pane leaves the scroll alone
- * for as long as it would otherwise have taken the change for the reader's.
+ * So that gesture says so here, and the pane leaves the scroll alone for as
+ * long as it would otherwise have taken the change for the reader's. The
+ * continuous follower uses the same mark while it drives the other pane.
+ *
+ * Folding a cell was the second case and is no longer one: the chevron does
+ * not write to the document any more, for the reasons set out in
+ * src/markdown/cellFold.js.
  */
 let programmaticChangeAt = 0;
 export const markProgrammaticChange = () => {
@@ -477,26 +475,6 @@ export class TextManager {
     document.addEventListener("pyodide-code-edit", this._pyodideEditHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-code-edit", this._pyodideEditHandler));
 
-    // The chevron that folds a cell's code writes its state into the document,
-    // so that it survives the session; see src/markdown/cellFold.js. Same road
-    // as a code edit: the block is found by its content, the line id settling
-    // which of two identical cells is meant, and nothing is written when the
-    // source already says what is wanted.
-    this._pyodideFoldHandler = ({ detail: { code, lineId, owner, folded } }) => {
-      if (_notMine(owner)) return;
-      const view = this.editorView.value;
-      if (!view) return;
-      const src = view.state.doc.toString();
-      const found = findFenceBlock(src, String(code ?? "").trim(), this._posFromLineId(lineId));
-      if (!found) return;
-      const change = foldOptionChange(src, found, folded);
-      // Not a keystroke: see `markProgrammaticChange`. Without this the pane
-      // follows the cursor one line further up at every fold.
-      if (change) {
-        markProgrammaticChange();
-        view.dispatch({ changes: change });
-      }
-    };
     /**
      * Merge a cell with the one next to it, and split one in two.
      *
@@ -548,9 +526,6 @@ export class TextManager {
     };
     document.addEventListener("pyodide-cell-split", this._pyodideSplitHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-cell-split", this._pyodideSplitHandler));
-
-    document.addEventListener("pyodide-cell-fold", this._pyodideFoldHandler);
-    cleanups?.push(() => document.removeEventListener("pyodide-cell-fold", this._pyodideFoldHandler));
 
     // Insère une cellule :::code-cell vide sous la cellule courante.
     // Utilise findFenceBlock pour localiser précisément le bloc, même si currentCode

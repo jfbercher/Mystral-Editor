@@ -422,7 +422,10 @@ const markdownItPyodide = (md, { parent, editorId = "" } = {}) => {
 
     // Linenos : présent si ":linenos:" figure dans la ligne info
     const linenos = /\blinenos\b/i.test(info);
-    // Idem pour le pli, que le chevron écrit lui-même ; voir cellFold.js.
+    // Whether the cell opens folded. A fence carries its flags in the info
+    // string, where `:open: false` has nowhere to put its value, so `:fold:`
+    // remains the spelling here; a directive takes `:open: false`. See
+    // cellFold.js.
     const folded = infoHasFold(info);
 
     // Injecter les attributs du token (dont data-line-id posé par markdownSourceMap)

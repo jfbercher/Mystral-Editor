@@ -1909,6 +1909,33 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     attributeFilter: ["data-python-space-label"],
   });
 
+  /**
+   * `:open:` edited in the source, after the cell was built.
+   *
+   * The option is read when the cell is created, and the cell outlives every
+   * re-render -- so writing `:open: false` into a document that is already on
+   * screen did nothing at all until it was reopened. Watching the attribute
+   * answers it exactly: a *change* of `data-fold` is the author saying
+   * something new, and nothing else changes it.
+   *
+   * It is deliberately the change and not the value. Re-reading the value at
+   * every render would undo the reader's own chevron each time the author
+   * typed a word elsewhere in the document.
+   */
+  new MutationObserver((records) => {
+    for (const record of records) {
+      const wanted = el.dataset.fold;
+      // Against the previous value, and not against what is on screen.
+      // Setting an attribute to the value it already has still produces a
+      // record, and the re-render copies this one onto the reused host at
+      // every pass -- so comparing with the cell's current state would undo
+      // the reader's chevron each time the author typed a word elsewhere.
+      if (record.oldValue === wanted) continue;
+      if (wanted !== "1" && wanted !== "0") continue;
+      setFolded(wanted === "1");
+    }
+  }).observe(el, { attributes: true, attributeFilter: ["data-fold"], attributeOldValue: true });
+
   const setFolded = (folded) => {
     wrapper.classList.toggle("pyodide-folded", folded);
     foldBtn.textContent = folded ? "›" : "⌄";
@@ -1921,32 +1948,22 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   };
 
   /**
-   * Fold, and remember it in the document.
+   * Fold, and tell no one.
    *
-   * The state is written as a `:fold:` option in the source, so that it
-   * survives a reopening, another machine, and a copy sent to someone else --
-   * which the host element alone does not, since it lives only as long as the
-   * session. The event travels on `document` and carries the owning editor and
-   * the cell's line, exactly as the code edits do: `text.js` locates the block
-   * and rewrites its options. Only the reader's own gesture goes through here;
-   * applying what the document already says must not write it back.
+   * The chevron used to write `:fold:` into the source so that the state
+   * outlived the session. It cost more than it gave: an edit made in answer
+   * to a view gesture re-renders the document, and a re-render moves what the
+   * reader is looking at -- the pane creeping up a line at each fold, the
+   * preview jumping to wherever the source happened to be, a slide replaying
+   * its entrance in the middle of a sentence. Each was fixed in its place and
+   * another took its turn, because the mistake was the writing itself.
+   *
+   * Folding is a property of the reading. The author says how a cell opens
+   * with `:open: false`; the reader folds what they are reading, and the host
+   * element remembers it for as long as the session lasts.
    */
-  const foldByHand = (folded) => {
-    setFolded(folded);
-    // While presenting, the chevron is a view control and nothing more.
-    // Writing `:fold:` into the document would change the text, re-render the
-    // slide and replay the deck's transition -- a fade in the middle of a
-    // sentence -- and would modify the file during a lecture, which is the
-    // last moment to do it. The state is kept on the host, as it was before
-    // any of this was written to the source, so the cell stays as the speaker
-    // left it until the deck is closed.
-    if (el.closest(".presenting")) return;
-    document.dispatchEvent(
-      new CustomEvent("pyodide-cell-fold", {
-        detail: { code: _currentCode, lineId: _lineId(), owner, folded },
-      }),
-    );
-  };
+  const foldByHand = (folded) => setFolded(folded);
+
   foldBtn.addEventListener("click", () => foldByHand(!wrapper.classList.contains("pyodide-folded")));
 
   const MIN_CELL_FONT = 8;
@@ -2450,7 +2467,8 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
 
   // Two answers, in order: what the reader left it at during this session --
   // the host's own attribute, which survives a re-render -- and what the
-  // document asks for with `:fold:`, which the chevron writes itself.
+  // document asks for with `:open:`, which the author writes and the chevron
+  // never does.
   //
   // `:tags: hide-input` used to fold here as well. It no longer does: it is
   // metadata for the export, and the two say different things -- a cell may

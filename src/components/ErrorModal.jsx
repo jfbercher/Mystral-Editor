@@ -20,7 +20,11 @@ const formatError = (error, src, options, getLogString, editorView, collabClient
   const time = `[${getTimestamp()}]`;
   const userAgent = `User agent: ${navigator.userAgent}`;
   const errorText = `${error.name}: ${error.message} ${error.cause ?? ""}\n${error.stack ?? ""}`;
-  let documentInfo = `Document:\nLines: ${editorView.state.doc.lines}\nLength: ${editorView.state.doc.length}`;
+  // The editor may not exist: an error thrown while it is being built is
+  // exactly the kind this report is for, and reaching into it then threw a
+  // second error that hid the first -- which is how this was found.
+  const doc = editorView?.state?.doc;
+  let documentInfo = doc ? `Document:\nLines: ${doc.lines}\nLength: ${doc.length}` : "Document: no editor view (the error came before it was built)";
   if (collabClient) {
     documentInfo += `\nUser count: ${collabClient.users.peek().length}`;
     documentInfo += `\nComments: count ${collabClient.ycomments.comments.peek().length}, lines [${collabClient.ycomments.comments

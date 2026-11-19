@@ -85,6 +85,20 @@ function scrollPreviewElemIntoView({ view, matchingLine, matchingElem, behavior 
  * @param { EditorView } editor
  */
 export function handlePreviewClickToScroll(ev, lineMap, preview, editor) {
+  // A click on something that does something is not a request to go there.
+  // The chevron of a code cell, its run button, a link, a control inside an
+  // output: the reader is acting on the thing in front of them, and answering
+  // by scrolling the editor to its line moves the ground under the gesture --
+  // and, with the continuous sync on, drags the preview along with it.
+  //
+  // A cell's own code is the exception, and the distinction is the whole
+  // point of the rule rather than a detail of it: clicking there places a
+  // caret, which is navigating, so the editor pane comes along to the
+  // matching line exactly as it does for a click on a paragraph. Only
+  // controls are acted upon.
+  const target = ev.target instanceof Element ? ev.target : null;
+  const control = target?.closest("a, button, input, select, label, summary, textarea");
+  if (control && !target.closest(".pyodide-editor")) return;
   let id = ev.target.getAttribute("data-line-id");
   let elem = ev.target;
   if (!id) {
