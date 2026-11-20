@@ -26,6 +26,23 @@
    font-variant: small-caps;
  }
 
+ /* Definition lists. The browser's own rendering indents the definitions and
+    leaves the terms in the body face, which reads as an indented paragraph
+    rather than as a list of terms; mystmd's site sets the term apart, and so
+    does this. The margins are the list's own rather than the browser's
+    generous default, which separated an entry from its definition more than
+    from the next entry. */
+ dl {
+   margin: 0.6em 0;
+ }
+ dt {
+   font-weight: 600;
+   margin-top: 0.5em;
+ }
+ dd {
+   margin: 0.15em 0 0 1.5em;
+ }
+
  /* `==highlighted==`, from markdownMark.js. The browser's own yellow is a
     flat background that reads as an error marker in a dark theme and burns
     through a printed page; this is the same idea drawn as a highlighter

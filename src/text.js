@@ -71,6 +71,7 @@ import markdownSlideBreaks from "./markdown/markdownSlideBreaks";
 import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdownIndex";
 import { collectFloatLists, floatListsSignature } from "./markdown/markdownFigureLists";
 import { readAbbreviations, abbreviationsSignature, markdownAbbreviations } from "./markdown/markdownAbbreviations";
+import markdownDeflist from "markdown-it-deflist";
 import markdownMark from "./markdown/markdownMark.js";
 import directiveOptionYaml from "./markdown/directiveOptionYaml.js";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
@@ -397,6 +398,12 @@ export class TextManager {
         .use(markdownSlideBreaks)
         .use(markdownIndexRole)
         .use(markdownAbbreviations)
+        // Definition lists, in the Pandoc spelling mystmd follows: a term on
+        // its own line, then `: ` or `~ ` for each definition. mystmd parses
+        // them natively and exports them as a LaTeX `description`; the
+        // library the preview is built on does not, and this plugin is the
+        // one that implements that very specification.
+        .use(markdownDeflist)
         .use(markdownMark)
         // Before the directives are read: it repairs the option lines their
         // parser would refuse, and it works on the source, so where it sits
