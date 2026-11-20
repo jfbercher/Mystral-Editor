@@ -1,3 +1,4 @@
+import { EditorView } from "codemirror";
 import * as localUtils from "./utils/local_utils.js";
 import { mountEditor , applyLanguageForFile } from "./editor_factory.js";
 import { clearCellCache } from "./markdown/pyodideRunner.js";
@@ -22,6 +23,110 @@ async function areHandlesEqual(handleA, handleB) {
 
   return handleA === handleB;
 }
+
+/**
+ * Splits a relative link into its path and its fragment, dropping a query
+ * string. `decodeURIComponent` is applied to both because a link written to a
+ * heading whose label carries an accent or a space reaches us percent-encoded,
+ * while the file on disk and the id in the preview do not.
+ */
+function splitHref(href) {
+  const hash = href.indexOf("#");
+  const fragment = hash === -1 ? null : href.slice(hash + 1);
+  let path = hash === -1 ? href : href.slice(0, hash);
+  path = path.split("?")[0];
+  const decode = (v) => {
+    if (!v) return v;
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v; // a stray % is not an encoding, and not a reason to fail
+    }
+  };
+  return [decode(path), decode(fragment) || null];
+}
+
+/**
+ * The line of the document that carries the `(label)=` marker's heading, or
+ * null. A fragment is honoured in the editor pane as well as in the preview,
+ * and the two panes address different spaces: the preview knows ids, the
+ * editor knows lines.
+ */
+function sourceLineOfLabel(text, label) {
+  if (!text) return null;
+  const quoted = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lines = text.split("\n");
+  const marker = new RegExp(`^\\(${quoted}\\)=\\s*$`);
+  for (let i = 0; i < lines.length; i++) {
+    // The marker sits on its own line, above what it labels; the line below is
+    // the one worth showing.
+    if (marker.test(lines[i])) return Math.min(i + 2, lines.length);
+  }
+  return null;
+}
+
+/**
+ * Brings the target of a link's fragment into view in a tab, in both panes.
+ *
+ * Scrolling the preview alone was not enough: the editor of a tab that has
+ * just opened sits on line 1, and with the panes synchronised it pulls the
+ * preview straight back to the top of the document, which is what a link to a
+ * section near the top looked like -- nothing happening at all. Moving the
+ * editor to the labelled line leaves the two panes agreeing with each other,
+ * and is the only thing that shows anything in the inline mode, where there is
+ * no preview pane to scroll.
+ *
+ * The preview is rendered after the editor mounts, so the target is awaited
+ * rather than looked up once, and the scroll is repeated after the images,
+ * figures and cell outputs that take their height late have settled.
+ */
+function scrollToAnchorInTab(editorId, fragment, deadline = 4000) {
+  if (!fragment) return;
+  const started = Date.now();
+  let line;
+  let again = false;
+
+  const apply = () => {
+    const entry = window.myst_editor?.[editorId];
+    const view = entry?.main_editor;
+    let moved = false;
+
+    if (view) {
+      if (line === undefined) line = sourceLineOfLabel(view.state.doc.toString(), fragment);
+      if (line != null && line <= view.state.doc.lines) {
+        const pos = view.state.doc.line(line).from;
+        view.dispatch({ selection: { anchor: pos, head: pos }, effects: EditorView.scrollIntoView(pos, { y: "start" }) });
+        moved = true;
+      }
+    }
+
+    let target = null;
+    try {
+      target = entry?.state?.options?.parent?.querySelector?.(`#${CSS.escape(fragment)}`);
+    } catch {
+      target = null; // a fragment that is not a selector is simply not found
+    }
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      moved = true;
+    }
+    return moved;
+  };
+
+  const tick = () => {
+    if (apply()) {
+      if (!again) {
+        again = true;
+        setTimeout(tick, 600);
+      }
+      return;
+    }
+    if (Date.now() - started < deadline) setTimeout(tick, 100);
+    else console.warn(`[tabs] no anchor "${fragment}" in the document opened in ${editorId}`);
+  };
+  setTimeout(tick, 100);
+}
+
 
 /**
  * Matches a DOM keydown against a shortcut written in CodeMirror notation
@@ -611,18 +716,25 @@ export class TabManager {
 
   async openFileLinkInTab(relativeHref) {
     const cleanHref = relativeHref.replace(/^\.\//, "");
+    // A link to another document may carry a fragment, and in principle a
+    // query string; neither is part of the path. They used to be left in it,
+    // so `doc.md#section` was looked up as a file of that name, which does not
+    // exist -- the tab opened empty. The fragment is kept aside instead, and
+    // honoured once the file is in front of the reader.
+    const [pathPart, fragment] = splitHref(cleanHref);
     const dir = currentFileDir.value
 
-    const absolutePath = `${dir.replace(/\/+$/, "")}/${cleanHref}`;
+    const absolutePath = `${dir.replace(/\/+$/, "")}/${pathPart}`;
     const targetPath = absolutePath.replaceAll("\\", "/");
 
-    await this.openFileHandleInTab(targetPath); // reuse the mechanism already in place!
+    await this.openFileHandleInTab(targetPath, fragment); // reuse the mechanism already in place!
   }
 
-  async openFileHandleInTab(fileHandle) {
+  async openFileHandleInTab(fileHandle, fragment = null) {
     const existingId = await this.findTabForHandle(fileHandle);
     if (existingId) {
-      this.activateTab(existingId);
+      await this.activateTab(existingId);
+      scrollToAnchorInTab(existingId, fragment);
       return;
     }
 
@@ -631,12 +743,21 @@ export class TabManager {
     const tabInfo = this.openTabs.get(editorId);
 
     const fileData = await tabInfo.tabState.loadFileFromHandle(fileHandle);
-    if (fileData) {
-      await localUtils.addRecentFileHandle(fileHandle);
-      tabInfo.savedText = typeof fileData === "string" ? fileData : await fileData.text();
-      this.activateTab(editorId);
-      tabInfo.tabState.markSaved(tabInfo.savedText);
+    if (!fileData) {
+      // Nothing could be read at that path. The shell is already in the tab
+      // bar at this point, and leaving it there is what put an empty
+      // "Untitled" tab in front of the reader instead of an error; it goes
+      // away again, and the link is reported rather than silently dropped.
+      console.warn(`[tabs] no file to open at ${fileHandle}`);
+      this.closeTab(editorId);
+      return;
     }
+
+    await localUtils.addRecentFileHandle(fileHandle);
+    tabInfo.savedText = typeof fileData === "string" ? fileData : await fileData.text();
+    await this.activateTab(editorId);
+    tabInfo.tabState.markSaved(tabInfo.savedText);
+    scrollToAnchorInTab(editorId, fragment);
 
     this.updateTabLabel(editorId);
     this.persistTabOrder();
