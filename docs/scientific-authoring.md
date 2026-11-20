@@ -140,7 +140,26 @@ This renders as a `<details>`/`<summary>` block: the icon and custom title form 
 
 ### Figures and Tables
 
-The `figure`, `table` and `list-table` directives support alignment (left, center, right) and scaling. Captions are numbered and cross-referenceable.
+The `figure`, `table`, `list-table` and `csv-table` directives support alignment (left, center, right) and scaling. Captions are numbered and cross-referenceable.
+
+A table can be written three ways, and the choice is about the data rather than about taste. A pipe table is the lightest and reads well in the source as long as it stays small. `csv-table` is for data that is regular and plain — it stays legible in the source, and it travels to and from a spreadsheet without losing anything:
+
+```md
+:::{csv-table} Measured values
+:header-rows: 1
+:name: tab:values
+
+Sample, Mass (g), Note
+A, 12.4, reference
+B, 13.1, "re-measured, twice"
+:::
+```
+
+The first line becomes the header because `:header-rows: 1` says so; `:header:` adds rows in front of the data, in the same format; and `:delim:`, `:quote:`, `:escape:` and `:keepspace:` are there for data that does not use commas and double quotes. A field containing the separator is quoted, as in the last cell above, and a doubled `""` inside a quoted field is one quote character.
+
+Its limit is the other side of its virtue: a cell is one line of plain text. When a cell needs a list, a figure or several paragraphs, `list-table` is the one that carries them.
+
+This directive is the editor's own work: mystmd knows it and exports it as a real LaTeX `tabular`, but the library the preview is built on stops at `list-table`. The body is therefore read here, and read as mystmd reads it — same options, same defaults, same answers on the awkward cases — so that the preview and the export agree on what the document says. `:file:`, which the documentation of other tools mentions, is not supported: mystmd carries it commented out in its own source, so a document using it would preview and export nothing.
 
 **Example — Source:**
 

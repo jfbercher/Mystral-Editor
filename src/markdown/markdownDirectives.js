@@ -3,6 +3,7 @@ import { headingInlineHtml } from "../utils/headingInline";
 import { PROOF_FAMILY } from "../config-defaults.js";
 import { Directive, directiveOptions, directivesDefault } from "markdown-it-docutils";
 import { stripShortCaption } from "./markdownFigureLists.js";
+import { parseCsv, rectangular } from "./csvTable.js";
 
 /**
  * The float class among a `:class:` list, if there is one.
@@ -879,12 +880,143 @@ export const mathDirectives = {
 };
 
 
+
+/**
+ * `{csv-table}` -- a table written as comma-separated values.
+ *
+ * mystmd knows this directive and exports it as a real LaTeX `tabular`;
+ * `markdown-it-docutils` does not, its table family stopping at
+ * `list-table`, so the preview is ours to draw. What follows therefore has
+ * one obligation above all: to read a document exactly as mystmd reads it,
+ * since the same source goes to both. The option names are mystmd's, their
+ * defaults are mystmd's, and `csvTable.js` reproduces the behaviour of the
+ * CSV reader it hands the body to -- checked against its own output, row by
+ * row, on the cases that decide it: a quoted field holding the separator, a
+ * doubled quote, a newline inside a field.
+ *
+ * Why a CSV table at all, next to `{list-table}` and a pipe table: a CSV
+ * stays legible in the source, and it travels to and from a spreadsheet
+ * without losing anything. Its limit is the other side of the same coin --
+ * a cell is one line of text, so anything a cell cannot hold on one line
+ * belongs in a `{list-table}`.
+ *
+ * The tokens are built here rather than by handing a pipe table to the
+ * markdown parser, which would have been shorter: a pipe table admits one
+ * header row and mystmd admits as many as `:header-rows:` says, plus
+ * whatever `:header:` adds in front. Writing the tokens is what lets the two
+ * agree.
+ *
+ * `:file:` is not supported, and deliberately: mystmd carries it commented
+ * out in its own source, so a document using it would preview here and
+ * export as nothing.
+ */
+export class CsvTableDirective extends Directive {
+  rawOptions = true;
+  required_arguments = 0;
+  optional_arguments = 1;
+  final_argument_whitespace = true;
+  has_content = true;
+
+  option_spec = {
+    // Rows put in front of the body's own, in the same CSV format.
+    header: directiveOptions.unchanged,
+    "header-rows": directiveOptions.unchanged,
+    class: directiveOptions.class_option,
+    align: directiveOptions.create_choice(["left", "center", "right"]),
+    // `delim`, not `delimiter`: mystmd spells it short, and `tab` and `space`
+    // stand for the characters they name.
+    delim: directiveOptions.unchanged,
+    keepspace: directiveOptions.unchanged,
+    quote: directiveOptions.unchanged,
+    escape: directiveOptions.unchanged,
+    name: directiveOptions.unchanged,
+    label: directiveOptions.unchanged,
+    enumerated: directiveOptions.unchanged,
+    numbered: directiveOptions.unchanged,
+    enumerator: directiveOptions.unchanged,
+    number: directiveOptions.unchanged,
+  };
+
+  run(data) {
+    this.assert_has_content(data);
+    const options = normalizeOptions(data.options);
+    const csv = {
+      delim: data.options?.delim,
+      quote: data.options?.quote,
+      escape: data.options?.escape,
+      keepspace: optionIsOn(data.options?.keepspace),
+    };
+
+    const headerRows = options.header === undefined ? [] : parseCsv(options.header, csv);
+    const bodyRows = parseCsv(data.body, csv);
+    // Padded together and not apart: a header and a body of different widths
+    // are one table, and the widest row sets it.
+    const rows = rectangular([...headerRows, ...bodyRows]);
+    if (!rows.length) throw new Error("A csv-table needs at least one row of data");
+
+    const declared = Number.parseInt(String(options["header-rows"] ?? "0"), 10);
+    const headCount = Math.min(rows.length, headerRows.length + (Number.isFinite(declared) ? Math.max(0, declared) : 0));
+
+    const classes = []
+      .concat(options.class ?? [])
+      .flatMap((c) => String(c).split(/\s+/))
+      .filter(Boolean);
+
+    const tableOpen = this.createToken("table_open", "table", 1, { block: true, map: data.map });
+    if (options.align) tableOpen.attrJoin("class", `align-${options.align}`);
+    if (classes.length) tableOpen.attrJoin("class", classes.join(" "));
+
+    // The anchor and the number, exactly as the other table directives get
+    // them: the id lands on the table, the number on the caption.
+    const info = getTarget(this.state, tableOpen, options.label);
+
+    const tokens = [tableOpen];
+
+    if (data.args.length && data.args[0]) {
+      const openCaption = this.createToken("table_caption_open", "caption", 1);
+      if (info?.number != null) {
+        openCaption.attrSet("data-number", `${info.number}`);
+        openCaption.attrJoin("class", "numbered");
+      }
+      tokens.push(openCaption);
+      tokens.push(this.createToken("inline", "", 0, { map: [data.map[0], data.map[0]], content: data.args[0], children: [] }));
+      tokens.push(this.createToken("table_caption_close", "caption", -1));
+    }
+
+    const firstLine = data.bodyMap?.[0] ?? data.map?.[0] ?? 0;
+    const section = (openType, closeType, cellTag, from, to) => {
+      if (from >= to) return;
+      tokens.push(this.createToken(openType, openType.replace("_open", ""), 1, { block: true }));
+      for (let r = from; r < to; r++) {
+        tokens.push(this.createToken("tr_open", "tr", 1, { block: true }));
+        for (const cell of rows[r]) {
+          tokens.push(this.createToken(`${cellTag}_open`, cellTag, 1));
+          // Parsed as markdown, as mystmd parses each cell as MyST: a cell
+          // may hold emphasis, a link or a reference, and a reader who wrote
+          // one expects to see it.
+          tokens.push(this.createToken("inline", "", 0, { map: [firstLine + r, firstLine + r], content: cell, children: [] }));
+          tokens.push(this.createToken(`${cellTag}_close`, cellTag, -1));
+        }
+        tokens.push(this.createToken("tr_close", "tr", -1, { block: true }));
+      }
+      tokens.push(this.createToken(closeType, closeType.replace("_close", ""), -1, { block: true }));
+    };
+
+    section("thead_open", "thead_close", "th", 0, headCount);
+    section("tbody_open", "tbody_close", "td", headCount, rows.length);
+
+    tokens.push(this.createToken("table_close", "table", -1, { block: true }));
+    return tokens;
+  }
+}
+
 export default {
   "figure-md": FigureMd,
   "figure-perso": FigureExtended,
   "figure": FigureExtended,
   table: TableDirective,
   "list-table":ListTableExtended,
+  "csv-table": CsvTableDirective,
   math: MathNumbered,
 };
 

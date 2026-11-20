@@ -79,6 +79,7 @@ in it, with the placeholders mystmd defines:
 | `image` | Library | Unchanged. Counts as a figure kind for numbering, unnumbered by default |
 | `table` | Upstream, rewritten | Numbered captions and labels; the upstream version numbered per render, which broke across chunks |
 | `list-table` | Library, rewritten | Same numbering treatment, plus alignment options |
+| `csv-table` | This work | A table written as CSV. mystmd knows the directive and exports it as a real `tabular`; the library does not provide it, so the preview is written here, reading the body exactly as mystmd reads it — the same option names, the same defaults, and the same answers on a quoted separator, a doubled quote or a newline inside a field |
 | `math` | Library, rewritten | Equation numbering, plus `:label:` and `:enumerated:` options |
 :::
 
@@ -438,6 +439,19 @@ A document's frontmatter chooses the Python namespace its code cells run in: `sh
 
 A document inherits the frontmatter written in its project's `myst.yml`, which may itself inherit from other YAML files through `extends`. Lists are combined, objects deep-merged, and the document's own values win. `extends` written in a document's own frontmatter is not a MyST key and is ignored, as mystmd ignores it.
 The complementary doc [frontmatter-extends](frontmatter-extends.md) covers it.
+
+### Option values that are not YAML
+
+The library the preview is built on reads a directive's options by stripping the `:` from each line, joining what is left into a YAML document and loading it. mystmd does nothing of the kind: an option's value is a string, and the directive decides what to make of it. So two spellings that mystmd accepts — and that its own documentation uses — are not valid YAML:
+
+```md
+:header: "Treat", "Quantity", "Description"
+:caption: A title: with a colon in it
+```
+
+The first opens a quoted scalar and then finds more text; the second looks like a mapping inside a mapping. Both raise a parsing error, so the directive does not render at all — the document exported and would not preview, which is the worst way for the two to differ.
+
+A pass over the source quotes such a value before the library sees it, so YAML reads as a string what the author meant as one. Only values YAML refuses are touched: `:header-rows: 1` is still a number, `:linenos: false` still a boolean, and `:class: full-width` still a plain word. Nothing of this reaches the document — it is the copy handed to the parser that is repaired, not the text you are editing.
 
 ### Extending the set of Directives and Roles
 

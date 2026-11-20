@@ -75,7 +75,7 @@ const DIRECTIVES = [
   { name: "image", group: "Media", arg: "path/to/image.png", opts: ["alt", "width"], noBody: true },
   { name: "table", group: "Media", arg: "Title", opts: ["label"] },
   { name: "list-table", group: "Media", arg: "Title", opts: ["header-rows"] },
-  //{ name: "csv-table", group: "Media", arg: "Title", opts: ["header-rows"] },
+  { name: "csv-table", group: "Media", arg: "Title", opts: ["header-rows"] },
   //{ name: "iframe", group: "Media", arg: "https://" },
   //{ name: "mermaid", group: "Media" },
 
@@ -155,7 +155,10 @@ const DIRECTIVE_OPTIONS = {
   image: ["alt", "align", "width", "height"],
   table: ["align",  "enumerated", "width"],
   "list-table": ["header-rows", "align", "widths"],
-  "csv-table": ["header-rows", "align", "widths", "file"],
+  // No `widths` and no `file`: mystmd declares neither -- `file` sits
+  // commented out in its own source -- so proposing them would be proposing
+  // an option that previews and exports as nothing.
+  "csv-table": ["header-rows", "header", "align", "delim", "keepspace", "quote", "escape", "class", "label", "enumerated"],
   math: ["enumerated"],
   code: ["filename", "linenos", "lineno-start", "emphasize-lines"],
   "code-block": ["filename", "linenos", "lineno-start", "emphasize-lines"],
