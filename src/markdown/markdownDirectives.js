@@ -984,17 +984,33 @@ export class CsvTableDirective extends Directive {
     }
 
     const firstLine = data.bodyMap?.[0] ?? data.map?.[0] ?? 0;
+    const optionRows = headerRows.length;
+    /**
+     * The source line a row sits on.
+     *
+     * Rows written in `:header:` are not in the body at all; they are given
+     * the directive's own first line, which is where their text is.
+     *
+     * This matters more than it looks. `markdownSourceMap` ignores
+     * `table_open` -- a table is addressed by its rows -- and stamps the line
+     * id on `tr_open`, exactly as the markdown table parser maps it. Without
+     * these, the block has no line anywhere, and the inline projection, which
+     * knows a block only by its line, showed nothing at all while the preview
+     * showed the table.
+     */
+    const lineOf = (r) => (r < optionRows ? (data.map?.[0] ?? firstLine) : firstLine + (r - optionRows));
+
     const section = (openType, closeType, cellTag, from, to) => {
       if (from >= to) return;
-      tokens.push(this.createToken(openType, openType.replace("_open", ""), 1, { block: true }));
+      tokens.push(this.createToken(openType, openType.replace("_open", ""), 1, { block: true, map: [lineOf(from), lineOf(to - 1) + 1] }));
       for (let r = from; r < to; r++) {
-        tokens.push(this.createToken("tr_open", "tr", 1, { block: true }));
+        tokens.push(this.createToken("tr_open", "tr", 1, { block: true, map: [lineOf(r), lineOf(r) + 1] }));
         for (const cell of rows[r]) {
           tokens.push(this.createToken(`${cellTag}_open`, cellTag, 1));
           // Parsed as markdown, as mystmd parses each cell as MyST: a cell
           // may hold emphasis, a link or a reference, and a reader who wrote
           // one expects to see it.
-          tokens.push(this.createToken("inline", "", 0, { map: [firstLine + r, firstLine + r], content: cell, children: [] }));
+          tokens.push(this.createToken("inline", "", 0, { map: [lineOf(r), lineOf(r)], content: cell, children: [] }));
           tokens.push(this.createToken(`${cellTag}_close`, cellTag, -1));
         }
         tokens.push(this.createToken("tr_close", "tr", -1, { block: true }));
