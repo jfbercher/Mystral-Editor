@@ -72,6 +72,7 @@ import { scanIndex, indexSignature, markdownIndexRole } from "./markdown/markdow
 import { collectFloatLists, floatListsSignature } from "./markdown/markdownFigureLists";
 import { readAbbreviations, abbreviationsSignature, markdownAbbreviations } from "./markdown/markdownAbbreviations";
 import markdownMark from "./markdown/markdownMark.js";
+import directiveOptionYaml from "./markdown/directiveOptionYaml.js";
 import { splitTextForSlides, resolveSlideSettings, slideOverrides, slideStyle, slideFurnitureData } from "./markdown/slideCut";
 import { config as appConfig } from "./config.js";
 import { getNumberingConfig } from "./markdown/markdownMath";
@@ -397,6 +398,10 @@ export class TextManager {
         .use(markdownIndexRole)
         .use(markdownAbbreviations)
         .use(markdownMark)
+        // Before the directives are read: it repairs the option lines their
+        // parser would refuse, and it works on the source, so where it sits
+        // in this chain matters only in that it must be here at all.
+        .use(directiveOptionYaml)
         .use(markdownItHeadings)
         .use(markdownItFootnoteDefs)
         .use(markdownItFootnoteRefs)
