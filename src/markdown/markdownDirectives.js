@@ -652,8 +652,27 @@ export class TableDirective extends Directive {
     const resultTokens = [...bodyTokens];
     resultTokens.splice(tableOpenIndex + 1, 0, ...captionTokens);
 
-    return resultTokens;
+    return startAtDirective(resultTokens, data.map);
   }
+}
+
+/**
+ * Make a directive's table start at the directive's own line.
+ *
+ * The inline projection keys a top-level element by the smallest line id
+ * inside it. A table's ids sit on its rows, so the smallest was the first
+ * row's line and the `:::{table}` above it belonged to no block of its own
+ * -- it showed as source while the table stayed rendered, and the block one
+ * then edited began at the first row.
+ *
+ * Moving the first row's line up to the directive's fixes both ends at once.
+ * It costs that row its own entry in the line map, which only the scroll
+ * sync reads, and which the row below still provides.
+ */
+function startAtDirective(tokens, map) {
+  const first = tokens.find((t) => t.type === "tr_open");
+  if (first && map?.[0] != null) first.map = [map[0], map[0] + 1];
+  return tokens;
 }
 
 class ListTableExtended extends directivesDefault["list-table"] {
@@ -690,7 +709,7 @@ class ListTableExtended extends directivesDefault["list-table"] {
       if (caption) caption.attrSet("data-number", `${info.number}`);
     }
 
-    return tokens;
+    return startAtDirective(tokens, data.map);
   }
 }
 
@@ -998,7 +1017,16 @@ export class CsvTableDirective extends Directive {
      * knows a block only by its line, showed nothing at all while the preview
      * showed the table.
      */
-    const lineOf = (r) => (r < optionRows ? (data.map?.[0] ?? firstLine) : firstLine + (r - optionRows));
+    const lineOf = (r) => {
+      // The first row carries the directive's own opening line, and that is
+      // what makes the block start there. The inline projection keys a table
+      // by the *smallest* line id found inside it; with the rows' own lines
+      // only, the smallest was the first row's, so `:::{csv-table}` fell
+      // outside the block -- editable on its own while the table stayed
+      // rendered beside it.
+      if (r === 0) return data.map?.[0] ?? firstLine;
+      return r < optionRows ? (data.map?.[0] ?? firstLine) : firstLine + (r - optionRows);
+    };
 
     const section = (openType, closeType, cellTag, from, to) => {
       if (from >= to) return;

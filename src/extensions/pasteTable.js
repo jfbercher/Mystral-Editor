@@ -114,8 +114,14 @@ function offer(view, from, { text, kind }) {
       // On its own lines, wherever the caret was: a table in the middle of a
       // sentence is not a table, and the blank line before it is what makes
       // the directive a block of its own.
+      //
+      // And a line after it, always -- even at the end of the document, where
+      // there was none to add. The caret then lands outside the block rather
+      // than inside it, and in the inline view a block one is not editing is
+      // a block one sees rendered: the table appears at once instead of
+      // staying as its own source until the caret is moved away.
       const before = from > 0 && view.state.doc.sliceString(from - 1, from) !== "\n" ? "\n\n" : "";
-      const after = to < view.state.doc.length && view.state.doc.sliceString(to, to + 1) !== "\n" ? "\n" : "";
+      const after = to < view.state.doc.length && view.state.doc.sliceString(to, to + 1) === "\n" ? "\n" : "\n\n";
       const insert = `${before}${text}${after}`;
       view.dispatch({
         changes: { from, to, insert },
