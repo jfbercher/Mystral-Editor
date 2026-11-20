@@ -53,6 +53,16 @@ A table's own title comes with it. Wikipedia and many another page put one insid
 
 What comes from HTML keeps its bold, its italics, its inline code and its links; the rest of the markup is dropped. What comes from tab-separated text is taken as plain, and its first row as the header — which is what a spreadsheet paste almost always is.
 
+### Pasting a page
+
+A fragment copied from a web page or a word processor carries its markup in the clipboard — headings, lists, quotes, code, links — and pasting it as text flattens every one of them. The same notice therefore offers to convert it to Markdown, on the same terms: the paste itself is untouched, the offer is one button, and one undo puts the text back.
+
+Headings, nested lists, blockquotes, code blocks, tables, emphasis and links all come across. Scripts, styles and a page's navigation furniture are dropped rather than flattened into paragraphs of menu entries, and Wikipedia's `[edit]` links beside its headings go with them; a footnote marker such as `[61]` keeps its number and loses its link, which pointed into a page you no longer have.
+
+An image keeps the address it had on the page. It is not written to disk as a pasted image is: that would mean fetching it over the network, from a document, which is a decision of its own rather than a detail of this one. The image shows while the page it came from is up.
+
+A table standing on its own is not offered this way but the way described above, which picks the form that suits its cells. A table *among* prose comes through here with everything else, as a pipe table — splitting the two would mean losing one of them.
+
 ### File access
 
 In web mode (outside Tauri), file access goes through the browser File System Access API (Chrome/Edge) with IndexedDB for tab-state persistence.

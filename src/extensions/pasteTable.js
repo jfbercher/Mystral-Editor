@@ -1,5 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { tableFromHtml, tableFromText, tableToMyst } from "../markdown/clipboardTable.js";
+import { htmlToMarkdown, worthConverting, tableOnly } from "../markdown/clipboardHtml.js";
 import { showToast } from "../utils/utils_ui.js";
 
 /**
@@ -41,6 +42,33 @@ export function tableInClipboard(clip) {
   }
 }
 
+/**
+ * What this paste could become, if the reader wants it.
+ *
+ * One decision in one place, because only one offer can be made. A table
+ * standing alone is read by the table reader, which chooses between a pipe
+ * table, a `{csv-table}` and a `{list-table}` by what the cells hold -- a
+ * better answer than the pipe table the HTML converter would write. A table
+ * *among* prose goes through the HTML conversion with everything else:
+ * splitting the two would mean losing one of them.
+ */
+function proposal(clip) {
+  const html = clip?.getData("text/html") ?? "";
+  const doc = html.trim() ? parseHtml(html) : null;
+
+  if (doc && !tableOnly(doc) && worthConverting(doc)) {
+    const text = htmlToMarkdown(html);
+    if (text) return { text, kind: "Markdown" };
+  }
+
+  const table = tableInClipboard(clip);
+  if (table) {
+    const { text, kind } = tableToMyst(table);
+    return { text, kind };
+  }
+  return null;
+}
+
 export const pasteTable = () =>
   EditorView.domEventHandlers({
     paste(event, view) {
@@ -49,15 +77,15 @@ export const pasteTable = () =>
       // standing down for exactly the paste this exists to answer. A
       // clipboard with an image and no table never reaches this point --
       // the image handler takes that paste over.
-      const table = tableInClipboard(event.clipboardData);
-      if (!table) return false;
+      const found = proposal(event.clipboardData);
+      if (!found) return false;
 
       const from = view.state.selection.main.from;
       // After the paste, not instead of it: the handler returns false, the
       // editor inserts the text, and the frame after that is the first
       // moment the inserted range can be read from the document itself --
       // which is safer than computing it from the clipboard's own length.
-      requestAnimationFrame(() => offer(view, from, table));
+      requestAnimationFrame(() => offer(view, from, found));
       return false;
     },
   });
@@ -70,13 +98,13 @@ export const pasteTable = () =>
  * replace a range that has moved under it -- which would eat whatever is
  * there now -- it says so and leaves the document alone.
  */
-function offer(view, from, table) {
+function offer(view, from, { text, kind }) {
   const to = view.state.selection.main.head;
   if (to <= from) return;
   const pasted = view.state.doc.sliceString(from, to);
-  const { text, kind } = tableToMyst(table);
+  if (text.trim() === pasted.trim()) return; // nothing would change
 
-  showToast(`Pasted as text — convert it to a ${kind}?`, "info", 0, {
+  showToast(`Pasted as text — convert it to ${kind === "Markdown" ? "Markdown" : `a ${kind}`}?`, "info", 0, {
     label: "Convert",
     onClick: () => {
       if (view.state.doc.sliceString(from, to) !== pasted) {
