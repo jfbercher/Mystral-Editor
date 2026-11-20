@@ -32,6 +32,10 @@
       "description": "Automatically save modified tabs (true/false)",
       "type": "boolean"
     },
+    "pastedImagesDir": {
+      "description": "Where an image pasted into a document is written, relative to that document. A folder of its own makes cleaning up decidable: in a folder nothing else writes to, deleting what no document refers to any more is safe.",
+      "type": "string"
+    },
     "autosaveIntervalMs": {
       "description": "Autosave interval (if enabled), eg 60 * 1000 = 1 minute",
       "type": "number"

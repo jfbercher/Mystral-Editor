@@ -46,6 +46,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | Key | Default | Meaning |
 |---|---|---|
 | `autoSaveEnabled` | `true` | Whether autosave is on when the app starts. The toolbar toggle overrides it for the session. |
+| `pastedImagesDir` | `"pasted-images"` | Where an image pasted into a document is written, relative to that document. A folder of its own is what makes cleaning up decidable: in a folder nothing else writes to, *delete what no document refers to any more* can be answered without risk. |
 | `autosaveIntervalMs` | `60000` | Delay between two autosaves, in milliseconds. |
 | `suspendAfterMs` | `3600000` | How long an inactive tab stays mounted before its editor is suspended to free memory. Its content is restored on reactivation. |
 | `checkIntervalMs` | `300000` | How often inactive tabs are checked against the interval above. |

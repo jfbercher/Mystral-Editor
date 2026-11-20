@@ -519,6 +519,9 @@ const tA = performance.now();
             text.text.value = view.state.doc.toString();
            }, delay);
         })
+        // Before everything else that touches a paste: it answers only when
+        // the clipboard holds an image, and leaves every other paste alone.
+        .usePasteImage({ options })
         .useFixFoldingScroll(focusScroll)
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))

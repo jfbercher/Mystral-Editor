@@ -109,6 +109,14 @@ export const DEFAULT_CONFIG = {
   // Interval for inactivity check (eg 5 * 60 * 1000 = 5 minutes)
   checkIntervalMs:    5 * 60 * 1000,  
   // Automatically save modified tabs (true/false)
+  // Where an image pasted into a document is written, relative to that
+  // document. A folder of its own rather than the project's images folder,
+  // and the reason is not tidiness: in a folder nothing else writes to,
+  // "delete what no document refers to any more" is a question one can answer
+  // without risk, while the same sweep over a general images folder would
+  // reach files the author put there by hand. Set it to another name if the
+  // project has a convention of its own.
+  pastedImagesDir: "pasted-images",
   autoSaveEnabled:   true,  
   // Autosave interval (if enabled), eg 60 * 1000 = 1 minute          
   autosaveIntervalMs: 60 * 1000,      

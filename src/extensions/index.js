@@ -24,6 +24,7 @@ import {
 import { frontmatterFoldService, frontmatterFoldMemory } from "./frontmatterFold";
 import { syncPreviewWithCursor } from "./syncDualPane";
 import { syncScrollContinuously } from "./syncScrollContinuous.js";
+import { pasteImage } from "./pasteImage.js";
 
 /**
  * How the two panes follow each other, as one extension to put in a
@@ -384,6 +385,11 @@ export class ExtensionBuilder {
 
   useDefaultHistory() {
     this.base.push(history());
+    return this;
+  }
+
+  usePasteImage({ options }) {
+    this.extensions.push(pasteImage({ options }));
     return this;
   }
 
