@@ -35,7 +35,23 @@ The file name carries the moment of the paste, which keeps two of them from coll
 
 Two things worth knowing. An undo takes back the figure and not the file: a text editor's undo does not reach the disk, and the orphan left behind is the price — the dedicated folder is what will make it recoverable. And a document that has never been saved has no folder to write beside, so the picture goes into the document itself as a `data:` URL and a message says so; saving first and pasting again writes a file instead. In the browser, the same holds until a working folder is chosen.
 
-Every other paste is untouched: this answers only when the clipboard holds an image.
+Every other paste is untouched: this answers only when the clipboard holds an image — and not even then if it also holds a table. A spreadsheet puts a picture of the selection in the clipboard next to the data itself, and an image of a table is the poorest of the representations on offer. The table wins, and the notice described below appears instead.
+
+### Pasting a table
+
+A table copied from a spreadsheet or a web page is pasted as it always was — the tab-separated text, exactly as the clipboard gives it. A paste must never surprise: if you wanted the text, you get the text. A notice then appears offering to convert what was just inserted into a MyST table, with a button. Ignore it and it fades, and nothing has happened; press it and the pasted text is replaced in one go, so a single undo brings the text back.
+
+Which of the three forms it offers depends on the data rather than on taste:
+
+- a **pipe table** when the table is small and plain — the lightest to read in the source, and what most people mean by a table in Markdown;
+- **`{csv-table}`** when the data is regular and wide, or has no header row of its own: a CSV stays legible in the source and goes back to a spreadsheet without losing anything;
+- **`{list-table}`** as soon as a cell holds more than flat text — emphasis, a link, a line break. Neither of the other two can carry those.
+
+A pipe table's first row *is* its header, so a table whose source says it has none is never written that way: it would promote a row of data without saying so, and `{csv-table}` can declare the absence.
+
+A table's own title comes with it. Wikipedia and many another page put one inside the table as a `<caption>`, and a table copied as plain text often carries it as a first line above the data; either way it becomes the caption of the result — the argument of `{csv-table}` or `{list-table}`, and for a pipe table, which has nowhere of its own to put one, a `{table}` directive wrapped around it. A trailing colon is dropped: it introduced the table in the page it came from, and under the table it reads as a sentence cut short. In plain text a first line is only taken for a title when it is short and every line below it is tab-separated — a paragraph above a table stays a paragraph.
+
+What comes from HTML keeps its bold, its italics, its inline code and its links; the rest of the markup is dropped. What comes from tab-separated text is taken as plain, and its first row as the header — which is what a spreadsheet paste almost always is.
 
 ### File access
 

@@ -522,6 +522,9 @@ const tA = performance.now();
         // Before everything else that touches a paste: it answers only when
         // the clipboard holds an image, and leaves every other paste alone.
         .usePasteImage({ options })
+        // After the image handler, which takes a paste over; this one never
+        // does, and only offers afterwards.
+        .usePasteTable()
         .useFixFoldingScroll(focusScroll)
         .useMoveCursorAfterFold()
         .if(options.mode.value === "Both", (b) => b.useCursorIndicator({ text }))

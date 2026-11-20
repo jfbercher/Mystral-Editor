@@ -1,6 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { isTauri, currentFileDir, workingDirectory } from "../utils/local_utils/fs.js";
 import { showToast } from "../utils/utils_ui.js";
+import { tableInClipboard } from "./pasteTable.js";
 import { config } from "../config.js";
 
 /**
@@ -171,6 +172,13 @@ export const pasteImage = ({ options }) =>
     paste(event, view) {
       const found = imageIn(event.clipboardData);
       if (!found) return false;
+      // A spreadsheet puts a picture of the selection in the clipboard next
+      // to the table itself, so a copied table arrives as an image too. The
+      // image is then the poorest representation on offer -- a photograph of
+      // the data -- and taking it would be taking the one nobody meant. The
+      // rule that images are intercepted rests on their having no fallback;
+      // where there is one, it does not hold.
+      if (tableInClipboard(event.clipboardData)) return false;
       // Taken over, and said so at once: the decision has to be synchronous,
       // while everything that follows -- reading the blob, writing the file --
       // is not.
