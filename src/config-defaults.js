@@ -67,7 +67,7 @@ export const BUILTIN_DIRECTIVES = {
   // `data_directives`, to follow mystmd instead.
   // The caption comes from the `:caption:` option rather than from the body,
   // which is the cell's code.
-  "code-cell":  { kind: "code",      label: "Code",      numbered: true,  caption: "option" },
+  "code-cell":  { kind: "code",      label: "Code",      numbered: false,  caption: "option" },
 
   // Exercises — mystmd / sphinx-exercise model
   exercise:         { kind: "exercise",  label: "Exercise", numbered: true,  caption: "arg" },

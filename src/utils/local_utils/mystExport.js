@@ -681,6 +681,22 @@ async function runMyst(argline, cwd, env = {}) {
 const isWarningLine = (line) => /^\s*(?:⚠|WARN|warning)/iu.test(line);
 
 /**
+ * A warning the editor caused and already knows about.
+ *
+ * `:description:` is ours: it says what a cell is, in the cell's own toolbar,
+ * and mystmd is meant not to know it -- that is the whole point, since an
+ * option it knows becomes a caption, a figure and a number. It says so once
+ * per cell, which on a course with thirty cells would bury the warnings that
+ * matter under thirty that do not.
+ *
+ * Dropped here rather than silenced in `myst.yml`: `error_rules` would turn
+ * off `directive-options-correct` for the whole project, and a mistyped
+ * `:lineos:` would then pass unmentioned everywhere. This drops one sentence
+ * about one option.
+ */
+const isOurOwnWarning = (line) => /unexpected option "description" provided/.test(line);
+
+/**
  * What myst actually has to say, warnings last.
  *
  * Taking the last three lines put the warnings in front of the error that
@@ -694,8 +710,8 @@ function summarise(res) {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const warnings = lines.filter(isWarningLine);
-  const errors = lines.filter((l) => !isWarningLine(l));
+  const warnings = lines.filter((l) => isWarningLine(l) && !isOurOwnWarning(l));
+  const errors = lines.filter((l) => !isWarningLine(l) && !isOurOwnWarning(l));
   return {
     warnings: warnings.length,
     onlyWarnings: lines.length > 0 && errors.length === 0,

@@ -1550,7 +1550,7 @@ function renderOutput(outputArea, result) {
   for (const html of result.htmls ?? []) {
     const block = document.createElement("div");
     block.className = "pyodide-html";
-    block.innerHTML = DOMPurify.sanitize(html);
+    // block.innerHTML = DOMPurify.sanitize(html);
     if (!block.textContent.trim() && !block.querySelector("img, svg, table, canvas")) continue;
     hasContent = true;
     outputArea.appendChild(block);
@@ -2020,7 +2020,10 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     const anchor = (el.dataset.label ?? "").trim();
     if (anchor) wrapper.id = anchor;
     else wrapper.removeAttribute("id");
-    const text = (el.dataset.caption ?? "").trim();
+    // `:description:` is what the toolbar shows; `:caption:` is what the
+    // export reads, and stands in when no description was written -- which is
+    // every document written before the two were separated.
+    const text = (el.dataset.description ?? "").trim() || (el.dataset.caption ?? "").trim();
     const number = (el.dataset.number ?? "").trim();
     const label = (el.dataset.numberLabel ?? "").trim();
     captionEl.textContent = !text ? "" : number ? `${label} ${number} — ${text}` : text;

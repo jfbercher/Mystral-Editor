@@ -49,9 +49,12 @@ Supported options:
 - `:packages: pkg1, pkg2` — additional packages to install via `micropip` before running
 - `:linenos:` — show line numbers in the cell editor. A boolean, as in the MyST specification: bare, `true` and `yes` turn them on, `false` and `no` turn them off, and the option's absence leaves them off.
 - `:tags: hide-input` — cell metadata, carried through to the export
-- `:caption:` — a name for the cell. Shown in the cell's toolbar, right of the buttons and wrapping onto its own line when they leave no room, and read by mystmd when the document is exported.
+- `:description:` — what the cell is, shown in its toolbar, right of the buttons and wrapping onto its own line when they leave no room. The editor's alone: mystmd does not know the option, so it numbers nothing and references nothing.
+- `:caption:` — the same text, and one thing more: mystmd reads it, makes the cell a figure and gives it a number, so `{ref}` and `{numref}` can point at it. Use it when that is what you want. A cell with a caption and no description shows the caption in its toolbar, as it always has; a cell with both shows the description and exports the caption.
 - `:label:` — makes the cell referenceable: `{ref}` and `{numref}` resolve to it, and land on the cell.
 - `:align:`, `:figwidth:` — read by mystmd when the document is exported, where the cell and its outputs become a figure. They have no effect on the editor's own rendering.
+
+A description costs nothing to the document: it is the caption that makes a cell a figure, which is why the two were separated. A cell described rather than captioned no longer advances the figure counter, and the figures after it keep the numbers they had.
 
 Captioned cells are numbered, under a counter of their own -- `Code 1`, `Code 2` -- rather than among the figures. mystmd counts them as figures when it builds the site, so the two numberings differ by design; change `kind` to `"fig"` for `code-cell` in `data_directives` to follow mystmd instead. The label shown can be changed the same way.
 

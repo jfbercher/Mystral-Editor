@@ -1194,6 +1194,21 @@ class CodeCellDirective extends Directive {
     // devient une DirectiveError qui masque la cellule entière.
     align:    directiveOptions.unchanged,    // left | center | right
     caption:  directiveOptions.unchanged,    // légende, sous la figure
+    // What the cell says it is, in its own toolbar -- and nothing else.
+    //
+    // `:caption:` already did that, and did one thing more: mystmd reads it,
+    // makes the cell a figure and advances the figure counter, so a cell
+    // labelled for the reader's convenience renumbered every figure after it
+    // and a reference to it read "Figure 7". That is a defensible reading of
+    // the word caption; it is simply not what one wants from a line of
+    // explanation above a piece of code.
+    //
+    // So this one is the editor's alone. mystmd does not know the option --
+    // it says so once per cell, and `summarise` in mystExport.js drops that
+    // one line, having put the option there itself -- and therefore neither
+    // numbers nor references anything. A cell that wants both writes both:
+    // the description is shown, the caption is exported.
+    description: directiveOptions.unchanged,
     label:    directiveOptions.unchanged,    // étiquette, et donc numérotation
     name:     directiveOptions.unchanged,    // alias de label
   };
@@ -1234,6 +1249,7 @@ class CodeCellDirective extends Directive {
       `data-tags="${escapeHtml(String(data.options?.tags ?? "").trim())}" ` +
       `data-align="${escapeHtml(String(data.options?.align ?? "").trim())}" ` +
       `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
+      `data-description="${escapeHtml(String(data.options?.description ?? "").trim())}" ` +
       `data-number="${scanned?.number ?? ""}" ` +
       `data-number-label="${escapeHtml(displayLabel(this.state, "code-cell", "code"))}" ` +
       `data-label="${escapeHtml(label)}" ` +
@@ -1281,6 +1297,9 @@ class QuizDirective extends Directive {
     label:   directiveOptions.unchanged,
     name:    directiveOptions.unchanged,
     caption: directiveOptions.unchanged,
+    // The same separation as on a code cell: shown in the toolbar, unknown to
+    // mystmd, and therefore outside its figure numbering.
+    description: directiveOptions.unchanged,
     // What the button says. "Quiz" unless the document prefers otherwise.
     button:  directiveOptions.unchanged,
     // Put the output in a <details>, open, so a quiz that has been done can be
@@ -1312,6 +1331,7 @@ class QuizDirective extends Directive {
       `data-dropdown="${data.options?.dropdown !== undefined ? "1" : ""}" ` +
       `data-dropdown-label="${escapeHtml(String(data.options?.dropdown ?? "").trim())}" ` +
       `data-caption="${escapeHtml(String(data.options?.caption ?? "").trim())}" ` +
+      `data-description="${escapeHtml(String(data.options?.description ?? "").trim())}" ` +
       `data-label="${escapeHtml(String(data.options?.label ?? data.options?.name ?? "").trim())}" ` +
       `data-python-space="${env.pythonSpace ?? "shared"}" ` +
       `data-python-space-label="${env.pythonSpaceLabel ?? "shared"}" ` +
