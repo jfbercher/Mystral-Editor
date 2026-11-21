@@ -465,6 +465,39 @@ export class TextManager {
       }
     };
 
+    /**
+     * Apply a change to the document from a code-cell event.
+     *
+     * These events are raised by the cells, and a cell is inside the view they
+     * are about to change -- which is how one of them reached `dispatch` while
+     * the view was already updating: the outer editor dispatched, CodeMirror
+     * rewrote the DOM selection, the browser blurred the cell's own editor,
+     * and its blur handler wrote the code back. CodeMirror refuses a dispatch
+     * during an update, and the throw, happening inside an event handler, took
+     * the editor down rather than the change.
+     *
+     * The blur path defers on its own account (pyodideRunner.js). This is the
+     * net under all of them: the change is applied at once when that is
+     * allowed, and a tick later when it is not, which no reader can tell from
+     * the same tick. Only the re-entrancy is caught; any other failure is
+     * raised as before, since it would mean something else entirely.
+     */
+    this._applyCellChange = (view, spec) => {
+      try {
+        view.dispatch(spec);
+      } catch (err) {
+        if (!/update is in progress/i.test(String(err?.message ?? err))) throw err;
+        console.debug("[cells] the document was written a tick later: the view was updating");
+        queueMicrotask(() => {
+          try {
+            view.dispatch(spec);
+          } catch (again) {
+            console.warn("[cells] the change could not be applied:", again);
+          }
+        });
+      }
+    };
+
     // A code-cell event is broadcast on `document`, so it reaches every open
     // editor. Only the one that owns the cell may act on it: two documents
     // holding the same cell text at the same line would otherwise both find the
@@ -482,7 +515,7 @@ export class TextManager {
       // Ré-indenté : l'éditeur de cellule rend le code tel que le parseur l'a
       // donné, c'est-à-dire désindenté, et le réécrire ainsi sortirait la
       // cellule du conteneur qui la porte.
-      view.dispatch({
+      this._applyCellChange(view, {
         changes: { from: found.codeStart, to: found.codeEnd, insert: "\n" + indentBody(newCode, found.indent) },
       });
     };
@@ -517,7 +550,7 @@ export class TextManager {
       if (i === -1 || j < 0 || j >= blocks.length) return;
       const [first, second] = i < j ? [blocks[i], blocks[j]] : [blocks[j], blocks[i]];
       if (!cellsAreNeighbours(src, first, second)) return;
-      view.dispatch({
+      this._applyCellChange(view, {
         // Merging upwards, the active cell is the second: its options are the
         // ones kept, since they are the cell the reader is acting from.
         changes: { from: first.lineStart, to: second.blockEnd, insert: mergeCellsText(src, first, second, dir === "up") },
@@ -536,7 +569,7 @@ export class TextManager {
       // Null when one half would be empty: nothing happens rather than an
       // empty cell appearing a keystroke away from being noticed.
       if (!insert) return;
-      view.dispatch({ changes: { from: active.lineStart, to: active.blockEnd, insert }, userEvent: "split.cell" });
+      this._applyCellChange(view, { changes: { from: active.lineStart, to: active.blockEnd, insert }, userEvent: "split.cell" });
     };
     document.addEventListener("pyodide-cell-split", this._pyodideSplitHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-cell-split", this._pyodideSplitHandler));
@@ -572,7 +605,7 @@ export class TextManager {
       const atLineStart = insertPos === 0 || src[insertPos - 1] === "\n";
       const before = atLineStart ? "\n" : "\n\n";
       const after = insertPos < src.length && src[insertPos] !== "\n" ? "\n\n" : "";
-      view.dispatch({
+      this._applyCellChange(view, {
         changes: { from: insertPos, to: insertPos, insert: before + indentBody(":::{code-cell}\n\n:::", indent) + after },
       });
     };
@@ -589,7 +622,7 @@ export class TextManager {
       if (!found) return;
       let deleteFrom = found.lineStart;
       if (deleteFrom > 0 && src[deleteFrom - 1] === "\n") deleteFrom--;
-      view.dispatch({ changes: { from: deleteFrom, to: found.blockEnd } });
+      this._applyCellChange(view, { changes: { from: deleteFrom, to: found.blockEnd } });
     };
     document.addEventListener("pyodide-delete-cell", this._pyodideDeleteCellHandler);
     cleanups?.push(() => document.removeEventListener("pyodide-delete-cell", this._pyodideDeleteCellHandler));

@@ -3189,7 +3189,27 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     ]),
 
     EditorView.domEventHandlers({
-      blur(_, view) { _syncToEditor(view); },
+      /**
+       * Write the cell's code back into the document when it loses focus --
+       * but never during someone else's update.
+       *
+       * Losing focus is rarely the reader's own doing here: the outer editor
+       * dispatches, CodeMirror rewrites the DOM selection from its new state,
+       * the browser blurs whatever had it, and this handler runs inside that
+       * update. Writing the document from here then reached
+       * `EditorView.dispatch` of the outer view while it was updating, which
+       * CodeMirror refuses outright -- "Calls to EditorView.update are not
+       * allowed while an update is in progress" -- and the editor went down
+       * with it, the throw happening inside an event handler of its own.
+       *
+       * A microtask is the whole fix: the synchronous stack unwinds, the
+       * update finishes, and the document is written a tick later, which no
+       * reader can tell apart from the same tick. The other callers of
+       * `_syncToEditor` -- split, delete, edit source -- stay synchronous,
+       * because each of them acts on the document immediately afterwards and
+       * needs it already written.
+       */
+      blur(_, view) { queueMicrotask(() => _syncToEditor(view)); },
     }),
     EditorView.theme({ "&": {} }), // placeholder pour éviter le thème par défaut
     pyodideCmTheme,
