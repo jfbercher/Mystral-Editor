@@ -11,8 +11,7 @@
      build:
        html:
          # Build the site
-         - export BASE_URL="/en/latest"
-         - cd docs/ && myst build --html
+         - cd docs/ && BASE_URL="/${READTHEDOCS_CANONICAL_URL#*://*/}" && BASE_URL="${BASE_URL%/}" myst build --html
      post_build:
          # Copy generated files into Read the Docs directory
          - mkdir --parents $READTHEDOCS_OUTPUT/html/
