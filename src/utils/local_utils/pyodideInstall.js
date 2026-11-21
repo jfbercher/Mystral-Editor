@@ -401,6 +401,146 @@ export async function ensureLocalWheels(names) {
  * What `loadPackage` may be handed: it throws on a name it has never heard
  * of, and those are micropip's business anyway.
  */
+/**
+ * Keep, in the local install, a package that came from PyPI.
+ *
+ * The offline folder is meant to be a cache of what has been installed, so
+ * that what worked online works offline afterwards -- and that has to include
+ * a version the reader pinned, not only what the distribution ships. Until
+ * now it could not: `ensureLocalWheels` knows one thing, fetching a file the
+ * lock names from the Pyodide CDN, so installing `bokeh==3.10.2` left 3.6.3
+ * in the folder and nothing else.
+ *
+ * micropip leaves exactly what is needed behind it, in each package's
+ * dist-info: `PYODIDE_URL`, the wheel it fetched, and `PYODIDE_SHA256`, the
+ * digest of the bytes it received. The Python side reads those and hands them
+ * here with the version and the dependencies; the wheel is fetched again,
+ * checked against that digest and written beside the others.
+ *
+ * The lock entry is rewritten with it, because that is what decides what
+ * `loadPackage` serves -- and `loadPackage` is what restores a namespace, so
+ * without this step a document reopened after a reload would be handed the
+ * distribution's version of a package its author had pinned. The previous
+ * wheel of that package is removed, a cache holding two versions of the same
+ * name being a cache that answers at random.
+ *
+ * The lock is the file the whole local install depends on: it is copied
+ * beside itself before being touched, the new content is parsed back before
+ * replacing it, and any failure leaves what was there. Nothing here throws --
+ * a cache that cannot be filled is a cache, not an accident.
+ */
+export async function cacheInstalledWheels(entries) {
+  const wanted = [].concat(entries ?? []).filter((e) => e?.name && e?.url && e?.version);
+  if (!wanted.length) return { cached: [], failed: [] };
+
+  const { installed, dir } = await localPyodideStatus();
+  if (!installed) return { cached: [], failed: [], skipped: true };
+
+  const { exists, readFile, writeFile, remove, copyFile } = await import("@tauri-apps/plugin-fs");
+  const lockPath = await inInstall(dir, LOCK_FILE);
+  let lock;
+  try {
+    lock = JSON.parse(new TextDecoder().decode(await readFile(lockPath)));
+  } catch (err) {
+    console.warn("[pyodide] the local lock could not be read, nothing cached:", err);
+    return { cached: [], failed: wanted.map((e) => e.name) };
+  }
+
+  const cached = [];
+  const failed = [];
+  const superseded = [];
+
+  for (const entry of wanted) {
+    const key = String(entry.name).toLowerCase().replace(/_/g, "-");
+    const fileName = String(entry.url).split("/").pop().split("?")[0];
+    if (!fileName.endsWith(".whl")) {
+      failed.push(entry.name);
+      continue;
+    }
+    const previous = lock.packages[key]?.file_name;
+    const current = lock.packages[key];
+    try {
+      const target = await inInstall(dir, fileName);
+      // Already what the lock says, and the file is there: nothing to do. This
+      // is the ordinary case, every run, for everything the distribution
+      // itself provided.
+      if (current?.version === String(entry.version) && current?.file_name === fileName && (await exists(target))) continue;
+      if (!(await exists(target))) {
+        const response = await fetch(entry.url);
+        if (!response.ok) throw new Error(`${response.status}`);
+        const data = new Uint8Array(await response.arrayBuffer());
+        const problem = await verifyFile(fileName, data, entry.sha256);
+        if (problem) throw new Error(problem);
+        await writeFile(target, data);
+      }
+      lock.packages[key] = {
+        ...(lock.packages[key] ?? {}),
+        name: entry.name,
+        version: String(entry.version),
+        file_name: fileName,
+        install_dir: "site",
+        sha256: entry.sha256 ?? lock.packages[key]?.sha256 ?? "",
+        // Only names the lock knows: loadPackage throws on a dependency it
+        // has never heard of, and a lock entry naming one would make the
+        // package unloadable -- which is how a cached wheel could be worse
+        // than no cache at all.
+        depends: (entry.depends ?? lock.packages[key]?.depends ?? []).filter((d) => lock.packages[d]),
+        imports: entry.imports?.length ? entry.imports : (lock.packages[key]?.imports ?? [entry.name]),
+        package_type: lock.packages[key]?.package_type ?? "package",
+        unvendored_tests: false,
+        tool: lock.packages[key]?.tool ?? {},
+      };
+      cached.push(`${entry.name} ${entry.version}`);
+      if (previous && previous !== fileName) superseded.push(previous);
+    } catch (err) {
+      console.warn(`[pyodide] ${entry.name} could not be cached locally:`, err);
+      failed.push(entry.name);
+    }
+  }
+
+  if (!cached.length) return { cached, failed };
+
+  try {
+    const serialised = JSON.stringify(lock, null, 1);
+    JSON.parse(serialised); // what is about to replace the lock has to read back
+    if (await exists(lockPath)) await copyFile(lockPath, await inInstall(dir, `${LOCK_FILE}.bak`));
+    await writeFile(lockPath, new TextEncoder().encode(serialised));
+  } catch (err) {
+    console.warn("[pyodide] the local lock could not be updated:", err);
+    return { cached: [], failed: failed.concat(cached) };
+  }
+
+  for (const name of superseded) {
+    try {
+      await remove(await inInstall(dir, name));
+    } catch (err) {
+      console.debug(`[pyodide] the superseded wheel ${name} could not be removed:`, err);
+    }
+  }
+  console.log(`[pyodide] kept in the local install: ${cached.join(", ")}`);
+  return { cached, failed, superseded };
+}
+
+/**
+ * The versions the distribution pins, among `names`.
+ *
+ * A name the lock knows is served at the lock's version and nowhere else, so
+ * `micropip.install("bokeh")` cannot give what PyPI has: that is a property of
+ * the distribution, not a cache. Reported so the installer can say it rather
+ * than leave the reader to find out by uninstalling and reinstalling to the
+ * same version.
+ */
+export async function lockVersions(names) {
+  const { lock } = await missingLocalWheels(names);
+  if (!lock) return {};
+  const versions = {};
+  for (const name of [].concat(names ?? []).filter(Boolean)) {
+    const entry = lock.packages[String(name).toLowerCase().replace(/_/g, "-")];
+    if (entry?.version) versions[name] = entry.version;
+  }
+  return versions;
+}
+
 export async function localLockNames(names) {
   const { lock } = await missingLocalWheels(names);
   if (!lock) return [];

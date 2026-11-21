@@ -18,7 +18,7 @@ import { containsScript, mountScriptedHtml } from "./scriptedHtml.js";
 import { renderBundle } from "./mimeRenderers.js";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
-import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
+import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames, lockVersions, cacheInstalledWheels } from "../utils/local_utils/pyodideInstall.js";
 import { showToast } from "../utils/utils_ui.js";
 
 // CM6 imports — packages déjà présents dans le projet
@@ -180,6 +180,9 @@ _mystral_micropip_install = _micropip_mod.install
 
 _MYSTRAL_SPECIFIERS = ('==', '>=', '<=', '~=', '!=', '>', '<', ';', ' ')
 
+_MYSTRAL_VERSION_SAID = set()
+
+
 def _mystral_req_names(requirements):
     """The bare project names of a micropip requirement list."""
     if isinstance(requirements, str):
@@ -250,7 +253,7 @@ def _mystral_dep_req(line):
         return None, None
 
 
-async def _mystral_install_round(pending, tolerant):
+async def _mystral_install_round(pending, tolerant, options=None):
     """Install this round, dropping what cannot have a wheel here.
 
     A package may declare a dependency that cannot exist under Pyodide and
@@ -267,15 +270,18 @@ async def _mystral_install_round(pending, tolerant):
     """
     import sys as _sys_round
 
+    options = dict(options or {})
+    options['deps'] = False
+
     if not tolerant:
         # What the reader asked for, by name. A failure there is the answer to
         # their question and belongs in front of them, not softened into a
         # warning about a package that was never installed.
-        await _mystral_micropip_install(pending, deps=False)
+        await _mystral_micropip_install(pending, **options)
         return pending
 
     try:
-        await _mystral_micropip_install(pending, deps=False)
+        await _mystral_micropip_install(pending, **options)
         return pending
     except Exception:
         pass
@@ -283,7 +289,7 @@ async def _mystral_install_round(pending, tolerant):
     installed = []
     for requirement in pending:
         try:
-            await _mystral_micropip_install([requirement], deps=False)
+            await _mystral_micropip_install([requirement], **options)
             installed.append(requirement)
         except Exception as err:
             reason = str(err).strip().split(chr(10))[0]
@@ -294,7 +300,7 @@ async def _mystral_install_round(pending, tolerant):
     return installed
 
 
-async def _mystral_install_walk(requirements):
+async def _mystral_install_walk(requirements, options=None):
     """Install, never letting micropip ask for a wheel of the distribution.
 
     That is the whole point, and it is about *when*, not what. micropip takes
@@ -322,7 +328,13 @@ async def _mystral_install_walk(requirements):
     for _ in range(8):   # a chain that long is a different problem
         if not pending:
             return
-        pending = await _mystral_install_round(pending, not asked)
+        # The reader's own keywords -- reinstall, keep_going, index_urls --
+        # belong to the round they asked for and to no other: dropping them, as
+        # this did, is how micropip.install("bokeh==3.10.2", reinstall=True)
+        # quietly did nothing at all, micropip finding bokeh already there and
+        # never being told to replace it. The rounds that follow are our own
+        # dependency resolution and take the defaults.
+        pending = await _mystral_install_round(pending, not asked, options if asked else None)
         asked = False
 
         # Freshly written: whatever cached the contents of site-packages has
@@ -333,12 +345,49 @@ async def _mystral_install_walk(requirements):
         except Exception:
             pass
 
+        # The lock is authoritative for the packages it knows. It carries their
+        # dependency closure, and that closure is not always what the wheel's
+        # metadata declares: bokeh asks for tornado in its Requires-Dist, which
+        # has no wheel for WebAssembly, while the lock leaves tornado out
+        # entirely -- it is not in the distribution at all -- and bokeh draws
+        # perfectly without it, tornado serving only its server. Reading
+        # Requires-Dist for such a package was asking PyPI for something
+        # Pyodide had already decided it did not need.
+        #
+        # So the lock is consulted first, for the round's own names: what it
+        # answers is loaded with its closure, and its metadata is not read.
+        from_lock = set()
+        # Never for a requirement that names a version: the lock would answer
+        # with its own, and loading it would quietly undo the version the
+        # reader asked for.
+        round_names = [
+            n
+            for n in (
+                _mystral_dep_name(r)
+                for r in pending
+                if not any(_ch in str(r) for _ch in '=<>!~')
+            )
+            if n
+        ]
+        if round_names:
+            try:
+                answer = _json_mp.loads(await _js_mp.globalThis._mystralEnsureAndLoad(_json_mp.dumps(round_names)))
+                from_lock = {str(x).lower().replace('_', '-') for x in (answer.get('loaded') or [])}
+            except Exception as _err:
+                _js_mp.console.warn('[mystral] the lock could not be consulted -- ' + str(_err))
+        if from_lock:
+            _js_mp.console.debug('[mystral] from the distribution, closure included: ' + ', '.join(sorted(from_lock)))
+            seen.update(from_lock)
+
         wanted = {}
         for requirement in pending:
             name = _mystral_dep_name(requirement)
             if not name:
                 continue
-            seen.add(name.lower().replace('_', '-'))
+            key_installed = name.lower().replace('_', '-')
+            seen.add(key_installed)
+            if key_installed in from_lock:
+                continue
             try:
                 declared = _md_mp.requires(name) or []
             except Exception as _err:
@@ -377,15 +426,106 @@ async def _mystral_install_walk(requirements):
         pending = [req for key, (req, _n) in wanted.items() if key not in handled and req]
 
 
+async def _mystral_keep_installed():
+    """Hand the editor what micropip fetched from the network, to be kept.
+
+    The offline folder is a cache of what has been installed, and that has to
+    include a version the reader pinned: installing bokeh==3.10.2 and finding
+    3.6.3 in the folder afterwards is not a cache, it is a contradiction.
+
+    micropip writes what is needed into each dist-info -- PYODIDE_URL, the
+    wheel it fetched, and PYODIDE_SHA256, the digest of the bytes it received
+    -- and a distribution package, installed by loadPackage from the folder
+    itself, has neither, which is exactly the line between what is worth
+    keeping and what is already there.
+    """
+    import importlib.metadata as _md_keep
+
+    entries = []
+    for dist in _md_keep.distributions():
+        try:
+            url = dist.read_text('PYODIDE_URL')
+            if not url:
+                continue
+            name = dist.metadata['Name']
+            if not name:
+                continue
+            depends = []
+            for line in (dist.requires or []):
+                _text, dep_name = _mystral_dep_req(line)
+                if dep_name:
+                    key = dep_name.lower().replace('_', '-')
+                    if key not in depends:
+                        depends.append(key)
+            top = dist.read_text('top_level.txt') or ''
+            imports = [line.strip() for line in top.splitlines() if line.strip()] or [name]
+            entries.append({
+                'name': name,
+                'version': dist.version,
+                'url': url.strip(),
+                'sha256': (dist.read_text('PYODIDE_SHA256') or '').strip(),
+                'depends': depends,
+                'imports': imports,
+            })
+        except Exception:
+            continue
+
+    if not entries:
+        return
+    try:
+        await _js_mp.globalThis._mystralCacheWheels(_json_mp.dumps(entries))
+    except Exception as _err:
+        _js_mp.console.warn('[mystral] the local cache could not be updated -- ' + str(_err))
+
+
 async def _mystral_micropip_patched(requirements, *args, **kwargs):
     # Asked for a distribution package by name, the wheel has to be there
     # before micropip looks for it -- same reason as the walk below.
+    #
+    # By name, and only by name. A requirement that spells out a version is
+    # asking for something the distribution does not have, and micropip will
+    # go to PyPI for it; placing the distribution's wheel in the offline
+    # folder for it serves nothing and is actively confusing -- it is how a
+    # reader who installed bokeh 3.10.2 found bokeh 3.6.3 sitting in that
+    # folder a moment later, downloaded by us, and came back at the next start
+    # of the application.
+    _wanted_by_name = [
+        r
+        for r in ([requirements] if isinstance(requirements, str) else list(requirements or []))
+        if not any(_ch in str(r) for _ch in '=<>!~')
+    ]
     try:
         report = _json_mp.loads(
-            await _js_mp.globalThis._mystralEnsureWheels(_json_mp.dumps(_mystral_req_names(requirements)))
+            await _js_mp.globalThis._mystralEnsureWheels(_json_mp.dumps(_mystral_req_names(_wanted_by_name)))
         )
     except Exception:
         report = None
+    # Which version a name gets, said once per session and in the console
+    # rather than in the cell: it is the answer to a question that costs an
+    # hour when it is not asked -- a name the lock knows is served at the
+    # lock's version and nowhere else, so uninstalling and reinstalling
+    # returns the very same one. That is the distribution, not a cache.
+    if report:
+        _pinned = set()
+        _asked = [requirements] if isinstance(requirements, str) else list(requirements or [])
+        for _raw in _asked:
+            _text = str(_raw)
+            if not any(_ch in _text for _ch in '=<>!~'):
+                continue
+            _base = _text.split('[')[0]
+            for _sep in _MYSTRAL_SPECIFIERS:
+                _base = _base.split(_sep)[0]
+            _pinned.add(_base.strip().lower().replace('_', '-'))
+        for _name, _version in (report.get('versions') or {}).items():
+            _key = str(_name).lower().replace('_', '-')
+            if _key in _pinned or _key in _MYSTRAL_VERSION_SAID:
+                continue
+            _MYSTRAL_VERSION_SAID.add(_key)
+            _js_mp.console.log(
+                '[mystral] ' + str(_name) + ' ' + str(_version)
+                + ' comes from the Pyodide distribution, not from PyPI. Pin a version ('
+                + str(_name) + '==x.y.z) to take another, and add reinstall=True if it is already installed.'
+            )
     if report and report.get('unavailable'):
         names = ', '.join(report['unavailable'])
         raise RuntimeError(
@@ -398,8 +538,12 @@ async def _mystral_micropip_patched(requirements, *args, **kwargs):
     # deps are walked by hand, so the caller's own arguments are honoured on
     # the first round only through this path.
     if kwargs.get('deps') is False or args:
-        return await _mystral_micropip_install(requirements, *args, **kwargs)
-    return await _mystral_install_walk(requirements)
+        answer = await _mystral_micropip_install(requirements, *args, **kwargs)
+        await _mystral_keep_installed()
+        return answer
+    answer = await _mystral_install_walk(requirements, kwargs)
+    await _mystral_keep_installed()
+    return answer
 
 
 _micropip_mod.install = _mystral_micropip_patched
@@ -590,7 +734,13 @@ _mystral_http_patched
  */
 globalThis._mystralEnsureWheels = async function (namesJson) {
   try {
-    return JSON.stringify(await ensureLocalWheels(JSON.parse(namesJson)));
+    const names = JSON.parse(namesJson);
+    // The versions travel with the report: a name the lock knows is served at
+    // the lock's version and nowhere else, and the installer says so rather
+    // than leave it to be discovered by uninstalling and reinstalling to the
+    // very same version.
+    const [report, versions] = await Promise.all([ensureLocalWheels(names), lockVersions(names)]);
+    return JSON.stringify({ ...report, versions });
   } catch (err) {
     console.warn("[pyodide] could not complete the local install:", err);
     return JSON.stringify({ skipped: true, added: [], unavailable: [] });
@@ -611,6 +761,21 @@ globalThis._mystralEnsureWheels = async function (namesJson) {
  * A string crosses rather than an object: see `_mystralEnsureWheels` above for
  * why -- an object would arrive as a proxy that both sides would have to free.
  */
+/**
+ * Keep what was just installed from the network, so the next session has it.
+ *
+ * The Python side knows what micropip left in each dist-info; the writing and
+ * the lock are this module's business -- see `cacheInstalledWheels`.
+ */
+globalThis._mystralCacheWheels = async function (entriesJson) {
+  try {
+    return JSON.stringify(await cacheInstalledWheels(JSON.parse(entriesJson)));
+  } catch (err) {
+    console.warn("[pyodide] nothing could be cached locally:", err);
+    return JSON.stringify({ cached: [], failed: [] });
+  }
+};
+
 globalThis._pyodideDisplay = function (bundleJson) {
   const cell = globalThis._pyodideCurrentCell;
   if (!cell) return;
