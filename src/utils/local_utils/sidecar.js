@@ -313,6 +313,18 @@ function collectCellOutputs(editorId = "") {
     // one must keep its button.
     const kept = out.cloneNode(true);
     kept.querySelectorAll(".pyodide-copy-out").forEach((b) => b.remove());
+    // A plot drawn by its own scripts is not stored. What sits in the page is
+    // a sandboxed frame (see markdown/scriptedHtml.js); saving its document
+    // would store a library and its data as markup, and restoring it would run
+    // that markup again -- which is running a saved script, the one thing the
+    // frame exists to avoid. It is replaced by a line saying where the plot
+    // went, and the cell draws it again when it is run.
+    for (const frame of kept.querySelectorAll("iframe.pyodide-html-frame")) {
+      const note = document.createElement("div");
+      note.className = "pyodide-widget-note";
+      note.textContent = "Interactive output — run the cell to draw it again.";
+      (frame.closest(".pyodide-html-frame-slot") ?? frame).replaceWith(note);
+    }
     cells[key] = { output_html: kept.innerHTML, source_hash: key, ran_at: el.dataset.ranAt ?? null };
   }
   return cells;

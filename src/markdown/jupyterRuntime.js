@@ -853,10 +853,22 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
         // Pyodide il faut aller interroger l'objet ; ici il a déjà répondu.
         const view = c.data?.["application/vnd.jupyter.widget-view+json"];
         const image = figureUrl(c.data);
+        const bundleHtml = c.data?.["text/html"];
+        const bundleJs = c.data?.["application/javascript"] ?? c.data?.["text/javascript"];
         if (view?.model_id) widgets.push(view.model_id);
         else if (image) figures.push(image);
-        else if (c.data?.["text/html"]) htmls.push(c.data["text/html"]);
-        else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
+        else if (bundleHtml || bundleJs) {
+          // One bundle can carry both, and then they are one output: bokeh's
+          // `output_notebook()` sends the "Loading BokehJS" line as text/html
+          // and the loader itself as application/javascript, and `show(p)`
+          // sends its placeholder and the plot the same way. Taking the HTML
+          // alone, as this did, is exactly how a cell stayed on "Loading
+          // BokehJS ..." for ever: the script that was to replace it was
+          // dropped. Joined here so that the pair travels together into the
+          // same sandboxed frame, the placeholder being what the script draws
+          // into.
+          htmls.push(String(bundleHtml ?? "") + (bundleJs ? `\n<script>${bundleJs}<\/script>` : ""));
+        } else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
         break;
       }
       case "error":

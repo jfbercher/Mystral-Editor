@@ -14,6 +14,7 @@ import { workingDirectory, currentFileDir, isTauri } from "../utils/local_utils/
 import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, runtimeNameFor, supports } from "./cellRuntime.js";
 import { chooseEngineFor, chosenKernel, onEngineChange } from "./engineChoice.js";
 import DOMPurify from "dompurify";
+import { containsScript, mountScriptedHtml } from "./scriptedHtml.js";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
@@ -1543,17 +1544,36 @@ function renderOutput(outputArea, result) {
   //
   // Désinfecté avant d'entrer dans la page, parce qu'un rendu HTML est du code
   // écrit par une bibliothèque et non par l'auteur du document, et que ce
-  // panneau vit dans l'éditeur. Un effet de bord utile : ce qui dépend de
-  // `<script>` pour s'afficher -- bokeh, plotly -- ne s'affichera pas, et il
-  // vaut mieux que ce soit une règle claire qu'une surprise, puisque le HTML
-  // inséré ainsi n'exécute de toute façon aucun script.
-  for (const html of result.htmls ?? []) {
-    const block = document.createElement("div");
-    block.className = "pyodide-html";
-    // block.innerHTML = DOMPurify.sanitize(html);
-    if (!block.textContent.trim() && !block.querySelector("img, svg, table, canvas")) continue;
+  // panneau vit dans l'éditeur : aucun script n'est exécuté ici. Ce qui a
+  // besoin de ses propres scripts pour se dessiner part donc ailleurs, dans
+  // une iframe isolée -- voir scriptedHtml.js.
+  // An output that needs its own scripts to draw -- bokeh, plotly, folium --
+  // goes into a sandboxed frame rather than into this page; see
+  // scriptedHtml.js for why.
+  //
+  // All of the cell's HTML outputs go in together, and not only those that
+  // carry a script, because a library spreads one drawing over several of
+  // them: bokeh publishes its "Loading BokehJS" line, then its loader, then
+  // the plot's placeholder, then the code that fills it -- four outputs, two
+  // of them script-free. Leaving those two in the page put the placeholder on
+  // one side of the frame boundary and the script looking for it on the other,
+  // which is a plot that never appears and not one line in the console.
+  const htmls = result.htmls ?? [];
+  if (htmls.some(containsScript)) {
     hasContent = true;
-    outputArea.appendChild(block);
+    const slot = document.createElement("div");
+    slot.className = "pyodide-html-frame-slot";
+    outputArea.appendChild(slot);
+    mountScriptedHtml(slot, htmls);
+  } else {
+    for (const html of htmls) {
+      const block = document.createElement("div");
+      block.className = "pyodide-html";
+      block.innerHTML = DOMPurify.sanitize(html);
+      if (!block.textContent.trim() && !block.querySelector("img, svg, table, canvas")) continue;
+      hasContent = true;
+      outputArea.appendChild(block);
+    }
   }
 
   // Les widgets. L'hôte est posé tout de suite, pour garder sa place dans

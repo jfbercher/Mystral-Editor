@@ -28,6 +28,7 @@
  */
 import { onComm, onCommOutput, claimOutputParent, releaseOutputParent, isOutputParent, sendCommMessage, listComms, wdbg } from "./jupyterRuntime.js";
 import DOMPurify from "dompurify";
+import { containsScript, mountScriptedHtml } from "./scriptedHtml.js";
 import { SHARED_SPACE } from "./cellRuntime.js";
 
 /** La cible que les ipywidgets se donnent, et la seule qui nous concerne. */
@@ -215,6 +216,20 @@ async function renderMarkdownInto(el, text) {
   }
 }
 
+/**
+ * The HTML of a MIME bundle, with its script if it has one.
+ *
+ * A bundle may carry `text/html` and `application/javascript` together, and
+ * they are then one output: bokeh sends a placeholder and the code that draws
+ * into it. Kept together so that the pair reaches the same sandboxed frame.
+ */
+function htmlOfBundle(data) {
+  const html = data?.["text/html"];
+  const js = data?.["application/javascript"] ?? data?.["text/javascript"];
+  if (!html && !js) return null;
+  return String(html ?? "") + (js ? `\n<script>${js}<\/script>` : "");
+}
+
 function renderOutputItem(container, out, space = SHARED_SPACE) {
   const kind = out?.output_type;
   if (kind === "stream") {
@@ -248,7 +263,7 @@ function renderOutputItem(container, out, space = SHARED_SPACE) {
     return;
   }
   const png = out.data["image/png"];
-  const html = out.data["text/html"];
+  const html = htmlOfBundle(out.data);
   const markdown = out.data["text/markdown"];
   if (png) {
     const img = document.createElement("img");
@@ -258,8 +273,14 @@ function renderOutputItem(container, out, space = SHARED_SPACE) {
   } else if (html) {
     const block = document.createElement("div");
     block.className = "pyodide-html";
-    block.innerHTML = DOMPurify.sanitize(html);
     container.appendChild(block);
+    // Same rule as a cell's own outputs: what needs its own scripts to draw
+    // goes into a sandboxed frame, the rest is sanitised into the page. Here
+    // the frame is per displayed item rather than per cell, since an `Output`
+    // widget redraws item by item; a loader and its plot therefore have to be
+    // displayed together to meet in the same document.
+    if (containsScript(html)) mountScriptedHtml(block, [html]);
+    else block.innerHTML = DOMPurify.sanitize(html);
   } else if (markdown) {
     // `display(Markdown(...))` sends `text/markdown` and, as its plain-text
     // alternative, the object's repr -- which is how
@@ -291,7 +312,7 @@ function kindOfOutput(out) {
   const view = data["application/vnd.jupyter.widget-view+json"];
   if (view?.model_id) return `widget:${view.model_id}`;
   if (data["image/png"]) return "png";
-  if (data["text/html"]) return "html";
+  if (data["text/html"] || data["application/javascript"] || data["text/javascript"]) return "html";
   if (data["text/markdown"]) return "markdown";
   return "text";
 }
@@ -313,7 +334,15 @@ function patchOutputItem(node, out, kind) {
     return true;
   }
   if (kind === "html") {
-    node.innerHTML = DOMPurify.sanitize(out.data["text/html"]);
+    const html = htmlOfBundle(out.data);
+    if (containsScript(html)) {
+      // A frame cannot be patched from here -- its document is on an opaque
+      // origin -- so it is rebuilt, which also restarts the library inside it.
+      node.textContent = "";
+      mountScriptedHtml(node, [html]);
+      return true;
+    }
+    node.innerHTML = DOMPurify.sanitize(html);
     return true;
   }
   if (kind === "markdown") {

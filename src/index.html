@@ -23,12 +23,24 @@
     http://ipc.localhost already appears in connect-src. Listing only the
     https form would let a local Pyodide work on macOS and Linux and be
     blocked on Windows, with the CSP as the last place anyone would look.
+
+    cdn.bokeh.org and cdn.plot.ly are allowed for the plotting libraries whose
+    output draws itself: such an output runs in a sandboxed frame of its own
+    (see markdown/scriptedHtml.js), and a frame inherits the policy of the page
+    that holds it, so a host refused here is refused there. The two are named
+    rather than opening script-src to https:, and they cost little next to the
+    'unsafe-inline' and 'unsafe-eval' already granted on the same line -- which
+    is what an injection in this page would reach for long before it reached
+    for a plotting CDN. Everything else stays refused and is announced to the
+    reader by a notice naming the library and the host; a library that is not
+    on this list has to carry its own code, which is the general rule and the
+    one that works offline.
   -->
   <meta 
   http-equiv="Content-Security-Policy" 
   content="
     default-src 'self' tauri: asset: https://asset.localhost http://asset.localhost;
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: https://asset.localhost http://asset.localhost https://cdn.jsdelivr.net https://accounts.google.com;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: https://asset.localhost http://asset.localhost https://cdn.jsdelivr.net https://cdn.bokeh.org https://cdn.plot.ly https://accounts.google.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
     font-src 'self' https://fonts.gstatic.com data:;
     img-src 'self' asset: https://asset.localhost asset://* blob: data: https: http:;
