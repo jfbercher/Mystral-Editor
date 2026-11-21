@@ -1576,6 +1576,17 @@ function renderOutput(outputArea, result) {
     }
   }
 
+  // Ce que le noyau a envoyé et que nous ne savons pas montrer. Une ligne
+  // plutôt qu'un silence : une cellule qui n'affiche rien sans rien dire est
+  // la pire des sorties.
+  for (const note of result.notes ?? []) {
+    hasContent = true;
+    const line = document.createElement("div");
+    line.className = "pyodide-widget-note";
+    line.textContent = note;
+    outputArea.appendChild(line);
+  }
+
   // Les widgets. L'hôte est posé tout de suite, pour garder sa place dans
   // l'ordre de la sortie ; la vue arrive ensuite, le gestionnaire et ses
   // paquets étant chargés à la demande. Un échec laisse une phrase plutôt

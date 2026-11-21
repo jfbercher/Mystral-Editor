@@ -94,7 +94,25 @@ function hostOf(uri) {
  */
 const pending = new Map();
 
+/**
+ * Refusals not worth a word.
+ *
+ * A library may ask for something it can do without. Plotly's notebook
+ * renderer always requests MathJax -- `include_mathjax="cdn"` is written into
+ * `NotebookRenderer.to_mimebundle()` and cannot be turned off from the
+ * renderer -- but only a label written in LaTeX needs it: the plot draws
+ * without it, and plotly says so in the console if maths ever turn up. Telling
+ * the reader that something was refused, when nothing is missing from what
+ * they see, teaches them to ignore the notice, which is the one thing it
+ * cannot afford.
+ */
+const OPTIONAL = [/mathjax/i];
+
 function reportBlocked(frame, uri) {
+  if (OPTIONAL.some((pattern) => pattern.test(uri))) {
+    console.debug(`[outputs] optional resource refused by the security policy, ignored: ${uri}`);
+    return;
+  }
   let entry = pending.get(frame);
   if (!entry) {
     entry = { uris: new Set(), timer: null };

@@ -797,6 +797,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
       returnValue: null,
       figures: [],
       htmls: [],
+      notes: [],
       durationMs: 0,
     };
   }
@@ -812,6 +813,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
   let returnValue = null;
   const figures = [];
   const htmls = [];
+  const notes = [];
   const widgets = [];
 
   await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
@@ -869,6 +871,25 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
           // into.
           htmls.push(String(bundleHtml ?? "") + (bundleJs ? `\n<script>${bundleJs}<\/script>` : ""));
         } else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
+        else {
+          // A bundle none of our branches knows what to do with. Plotly's
+          // `plotly_mimetype` renderer sends one of these -- the figure as
+          // JSON under application/vnd.plotly.v1+json, meant for a front end
+          // that carries plotly.js -- and the cell showed nothing at all, with
+          // no way for its reader to learn why. Named rather than dropped.
+          const types = Object.keys(c.data ?? {}).filter((t) => t !== "text/plain");
+          if (types.length) {
+            // Plotly's own case is worth more than its name: its default
+            // renderer under a kernel sends the figure as JSON for a front end
+            // carrying plotly.js, which we are not, and one line of Python
+            // turns it into HTML we can draw.
+            const plotly = types.some((t) => t.startsWith("application/vnd.plotly"));
+            notes.push(
+              `Output not displayed; the kernel sent it as ${types.join(", ")}.` +
+                (plotly ? ` Add import plotly.io as pio; pio.renderers.default = "notebook_connected" to draw it here.` : ""),
+            );
+          }
+        }
         break;
       }
       case "error":
@@ -879,7 +900,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
     }
   });
 
-  return { stdout, stderr, error, returnValue, figures, htmls, widgets, durationMs: Math.round(performance.now() - started) };
+  return { stdout, stderr, error, returnValue, figures, htmls, notes, widgets, durationMs: Math.round(performance.now() - started) };
 }
 
 async function evaluate(expr, space = SHARED_SPACE) {
