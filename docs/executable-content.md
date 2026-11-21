@@ -295,6 +295,23 @@ Matplotlib figures are captured automatically: draw with `plt.plot(...)`, and th
 
 `print()` output appears as it is produced rather than all at once at the end, which matters for a loop that reports progress. It is also mirrored to the browser console, prefixed `[py]`, where it can be read in time order alongside JavaScript messages.  
 
+### Outputs that bring their own JavaScript  
+
+Some libraries draw by shipping a small web page rather than an image: bokeh, plotly, folium and altair all return HTML with a `<script>` in it. Such an output is displayed, but not in the page itself: it is placed in a sandboxed frame of its own, where scripts may run and nothing else — no reach into the editor's document, no storage, no file API. The reason is ownership. That HTML is written by a library, and in a document you received from someone else it could have been written by its author; code running in the page would hold the editor's own privileges, file access included, so `display(HTML(...))` would be enough to read and write on your machine. An output with no script in it keeps its place in the page as before, which is what lets a pandas table stay selectable and copyable in the document.  
+
+One frame is built per cell and per run, and it holds *all* of that cell's HTML outputs in the order they were produced — not only those carrying a script. A library spreads one drawing over several outputs: bokeh publishes four, the "Loading BokehJS" line, the loader, the plot's placeholder and the code that fills it, and two of them have no script in them. Leaving those in the page would put the placeholder on one side of the frame boundary and the script looking for it on the other, which draws nothing and says nothing. The consequence to know is that a cell mixing a table and a plot shows the table inside the frame too, where it is no longer selectable; separate cells keep it selectable. A cell calling `output_notebook()` and then `show(p)` works, since both belong to the same cell. Two cells share nothing, which is the price of the isolation: the loader published by `output_notebook()` in one cell is invisible to a `show()` in another, and that second cell draws nothing. The way round it is to make each output self-contained, which is in any case what the next paragraph makes necessary:  
+
+```python
+from bokeh.embed import file_html
+from bokeh.resources import INLINE
+from IPython.display import HTML
+HTML(file_html(p, INLINE))
+```
+
+`fig.to_html(include_plotlyjs=True)` for plotly and `m.get_root().render()` for folium play the same part.  
+
+A library fetched from a CDN does not load at all, and this is on purpose. The editor runs under a security policy that allows scripts from itself and from a short list of hosts, and a frame inherits the policy of the page that holds it, so `output_notebook()` asking for `cdn.bokeh.org` is refused (`cdn.jsdelivr.net` is on the list, so what a library serves from there does load) — which is why a self-contained output is not merely the tidier choice but the working one. The refusal used to be visible only to whoever thought of opening the developer console, leaving a cell stuck on "Loading BokehJS ..." with no explanation; the editor now says so in a notice naming the library and the host it was refused, with a link to the documentation. What the frame does report by itself is its height, so a plot drawn a moment after the page is given the room it needs when it arrives. Such an output is not saved with the document: where the others are kept in the sidecar and restored on opening, a frame is replaced there by a line saying the plot is drawn by running the cell again, since restoring it would mean running a saved script. On an exported site the question does not arise, the cell runs there and the page carries the library itself.  
+
 ### Files  
 
 Cells can read the files sitting next to the document. Before a cell runs, its source is scanned for filenames 

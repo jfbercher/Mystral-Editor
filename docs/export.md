@@ -85,6 +85,7 @@ defect to attribute.
 editor writes them under `_build/pyodide`, and that entry copies the folder
 into the site's public folder under its own name.
 
+(cells-that-stay-executable-on-the-site)=
 ### Cells that stay executable on the site
 
 The figures the editor computed travel into the site as they are, so a reader

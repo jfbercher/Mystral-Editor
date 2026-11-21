@@ -4,6 +4,8 @@ numbering:
   figure: true
 exports:
   - format: docx
+  - format: tex
+    template: arxiv_nips
   - format: pdf
     template: arxiv_nips
     article_type: article
@@ -23,16 +25,16 @@ date: 2026-10-14
 
 **[Mystral Editor](https://github.com/jfbercher/Mystral-Editor)** is a lightweight, offline-capable editor with large [MyST Markdown](https://myst-parser.readthedocs.io/)[^MyST] support and live-preview, oriented toward academic documents, with equations, bibliography management, automatic numbering of floating elements and structured navigation.
 
-Mystral Editor begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications. Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all Myst-Editor's main strengths. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder). 
+Mystral Editor begun as a fork of [Myst-Editor](https://github.com/antmicro/myst-editor/) by Antmicro, a web Markdown editor. Where Myst-Editor is designed as an embeddable Preact component for collaborative editing in web applications. Mystral Editor uses it as an infrastructure to build a full-featured scientific authoring tool for local use, while keeping all Myst-Editor's main strengths. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder).
 
 
 ### Main features of Mystral
 
 * ****A complete, offline scientific MyST editor, with no server or build chain.**** What the preview displays is what `myst build` will produce: numbering, cross-references, bibliography, and mathematical macros, see [localfile management](local-file-management.md) and [scientific authoring](scientific-authoring.md). 
-* ****Executable Python code-cells directly in the document****, powered by Pyodide: no kernel, no installation, and no network connection once loaded, — and *results persist across sessions*, see [executable content](python-executable-code-cells-(pyodide).md).
-* **A presentation mode**, dedicated to slide preparation *{u}`and`* a slideshow mode (with live execution of code-cells), see [slides documentation](slides.md).
+* ****Executable Python code-cells directly in the document****, powered by Pyodide: no kernel, no installation, and no network connection once loaded, — and *results persist across sessions*, see [executable content](python-executable-code-cells-(pyodide).md). It can also optionally use a local *Jupyter kernel*, selected from those available.
+* **A presentation mode**, dedicated to slide preparation *{u}`and`* a slideshow mode (with live execution of code-cells) including an overview grid to jump between slides, see [slides documentation](slides.md).
 * Reads markdown, yaml files; import/export jupyter notebook *ipynb* files. Exports your documents as LaTeX, PDF, DOC, HTML, and build full websites through mystmd, see [export documentation](export.md).
-* ****Six viewing modes****, including an *inline* mode that renders each block in place and opens only the block containing the cursor in source mode; a embedded view of the *generated MyST website*, and preview of *slides*. 
+* ****Six viewing modes****, including an *inline* mode that renders each block in place and opens only the block containing the cursor in source mode; a embedded view of the *generated MyST website*, and preview of *slides*
 * ****One codebase, two forms****: a [desktop application](desktop-application-(tauri).md) for macOS, Windows, and Linux (x86-64 and ARM64) with local file system access, or a web application that can be deployed anywhere without installation.
 * ****Git from the editor****: see what changed since the last commit, read the diffs, commit and push — using the `git` of your machine, your own configuration and your own credentials. Nothing is fetched, pulled or committed without being asked, see [git](git.md).
 * **Comprehensive documentation and extensive customization options**: [customisation reference](customisation-reference.md), [css variables](mystral-editor-css-variables.md),  configurable [keyboard shortcuts](keyboard_shortcuts_en.md), 
@@ -48,6 +50,7 @@ The original Myst-Editor is distributed under an Apache 2.0 license. The two fol
 
 - [List of Additions](additions.md)
 - [List of Modifications](modifications.md)
+  
 
 
 [^MyST]: MyST Markdown (Markedly Structured Text) is a superset of CommonMark Markdown designed for technical and scientific writing. It adds structured roles and directives — the building blocks for cross-referenced figures, numbered equations, citations, admonitions, and rich metadata — while remaining fully readable as plain text. Beyond the editor itself, MyST is backed by the [MySTmd ecosystem](https://mystmd.org/): a set of open-source tools that can compile the same source files into polished LaTeX manuscripts and PDF output, Word documents, and entire documentation websites (via Jupyter Book or the MyST site builder), making it a compelling single-source format for researchers, educators, and technical authors who need to publish across multiple media from one set of files.
@@ -71,6 +74,7 @@ Mystral Editor retains and extends all upstream editor features:
 - **MyST roles and directives**: some roles (`{ref}`, `{eq}`, etc.) and directives were already present in MyST editor and are extended/completed in Mystral.
 
 ## Local File Management
+
 ### Main menu
 
 A dedicated menu bar handles documents on the local file system:
@@ -83,6 +87,54 @@ A dedicated menu bar handles documents on the local file system:
 - **Document statistics** (word, paragraph, line and character counts)
 - **Zoom** (Cmd/Ctrl +/-/0) in Tauri mode
 - **Jupyter notebook import and export**: a `.ipynb` file can be opened directly, converted to MyST Markdown on the fly, and *Save As* can write the document back to `.ipynb` -- code and text are carried over, cell outputs are not
+
+### Pasting an image
+
+An image in the clipboard — a screenshot, a picture copied from a page or a spreadsheet — is pasted into the document as a figure. The bytes are written beside the document, in a folder of their own, and a `{figure}` pointing at the new file is inserted with the caret on its caption line, which is empty and waiting:
+
+```markdown
+:::{figure} pasted-images/my-notes-20261120-143012.png
+:name: my-notes-20261120-143012
+:alt: Pasted image
+
+:::
+```
+
+The `:name:` is the file's own stem, unique by construction, so the figure is numbered and referenceable from the moment it is pasted — rename it to something you would willingly type in a `{ref}`, or delete the line. The `:alt:` is a placeholder and says so: the only thing available to fill it with automatically would be the file name, and an alternative text reading `my-notes-20261120-143012.png` is worse, for a reader who depends on it, than an honest line asking to be replaced.
+
+The folder is `pasted-images`, next to the document, and `pastedImagesDir` in `config.json` renames it. A folder of its own is not tidiness: it is what makes cleaning up decidable later. In a folder nothing else writes to, *delete what no document refers to any more* is a question one can answer without risk, whereas the same sweep over a general images folder would reach pictures put there by hand. The inserted path stays relative to the document, so the export and the site resolve it.
+
+The file name carries the moment of the paste, which keeps two of them from colliding, and a name: the pasted file's own when it has one worth keeping — a file copied in the Finder or in Explorer brings its name along, and `diagramme-flux` says more than `my-notes` — and the document's otherwise. A system screenshot called *Capture d'écran 2026-11-20 à 14.30.12* is a date rather than a subject, and counts as having none.
+
+Two things worth knowing. An undo takes back the figure and not the file: a text editor's undo does not reach the disk, and the orphan left behind is the price — the dedicated folder is what will make it recoverable. And a document that has never been saved has no folder to write beside, so the picture goes into the document itself as a `data:` URL and a message says so; saving first and pasting again writes a file instead. In the browser, the same holds until a working folder is chosen.
+
+Every other paste is untouched: this answers only when the clipboard holds an image — and not even then if it also holds a table. A spreadsheet puts a picture of the selection in the clipboard next to the data itself, and an image of a table is the poorest of the representations on offer. The table wins, and the notice described below appears instead.
+
+### Pasting a table
+
+A table copied from a spreadsheet or a web page is pasted as it always was — the tab-separated text, exactly as the clipboard gives it. A paste must never surprise: if you wanted the text, you get the text. A notice then appears offering to convert what was just inserted into a MyST table, with a button. Ignore it and it fades, and nothing has happened; press it and the pasted text is replaced in one go, so a single undo brings the text back.
+
+Which of the three forms it offers depends on the data rather than on taste:
+
+- a **pipe table** when the table is small and plain — the lightest to read in the source, and what most people mean by a table in Markdown;
+- **`{csv-table}`** when the data is regular and wide, or has no header row of its own: a CSV stays legible in the source and goes back to a spreadsheet without losing anything;
+- **`{list-table}`** as soon as a cell holds more than flat text — emphasis, a link, a line break. Neither of the other two can carry those.
+
+A pipe table's first row *is* its header, so a table whose source says it has none is never written that way: it would promote a row of data without saying so, and `{csv-table}` can declare the absence.
+
+A table's own title comes with it. Wikipedia and many another page put one inside the table as a `<caption>`, and a table copied as plain text often carries it as a first line above the data; either way it becomes the caption of the result — the argument of `{csv-table}` or `{list-table}`, and for a pipe table, which has nowhere of its own to put one, a `{table}` directive wrapped around it. A trailing colon is dropped: it introduced the table in the page it came from, and under the table it reads as a sentence cut short. In plain text a first line is only taken for a title when it is short and every line below it is tab-separated — a paragraph above a table stays a paragraph.
+
+What comes from HTML keeps its bold, its italics, its inline code and its links; the rest of the markup is dropped. What comes from tab-separated text is taken as plain, and its first row as the header — which is what a spreadsheet paste almost always is.
+
+### Pasting a page
+
+A fragment copied from a web page or a word processor carries its markup in the clipboard — headings, lists, quotes, code, links — and pasting it as text flattens every one of them. The same notice therefore offers to convert it to Markdown, on the same terms: the paste itself is untouched, the offer is one button, and one undo puts the text back.
+
+Headings, nested lists, blockquotes, code blocks, tables, emphasis and links all come across. Scripts, styles and a page's navigation furniture are dropped rather than flattened into paragraphs of menu entries, and Wikipedia's `[edit]` links beside its headings go with them; a footnote marker such as `[61]` keeps its number and loses its link, which pointed into a page you no longer have.
+
+An image keeps the address it had on the page. It is not written to disk as a pasted image is: that would mean fetching it over the network, from a document, which is a decision of its own rather than a detail of this one. The image shows while the page it came from is up.
+
+A table standing on its own is not offered this way but the way described above, which picks the form that suits its cells. A table *among* prose comes through here with everything else, as a pipe table — splitting the two would mean losing one of them.
 
 ### File access
 
@@ -258,7 +310,26 @@ This renders as a `<details>`/`<summary>` block: the icon and custom title form 
 
 ### Figures and Tables
 
-The `figure`, `table` and `list-table` directives support alignment (left, center, right) and scaling. Captions are numbered and cross-referenceable.
+The `figure`, `table`, `list-table` and `csv-table` directives support alignment (left, center, right) and scaling. Captions are numbered and cross-referenceable.
+
+A table can be written three ways, and the choice is about the data rather than about taste. A pipe table is the lightest and reads well in the source as long as it stays small. `csv-table` is for data that is regular and plain — it stays legible in the source, and it travels to and from a spreadsheet without losing anything:
+
+```md
+:::{csv-table} Measured values
+:header-rows: 1
+:name: tab:values
+
+Sample, Mass (g), Note
+A, 12.4, reference
+B, 13.1, "re-measured, twice"
+:::
+```
+
+The first line becomes the header because `:header-rows: 1` says so; `:header:` adds rows in front of the data, in the same format; and `:delim:`, `:quote:`, `:escape:` and `:keepspace:` are there for data that does not use commas and double quotes. A field containing the separator is quoted, as in the last cell above, and a doubled `""` inside a quoted field is one quote character.
+
+Its limit is the other side of its virtue: a cell is one line of plain text. When a cell needs a list, a figure or several paragraphs, `list-table` is the one that carries them.
+
+This directive is the editor's own work: mystmd knows it and exports it as a real LaTeX `tabular`, but the library the preview is built on stops at `list-table`. The body is therefore read here, and read as mystmd reads it — same options, same defaults, same answers on the awkward cases — so that the preview and the export agree on what the document says. `:file:`, which the documentation of other tools mentions, is not supported: mystmd carries it commented out in its own source, so a document using it would preview and export nothing.
 
 **Example — Source:**
 
@@ -316,8 +387,6 @@ An included file is read once per session, so editing it while the host document
 
 The editor proposes what can come next as soon as it can tell what is being written. A `:::` fence opens the list of directives, and accepting one inserts its whole skeleton: opening line, argument, the usual options, closing fence, with `Tab` moving from placeholder to placeholder. A line starting with `:` inside a directive proposes that directive's options, and those whose values form a closed set then propose the values themselves. A `{` opens the list of roles.
 
-Configuration files get the same treatment, from a different source: inside a frontmatter block, in a `.yml` file opened in its own tab, and in the editor's own `config.json`, the proposals come from a JSON schema bundled with the application, which also underlines a key that does not exist and explains on hover what each one is for. See [YAML frontmatter](scientific-authoring.md) and [completion](completion.md).
-
 The proposals that matter most for a scientific document are the ones read from the document rather than from a list. `{ref}`, `{numref}`, `{eq}` and the link form `[](#label)` propose the labels the document defines -- sections, figures, tables, equations, exercises, theorems, including those brought in by an `{include}` -- each with its family, its current number and its caption, and matching runs over the caption as well as the key, so a figure can be found by what it shows when its label has been forgotten. Citations work the same way: after an `@` inside brackets, the entries of the attached `.bib` file are proposed with their author, year and title. Inside a code cell, completion comes from `jedi` running in Pyodide.
 
 👉🏼 See [completion](completion.md).
@@ -353,7 +422,7 @@ plt.plot(x+y)
 :alt: 
 :width: 95%
 
-Definition and execution of a code-cell, also showcasting completions and suggestions, bi-directional synchronization between source and preview.  
+Definition and excution of a code-cell, also showcasting completions and suggestions, bi-directional synchronization between source and preview.  
 
 :::
 
@@ -369,10 +438,43 @@ Code-cell: example showing the variable inspector, to explore current variables,
 Supported options:
 
 - `:packages: pkg1, pkg2` — additional packages to install via `micropip` before running
-- `:linenos:` — show line numbers in the cell editor
-- `:tags: hide-input` — cell metadata (for future filtering)
+- `:linenos:` — show line numbers in the cell editor. A boolean, as in the MyST specification: bare, `true` and `yes` turn them on, `false` and `no` turn them off, and the option's absence leaves them off.
+- `:tags: hide-input` — cell metadata, carried through to the export
+- `:description:` — what the cell is, shown in its toolbar, right of the buttons and wrapping onto its own line when they leave no room. The editor's alone: mystmd does not know the option, so it numbers nothing and references nothing.
+- `:caption:` — the same text, and one thing more: mystmd reads it, makes the cell a figure and gives it a number, so `{ref}` and `{numref}` can point at it. Use it when that is what you want. A cell with a caption and no description shows the caption in its toolbar, as it always has; a cell with both shows the description and exports the caption.
+- `:label:` — makes the cell referenceable: `{ref}` and `{numref}` resolve to it, and land on the cell.
+- `:align:`, `:figwidth:` — read by mystmd when the document is exported, where the cell and its outputs become a figure. They have no effect on the editor's own rendering.
+
+A description costs nothing to the document: it is the caption that makes a cell a figure, which is why the two were separated. A cell described rather than captioned no longer advances the figure counter, and the figures after it keep the numbers they had.
+
+Captioned cells are numbered, under a counter of their own -- `Code 1`, `Code 2` -- rather than among the figures. mystmd counts them as figures when it builds the site, so the two numberings differ by design; change `kind` to `"fig"` for `code-cell` in `data_directives` to follow mystmd instead. The label shown can be changed the same way.
+
+Note that `:caption:` and `:label:` are deliberately not passed to the exporter a second time: mystmd reads them from the source itself, and sending them again produced two nested floats and the caption twice.
+- `:open: false` — the cell opens with its code folded away
+
+How a cell *opens* is the author's to say; what is showing right now is the reader's. `:open: false` folds the code away at opening, for a cell whose result is the point and whose code is a detail; a cell that says nothing opens showing its code. The chevron in the toolbar folds and unfolds as you read, and **writes nothing** -- so nothing is marked modified, nothing re-renders, and nothing moves under your eyes.
+
+It used to write the state back into the source, which seemed a kindness: a document reopened a week later came back tidied. The mechanism was wrong, though, and in a way that took a while to see. An edit made in answer to a view gesture re-renders the document, and a re-render moves what one is looking at -- the pane creeping up a line at each fold, the preview jumping to wherever the source happened to be, a slide replaying its entrance in the middle of a sentence. Each was fixed in turn and another took its place, because the fault was the writing itself.
+
+`:fold:` is the older spelling, the same thing the other way round, and is still read; `:open:` wins when both appear. A fence carries its flags in its info line, where a value has nowhere to go, so `:fold:` remains the spelling there:
+
+````markdown
+```code-cell python :linenos: :fold:
+import numpy as np
+```
+````
+
+`:tags: hide-input` is a separate matter: it is metadata for the export and folds nothing here, a cell being perfectly able to be read open and exported without its input.
 
 ℹ️ **Access to local-files** in read/write mode is supported, restricted to the Working Directory with explicit permissions (web), or in the same directory as the current file (Tauri local app).
+
+↑↓ **Moving a cell** In Inline mode the toolbar carries two arrows that move the cell one place up or down. The step is one *block* of the inline projection -- the next rendered object, whatever it is: a paragraph, a heading, another cell, or a whole admonition, which is therefore stepped over rather than entered. The blank lines between two blocks stay where they are, and the move is a single undo step. The arrows do not appear in the dual preview, where there is no editor under the rendering to move anything in.
+
+⇅ **Merging and splitting** Alt-clicking one of those arrows merges the cell with its neighbour in that direction instead of moving it. The active cell's marker and options are the ones kept -- `:packages:` and `:params:` of two cells have no meaningful union -- and only the other cell's code is taken in. Nothing happens if the neighbour is not a code cell, or if anything but blank lines stands between the two.
+
+`Mod-Shift--` (Cmd on macOS, Ctrl elsewhere, with the minus key) cuts the cell in two at the caret, both halves keeping the marker and the options of the cell they come from, so whatever made it run is still there on either side. Nothing happens when one half would be empty. The key is configurable in `config.json` under `pyodide.keys.splitCell`, like the other cell shortcuts, and wins over the editor's own bindings while the caret is in a cell. One combination to avoid when rebinding on macOS: Alt with neither Cmd nor Ctrl. Alt composes characters there, so the browser reports the composed sign rather than the letter, and CodeMirror deliberately refuses to guess the physical key -- the binding never matches and the character is typed into the cell.
+
+▭ **The output's own controls** At the left of the status bar, two small buttons act on what the cell produced: one hides the output and brings it back, the other lifts the height limit so a long output is shown whole instead of scrolling inside `--pyodide-output-max-height` (25rem by default). The second appears only when the output is actually taller than its box, and both disappear when the cell has produced nothing. They are view controls: nothing is written to the document, and a reload starts afresh.
 
 𐃄 **Toolbar** Each cell carries a toolbar acting on itself or on the whole document: Run, Clear, Run All, Clear All, Restart, 
 
@@ -397,8 +499,6 @@ Demo of `{eval}`directive (2 of 2)
 :::
 
 What `{eval}` inserts is a result and not a string: an object that knows how to draw itself -- a DataFrame, a figure -- is drawn, through the `_repr_html_` / `_repr_svg_` / `_repr_png_` protocol Jupyter made standard. A plotting call is the one case that protocol does not cover, since `plt.plot(x)` returns a list of `Line2D` and draws into the current figure; the role therefore shows what the expression drew, as a notebook does. Two limits are worth knowing: a *live* widget cannot be inserted this way, since it would need a host surviving the re-render of its chunk, and on an HTML site `{eval}` is never re-evaluated -- its value is the one the editor computed, and a document exported without a run carries none.
-
-🃏 **Cards and grids** -- `{card}`, `{grid}` and `{grid-item}`, as mystmd defines them: a titled block with an optional header, footer and link, and a responsive row whose argument gives the number of columns at four screen widths (`1 1 2 3` is one column on a phone, three on a large screen). mystmd drops all three in a LaTeX, PDF or Word export, *with their content*; the editor's own plugin retypes a card as an admonition and a grid as a row of `minipage`s, so what is composed is what is printed. See [directives and roles](directives-and-roles.md).
 
 🧪 **Quizzes** -- A `{quiz}` directive integrates the **[labquiz](https://github.com/jfbercher/labquiz)** package: `:::{quiz} qz quiz7` shows a button that, pressed, displays the quiz in the preview and grades it there.
 
@@ -425,6 +525,7 @@ Each cell editor uses the same Python syntax coloring as the main editor (`--tok
 ℹ️ **On the published site, the cells stay alive.** The figures the editor computed are carried into the MyST site as they are, so a reader sees them without waiting for anything; and if the document declares a `kernelspec`, the same cells can be re-run in the reader's own browser, the result replacing the figure in place. Nothing is installed for that — the kernel is JupyterLite, fetched on demand, and only when someone actually presses Run. See [export](export.md) for the keys that enable it.
 
 There is more information on [executable-content](executable-content.md) which covers all of it.
+
 
 ## Document Organization and Navigation
 ### Table of Contents
