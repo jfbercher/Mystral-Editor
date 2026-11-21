@@ -1087,13 +1087,21 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
 
   await syncWrittenFiles(pyodide, memfsSnapshot, prestagedBytes);
 
+  // The same ordered list of fragments the kernel engine returns, so that one
+  // renderer serves both. Matplotlib figures are collected after the run and
+  // have no place of their own in the sequence, which is why they come first,
+  // as they always did.
+  const outputs = [
+    ...figures.map((src) => ({ id: "image", kind: "image", src, figure: true })),
+    ...htmls.map((html) => ({ id: "html", kind: "html", html, frame: containsScript(html) })),
+  ];
+
   return {
     stdout: capture.stdout,
     stderr: capture.stderr,
     error,
     returnValue,
-    figures,
-    htmls,
+    outputs,
     durationMs: Math.round(performance.now() - started),
   };
 }
@@ -1526,86 +1534,117 @@ function renderOutput(outputArea, result) {
     outputArea.closest(".code-cell-host")?.dataset.figwidth?.trim() ||
     (config.pyodide?.figureWidth ?? "").trim();
 
-  for (const figure of result.figures ?? []) {
-    hasContent = true;
-    const img = document.createElement("img");
-    img.src = figure;
-    img.alt = "matplotlib figure";
-    img.className = "pyodide-figure";
-    img.title = "Click to enlarge";
-    if (figWidth) img.style.width = figWidth;
-    outputArea.appendChild(img);
-  }
+  // The outputs, in the order the cell produced them, each drawn according to
+  // the fragment the MIME table chose for it (see mimeRenderers.js). The
+  // engines differ in how they obtain a bundle -- a kernel delivers it, a
+  // Pyodide value is asked for it -- and no longer in what is done with it.
+  //
+  // The script-bearing HTML is the exception to drawing in place: it is
+  // gathered and mounted in one sandboxed frame per cell, at the place of the
+  // first of them. Not only the fragments carrying a script, but every HTML
+  // fragment of a cell that has one, because a library spreads a single
+  // drawing over several: bokeh publishes its "Loading BokehJS" line, its
+  // loader, the plot's placeholder and the code that fills it -- four
+  // outputs, two of them script-free. Leaving those two in the page put the
+  // placeholder on one side of the frame boundary and the script looking for
+  // it on the other, which is a plot that never appears and not one line in
+  // the console.
+  const fragments = result.outputs ?? [];
+  const framed = fragments.some((f) => f.kind === "html" && f.frame);
+  const frameHtml = [];
+  let frameSlot = null;
+  const space = outputArea.closest(".code-cell-host")?.dataset.pythonSpace || SHARED_SPACE;
 
-  // Ce qu'un objet sait dire de lui-même en HTML : un DataFrame, une table,
-  // un résumé de modèle. Les deux moteurs y arrivent par des chemins opposés
-  // -- le noyau livre le paquet MIME, Pyodide doit interroger l'objet -- mais
-  // ce qui arrive ici est le même, et c'était jusque-là perdu des deux côtés.
-  //
-  // Désinfecté avant d'entrer dans la page, parce qu'un rendu HTML est du code
-  // écrit par une bibliothèque et non par l'auteur du document, et que ce
-  // panneau vit dans l'éditeur : aucun script n'est exécuté ici. Ce qui a
-  // besoin de ses propres scripts pour se dessiner part donc ailleurs, dans
-  // une iframe isolée -- voir scriptedHtml.js.
-  // An output that needs its own scripts to draw -- bokeh, plotly, folium --
-  // goes into a sandboxed frame rather than into this page; see
-  // scriptedHtml.js for why.
-  //
-  // All of the cell's HTML outputs go in together, and not only those that
-  // carry a script, because a library spreads one drawing over several of
-  // them: bokeh publishes its "Loading BokehJS" line, then its loader, then
-  // the plot's placeholder, then the code that fills it -- four outputs, two
-  // of them script-free. Leaving those two in the page put the placeholder on
-  // one side of the frame boundary and the script looking for it on the other,
-  // which is a plot that never appears and not one line in the console.
-  const htmls = result.htmls ?? [];
-  if (htmls.some(containsScript)) {
-    hasContent = true;
-    const slot = document.createElement("div");
-    slot.className = "pyodide-html-frame-slot";
-    outputArea.appendChild(slot);
-    mountScriptedHtml(slot, htmls);
-  } else {
-    for (const html of htmls) {
+  for (const fragment of fragments) {
+    if (fragment.kind === "image") {
+      hasContent = true;
+      const img = document.createElement("img");
+      img.src = fragment.src;
+      img.alt = fragment.figure ? "matplotlib figure" : "output image";
+      img.className = "pyodide-figure";
+      img.title = "Click to enlarge";
+      if (figWidth) img.style.width = figWidth;
+      outputArea.appendChild(img);
+      continue;
+    }
+
+    if (fragment.kind === "html") {
+      if (framed) {
+        hasContent = true;
+        frameHtml.push(fragment.html);
+        if (!frameSlot) {
+          frameSlot = document.createElement("div");
+          frameSlot.className = "pyodide-html-frame-slot";
+          outputArea.appendChild(frameSlot);
+        }
+        continue;
+      }
+      // Sanitised before entering the page, because an HTML rendering is code
+      // written by a library and not by the author of the document, and this
+      // panel lives inside the editor: no script runs here.
       const block = document.createElement("div");
       block.className = "pyodide-html";
-      block.innerHTML = DOMPurify.sanitize(html);
+      block.innerHTML = DOMPurify.sanitize(fragment.html);
       if (!block.textContent.trim() && !block.querySelector("img, svg, table, canvas")) continue;
       hasContent = true;
       outputArea.appendChild(block);
+      continue;
+    }
+
+    if (fragment.kind === "markdown") {
+      hasContent = true;
+      const block = document.createElement("div");
+      block.className = "pyodide-html";
+      outputArea.appendChild(block);
+      import("./widgetManager.js")
+        .then((mod) => mod.renderMarkdownInto(block, fragment.text))
+        .catch(() => {
+          block.textContent = fragment.text;
+        });
+      continue;
+    }
+
+    if (fragment.kind === "text") {
+      hasContent = true;
+      const pre = document.createElement("pre");
+      pre.className = "pyodide-stdout";
+      pre.textContent = fragment.text;
+      outputArea.appendChild(pre);
+      continue;
+    }
+
+    if (fragment.kind === "note") {
+      // A line rather than a silence: a cell that shows nothing without a word
+      // is the worst of outputs.
+      hasContent = true;
+      const line = document.createElement("div");
+      line.className = "pyodide-widget-note";
+      line.textContent = fragment.text;
+      outputArea.appendChild(line);
+      continue;
+    }
+
+    if (fragment.kind === "widget") {
+      // The host is placed at once, to keep its place in the order of the
+      // output; the view follows, the manager and its packages being loaded on
+      // demand. A failure leaves a sentence rather than a hole: the model
+      // exists in the kernel, it is here that it went wrong.
+      hasContent = true;
+      const host = document.createElement("div");
+      host.className = "pyodide-widget";
+      outputArea.appendChild(host);
+      const modelId = fragment.modelId;
+      import("./widgetManager.js")
+        .then((mod) => mod.mountWidget(space, modelId, host))
+        .catch((err) => {
+          console.warn("[widgets] vue non montée :", err);
+          host.className = "pyodide-widget-note";
+          host.textContent = `ipywidget (${String(modelId).slice(0, 8)}…) — ${err?.message ?? err}`;
+        });
     }
   }
 
-  // Ce que le noyau a envoyé et que nous ne savons pas montrer. Une ligne
-  // plutôt qu'un silence : une cellule qui n'affiche rien sans rien dire est
-  // la pire des sorties.
-  for (const note of result.notes ?? []) {
-    hasContent = true;
-    const line = document.createElement("div");
-    line.className = "pyodide-widget-note";
-    line.textContent = note;
-    outputArea.appendChild(line);
-  }
-
-  // Les widgets. L'hôte est posé tout de suite, pour garder sa place dans
-  // l'ordre de la sortie ; la vue arrive ensuite, le gestionnaire et ses
-  // paquets étant chargés à la demande. Un échec laisse une phrase plutôt
-  // qu'un trou : le modèle existe dans le noyau, c'est ici que cela a
-  // manqué.
-  for (const modelId of result.widgets ?? []) {
-    hasContent = true;
-    const host = document.createElement("div");
-    host.className = "pyodide-widget";
-    outputArea.appendChild(host);
-    const space = outputArea.closest(".code-cell-host")?.dataset.pythonSpace || SHARED_SPACE;
-    import("./widgetManager.js")
-      .then((mod) => mod.mountWidget(space, modelId, host))
-      .catch((err) => {
-        console.warn("[widgets] vue non montée :", err);
-        host.className = "pyodide-widget-note";
-        host.textContent = `ipywidget (${String(modelId).slice(0, 8)}…) — ${err?.message ?? err}`;
-      });
-  }
+  if (frameSlot) mountScriptedHtml(frameSlot, frameHtml);
 
   if (!hasContent) outputArea.hidden = true;
 }

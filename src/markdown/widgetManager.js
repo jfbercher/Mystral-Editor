@@ -28,7 +28,8 @@
  */
 import { onComm, onCommOutput, claimOutputParent, releaseOutputParent, isOutputParent, sendCommMessage, listComms, wdbg } from "./jupyterRuntime.js";
 import DOMPurify from "dompurify";
-import { containsScript, mountScriptedHtml } from "./scriptedHtml.js";
+import { mountScriptedHtml } from "./scriptedHtml.js";
+import { renderBundle } from "./mimeRenderers.js";
 import { SHARED_SPACE } from "./cellRuntime.js";
 
 /** La cible que les ipywidgets se donnent, et la seule qui nous concerne. */
@@ -204,7 +205,7 @@ export async function mountWidget(space, modelId, host) {
 /** Markdown, rendered by the same library the preview uses. */
 let markdownIt = null;
 
-async function renderMarkdownInto(el, text) {
+export async function renderMarkdownInto(el, text) {
   try {
     markdownIt ??= new (await import("markdown-it")).default({ html: true, linkify: true });
     el.innerHTML = DOMPurify.sanitize(markdownIt.render(String(text ?? "")));
@@ -214,20 +215,6 @@ async function renderMarkdownInto(el, text) {
     el.textContent = String(text ?? "");
     console.warn("[widgets] markdown not rendered:", err);
   }
-}
-
-/**
- * The HTML of a MIME bundle, with its script if it has one.
- *
- * A bundle may carry `text/html` and `application/javascript` together, and
- * they are then one output: bokeh sends a placeholder and the code that draws
- * into it. Kept together so that the pair reaches the same sandboxed frame.
- */
-function htmlOfBundle(data) {
-  const html = data?.["text/html"];
-  const js = data?.["application/javascript"] ?? data?.["text/javascript"];
-  if (!html && !js) return null;
-  return String(html ?? "") + (js ? `\n<script>${js}<\/script>` : "");
 }
 
 function renderOutputItem(container, out, space = SHARED_SPACE) {
@@ -247,30 +234,36 @@ function renderOutputItem(container, out, space = SHARED_SPACE) {
     return;
   }
   if (!out?.data) return;
-  // A widget displayed inside an `Output` -- a quiz showing its score as an
-  // `HTML` widget, a form rebuilding itself. Its bundle carries a view and a
-  // `text/plain` repr; falling through to the latter is what printed
-  // `HTML(value=...)` where the widget belonged.
-  const view = out.data["application/vnd.jupyter.widget-view+json"];
-  if (view?.model_id) {
+  // Which representation to draw is the table's business, not this function's
+  // (mimeRenderers.js). `textFallback` because inside an `Output` a plain repr
+  // is a legitimate answer, as a notebook shows it.
+  const fragment = renderBundle(out.data, { textFallback: true });
+  if (!fragment) return;
+
+  if (fragment.kind === "widget") {
+    // A widget displayed inside an `Output` -- a quiz showing its score as an
+    // `HTML` widget, a form rebuilding itself. Its bundle carries a view and a
+    // `text/plain` repr; falling through to the latter is what printed
+    // `HTML(value=...)` where the widget belonged.
     const sub = document.createElement("div");
     sub.className = "pyodide-widget";
     container.appendChild(sub);
-    mountWidget(space, view.model_id, sub).catch((err) => {
+    mountWidget(space, fragment.modelId, sub).catch((err) => {
       sub.className = "pyodide-widget-note";
-      sub.textContent = `ipywidget (${String(view.model_id).slice(0, 8)}…) — ${err?.message ?? err}`;
+      sub.textContent = `ipywidget (${String(fragment.modelId).slice(0, 8)}…) — ${err?.message ?? err}`;
     });
     return;
   }
-  const png = out.data["image/png"];
-  const html = htmlOfBundle(out.data);
-  const markdown = out.data["text/markdown"];
-  if (png) {
+
+  if (fragment.kind === "image") {
     const img = document.createElement("img");
-    img.src = `data:image/png;base64,${png}`;
+    img.src = fragment.src;
     img.className = "pyodide-figure";
     container.appendChild(img);
-  } else if (html) {
+    return;
+  }
+
+  if (fragment.kind === "html") {
     const block = document.createElement("div");
     block.className = "pyodide-html";
     container.appendChild(block);
@@ -279,22 +272,23 @@ function renderOutputItem(container, out, space = SHARED_SPACE) {
     // the frame is per displayed item rather than per cell, since an `Output`
     // widget redraws item by item; a loader and its plot therefore have to be
     // displayed together to meet in the same document.
-    if (containsScript(html)) mountScriptedHtml(block, [html]);
-    else block.innerHTML = DOMPurify.sanitize(html);
-  } else if (markdown) {
-    // `display(Markdown(...))` sends `text/markdown` and, as its plain-text
-    // alternative, the object's repr -- which is how
-    // `<IPython.core.display.Markdown object>` ended up on screen.
+    if (fragment.frame) mountScriptedHtml(block, [fragment.html]);
+    else block.innerHTML = DOMPurify.sanitize(fragment.html);
+    return;
+  }
+
+  if (fragment.kind === "markdown") {
     const block = document.createElement("div");
     block.className = "pyodide-html";
     container.appendChild(block);
-    renderMarkdownInto(block, markdown);
-  } else {
-    const pre = document.createElement("pre");
-    pre.className = "pyodide-stdout";
-    pre.textContent = String(out.data["text/plain"] ?? "");
-    container.appendChild(pre);
+    renderMarkdownInto(block, fragment.text);
+    return;
   }
+
+  const pre = document.createElement("pre");
+  pre.className = fragment.kind === "note" ? "pyodide-widget-note" : "pyodide-stdout";
+  pre.textContent = fragment.text;
+  container.appendChild(pre);
 }
 
 /**
@@ -308,13 +302,16 @@ function kindOfOutput(out) {
   const kind = out?.output_type;
   if (kind === "stream") return `stream:${out.name || "stdout"}`;
   if (kind === "error") return "error";
-  const data = out?.data ?? {};
-  const view = data["application/vnd.jupyter.widget-view+json"];
-  if (view?.model_id) return `widget:${view.model_id}`;
-  if (data["image/png"]) return "png";
-  if (data["text/html"] || data["application/javascript"] || data["text/javascript"]) return "html";
-  if (data["text/markdown"]) return "markdown";
-  return "text";
+  // The table decided what to draw; the same decision names the shape, so the
+  // two can never disagree -- which they could when this function held a copy
+  // of the priority chain.
+  const fragment = renderBundle(out?.data, { textFallback: true });
+  if (!fragment) return "none";
+  if (fragment.kind === "widget") return `widget:${fragment.modelId}`;
+  // A frame is rebuilt rather than patched, so it is a shape of its own and
+  // never matches the plain HTML it may have replaced.
+  if (fragment.kind === "html") return fragment.frame ? "frame" : "html";
+  return fragment.kind;
 }
 
 /**
@@ -329,24 +326,24 @@ function kindOfOutput(out) {
  */
 function patchOutputItem(node, out, kind) {
   if (kind.startsWith("widget:")) return true;
-  if (kind === "png") {
-    node.src = `data:image/png;base64,${out.data["image/png"]}`;
+  const fragment = kind === "error" || kind.startsWith("stream:") ? null : renderBundle(out?.data, { textFallback: true });
+  if (kind === "image") {
+    node.src = fragment.src;
+    return true;
+  }
+  if (kind === "frame") {
+    // A frame cannot be patched from here -- its document is on an opaque
+    // origin -- so it is rebuilt, which also restarts the library inside it.
+    node.textContent = "";
+    mountScriptedHtml(node, [fragment.html]);
     return true;
   }
   if (kind === "html") {
-    const html = htmlOfBundle(out.data);
-    if (containsScript(html)) {
-      // A frame cannot be patched from here -- its document is on an opaque
-      // origin -- so it is rebuilt, which also restarts the library inside it.
-      node.textContent = "";
-      mountScriptedHtml(node, [html]);
-      return true;
-    }
-    node.innerHTML = DOMPurify.sanitize(html);
+    node.innerHTML = DOMPurify.sanitize(fragment.html);
     return true;
   }
   if (kind === "markdown") {
-    renderMarkdownInto(node, out.data["text/markdown"]);
+    renderMarkdownInto(node, fragment.text);
     return true;
   }
   if (kind === "error") {
@@ -357,8 +354,8 @@ function patchOutputItem(node, out, kind) {
     node.textContent = Array.isArray(out.text) ? out.text.join("") : (out.text ?? "");
     return true;
   }
-  if (kind === "text") {
-    node.textContent = String(out.data?.["text/plain"] ?? "");
+  if (kind === "text" || kind === "note") {
+    node.textContent = fragment.text;
     return true;
   }
   return false;

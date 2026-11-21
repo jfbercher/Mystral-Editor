@@ -28,6 +28,7 @@ import { isTauri } from "../utils/local_utils/fs.js";
 import { startJupyter, jupyterRunning } from "../utils/local_utils/jupyterServer.js";
 import { jupyterFetch, openKernel } from "../utils/local_utils/jupyterLink.js";
 import { chosenKernel } from "./engineChoice.js";
+import { renderBundle } from "./mimeRenderers.js";
 
 /**
  * Tracing for the widget path, behind a switch.
@@ -603,20 +604,6 @@ async function prepare(entry) {
   }
 }
 
-/**
- * Une image d'un paquet MIME, en URL de données.
- *
- * Complète, pas le base64 nu : le rendu fait `img.src = figure`, et une chaîne
- * qui n'est pas une URL est prise pour une adresse relative -- le navigateur
- * demande alors au serveur une adresse de cent mille caractères et reçoit un
- * `431 Request Header Fields Too Large`. C'est ce que valait l'image.
- */
-function figureUrl(data = {}) {
-  if (data["image/png"]) return `data:image/png;base64,${data["image/png"]}`;
-  if (data["image/jpeg"]) return `data:image/jpeg;base64,${data["image/jpeg"]}`;
-  if (data["image/svg+xml"]) return `data:image/svg+xml;utf8,${encodeURIComponent(data["image/svg+xml"])}`;
-  return null;
-}
 
 /** Le paquet MIME d'un résultat, dans la forme que `{eval}` et les cellules attendent. */
 function fromMimes(data = {}) {
@@ -795,9 +782,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
       stderr: "",
       error: "cancelled: pip uninstall needs -y to run here",
       returnValue: null,
-      figures: [],
-      htmls: [],
-      notes: [],
+      outputs: [],
       durationMs: 0,
     };
   }
@@ -811,10 +796,10 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
   let stderr = "";
   let error = null;
   let returnValue = null;
-  const figures = [];
-  const htmls = [];
-  const notes = [];
-  const widgets = [];
+  // One ordered list rather than a bucket per kind: a cell that draws, writes
+  // and draws again used to show its two figures first, the order between
+  // kinds being lost on the way out.
+  const outputs = [];
 
   await request(entry, "execute_request", { code: guarded, silent: false, store_history: true, user_expressions: {}, allow_stdin: false }, (msg) => {
     const c = msg.content ?? {};
@@ -847,49 +832,15 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
       }
       case "display_data":
       case "execute_result": {
-        // Les figures arrivent comme des images, ce que Pyodide doit aller
-        // chercher dans matplotlib : ici elles sont déjà dans le message.
-        // Un noyau livre le paquet MIME complet, et l'ordre des préférences
-        // est le nôtre : une image d'abord, puis le HTML d'un objet qui sait
-        // se rendre -- un DataFrame, une table --, le texte en dernier. Sous
-        // Pyodide il faut aller interroger l'objet ; ici il a déjà répondu.
-        const view = c.data?.["application/vnd.jupyter.widget-view+json"];
-        const image = figureUrl(c.data);
-        const bundleHtml = c.data?.["text/html"];
-        const bundleJs = c.data?.["application/javascript"] ?? c.data?.["text/javascript"];
-        if (view?.model_id) widgets.push(view.model_id);
-        else if (image) figures.push(image);
-        else if (bundleHtml || bundleJs) {
-          // One bundle can carry both, and then they are one output: bokeh's
-          // `output_notebook()` sends the "Loading BokehJS" line as text/html
-          // and the loader itself as application/javascript, and `show(p)`
-          // sends its placeholder and the plot the same way. Taking the HTML
-          // alone, as this did, is exactly how a cell stayed on "Loading
-          // BokehJS ..." for ever: the script that was to replace it was
-          // dropped. Joined here so that the pair travels together into the
-          // same sandboxed frame, the placeholder being what the script draws
-          // into.
-          htmls.push(String(bundleHtml ?? "") + (bundleJs ? `\n<script>${bundleJs}<\/script>` : ""));
-        } else if (msg.msg_type === "execute_result") returnValue = String(c.data?.["text/plain"] ?? "");
-        else {
-          // A bundle none of our branches knows what to do with. Plotly's
-          // `plotly_mimetype` renderer sends one of these -- the figure as
-          // JSON under application/vnd.plotly.v1+json, meant for a front end
-          // that carries plotly.js -- and the cell showed nothing at all, with
-          // no way for its reader to learn why. Named rather than dropped.
-          const types = Object.keys(c.data ?? {}).filter((t) => t !== "text/plain");
-          if (types.length) {
-            // Plotly's own case is worth more than its name: its default
-            // renderer under a kernel sends the figure as JSON for a front end
-            // carrying plotly.js, which we are not, and one line of Python
-            // turns it into HTML we can draw.
-            const plotly = types.some((t) => t.startsWith("application/vnd.plotly"));
-            notes.push(
-              `Output not displayed; the kernel sent it as ${types.join(", ")}.` +
-                (plotly ? ` Add import plotly.io as pio; pio.renderers.default = "notebook_connected" to draw it here.` : ""),
-            );
-          }
-        }
+        // Which representation to draw is decided in one table, for the cells,
+        // for the `Output` widgets and for Pyodide alike: see mimeRenderers.js.
+        // A kernel delivers the whole bundle; under Pyodide the object has to
+        // be asked, which is the only difference left between the two engines
+        // here.
+        const fragment = renderBundle(c.data, { textFallback: msg.msg_type === "execute_result" });
+        if (!fragment) break;
+        if (fragment.kind === "text") returnValue = fragment.text;
+        else outputs.push(fragment);
         break;
       }
       case "error":
@@ -900,7 +851,7 @@ async function execute(code, { packages = [], onStream = null, space = SHARED_SP
     }
   });
 
-  return { stdout, stderr, error, returnValue, figures, htmls, notes, widgets, durationMs: Math.round(performance.now() - started) };
+  return { stdout, stderr, error, returnValue, outputs, durationMs: Math.round(performance.now() - started) };
 }
 
 async function evaluate(expr, space = SHARED_SPACE) {
