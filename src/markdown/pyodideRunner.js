@@ -2102,13 +2102,55 @@ async function copyToClipboard(text) {
   }
 }
 
+/**
+ * A trace of what happens to a cell's widget, on demand.
+ *
+ * Turned on from the console with `window.mystralCellDebug = true`. The
+ * question it answers is the one a reader asks when an output vanishes: was
+ * the widget reused, and did it still hold its output when it was? Three
+ * paths lead here -- a widget paired with its placeholder by the observer, one
+ * taken from the cache, or a cell built from nothing -- and only the last of
+ * them loses an output.
+ */
+export function cellTrace(what, el, extra = {}) {
+  if (!globalThis.mystralCellDebug) return;
+  const out = el?.querySelector?.(".pyodide-output");
+  console.log(
+    `[cell] ${what} ${el?.id ?? "?"}`,
+    JSON.stringify({
+      connected: Boolean(el?.isConnected),
+      outputHidden: out ? Boolean(out.hidden) : null,
+      outputLength: out ? out.innerHTML.length : null,
+      ...extra,
+    }),
+  );
+}
+
 export function initCodeCell(el, code, { packages = [], linenos = false, hash, owner = "" } = {}) {
   const cacheKey = hash ? cellKey(owner, hash) : null;
-  // Only a widget still attached to this editor may stand in for this
-  // placeholder. A disconnected one belongs to a tab that is not showing, and
-  // moving it here would remove it from there.
+  // A widget already built for this cell stands in for the placeholder,
+  // whether or not it is still in the document.
+  //
+  // It used to have to be connected, the fear being that a detached one
+  // belonged to a tab that was not showing and would be stolen from it. The
+  // owner is part of the cache key now -- `cellKey(owner, hash)` -- and a
+  // suspended tab has its entries dropped by `clearCellCache`, so what this
+  // key answers belongs to this editor and to nothing else.
+  //
+  // Meanwhile that guard was losing outputs, which is what it looked like from
+  // the reader's side: a cell scrolled out of view in the inline mode has its
+  // widget destroyed by CodeMirror, so the cached element is detached; scrolled
+  // back, the key matched, the guard refused, and a brand new empty cell was
+  // built over a cell that had output a moment earlier. The same happened
+  // across a change of mode, the panel holding the cells being taken down
+  // before the new one was built.
   const known = cacheKey ? cellCache.get(cacheKey) : null;
-  if (known?.isConnected) {
+  cellTrace(known ? "cache hit" : "no cache entry", known ?? el, { key: cacheKey });
+  if (known) {
+    // The placeholder carries the line it stands on, which the scroll sync and
+    // the source map read; the reused widget was built against another render
+    // and would answer for the wrong line.
+    if (el.dataset.lineId !== undefined) known.dataset.lineId = el.dataset.lineId;
     el.replaceWith(known);
     return;
   }
@@ -2866,6 +2908,7 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
     editorContainer.style.height = "";
   });
 
+  cellTrace("built from nothing", el, { key: cacheKey });
   wrapper.append(header, editorRow, sourceGrip, paramsBar, statusBar, outputArea);
   editorRow.appendChild(editorContainer);
   el.innerHTML = "";
@@ -2928,8 +2971,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
       // Run disables its own button for the length of a run; mirroring it here
       // beats re-deriving the state, which is settled in half a dozen places
       // (the finally of the run, a throw, a restart).
-      new MutationObserver(() => { bareBtn.disabled = runBtn.disabled; })
-        .observe(runBtn, { attributes: true, attributeFilter: ["disabled"] });
+      //
+      // Guarded and self-disconnecting, exactly like the one on <details>
+      // below and for the same reason: the observer outlives the button it
+      // was made for. A cell whose `:button:` is taken away sets `bareBtn`
+      // back to null while this observer goes on watching Run, and the next
+      // run threw `null is not an object` from inside a mutation callback --
+      // that is, from outside any of our try/catch, which is why it took the
+      // editor down with it.
+      const runMirror = new MutationObserver(() => {
+        if (!bareBtn) return runMirror.disconnect();
+        bareBtn.disabled = runBtn.disabled;
+      });
+      runMirror.observe(runBtn, { attributes: true, attributeFilter: ["disabled"] });
 
       // Before the output, wherever it currently lives: `:dropdown:` may
       // already have moved it inside its <details>.

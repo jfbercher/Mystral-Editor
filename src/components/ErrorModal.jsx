@@ -26,25 +26,35 @@ const formatError = (error, src, options, getLogString, editorView, collabClient
   const doc = editorView?.state?.doc;
   let documentInfo = doc ? `Document:\nLines: ${doc.lines}\nLength: ${doc.length}` : "Document: no editor view (the error came before it was built)";
   if (collabClient) {
-    documentInfo += `\nUser count: ${collabClient.users.peek().length}`;
-    documentInfo += `\nComments: count ${collabClient.ycomments.comments.peek().length}, lines [${collabClient.ycomments.comments
-      .peek()
-      .map((c) => c.lineNumber)
-      .toSorted((a, b) => a - b)
-      .join(", ")}]`;
-    documentInfo += `\nResolved comments: count ${collabClient.ycomments.resolver().resolvedCommentsList.peek().length}, lines [${collabClient.ycomments
-      .resolver()
-      .resolvedCommentsList.peek()
-      .map((c) => c.lineNumber)
-      .toSorted((a, b) => a - b)
-      .join(", ")}]`;
-    const suggestionLines = [...collabClient.ycomments.suggestions.entries()]
-      .filter(([_, values]) => values.length > 0)
-      .map(([id]) => parseInt(collabClient.ycomments.positions().get(id)))
-      .filter(Boolean)
-      .toSorted((a, b) => a - b);
-    documentInfo += `\nSuggestions: line count ${suggestionLines.length}, lines [${suggestionLines.join(", ")}]`;
+    // Best effort, and in its own try: this runs while reporting an error,
+    // and a collaboration client that is absent or half-built -- no comments,
+    // no suggestions, which is the ordinary case outside a shared session --
+    // threw here and replaced the error being reported with its own.
+    try {
+
+      documentInfo += `\nUser count: ${collabClient.users.peek().length}`;
+      documentInfo += `\nComments: count ${collabClient.ycomments.comments.peek().length}, lines [${collabClient.ycomments.comments
+        .peek()
+        .map((c) => c.lineNumber)
+        .toSorted((a, b) => a - b)
+        .join(", ")}]`;
+      documentInfo += `\nResolved comments: count ${collabClient.ycomments.resolver().resolvedCommentsList.peek().length}, lines [${collabClient.ycomments
+        .resolver()
+        .resolvedCommentsList.peek()
+        .map((c) => c.lineNumber)
+        .toSorted((a, b) => a - b)
+        .join(", ")}]`;
+      const suggestionLines = [...collabClient.ycomments.suggestions.entries()]
+        .filter(([_, values]) => values.length > 0)
+        .map(([id]) => parseInt(collabClient.ycomments.positions().get(id)))
+        .filter(Boolean)
+        .toSorted((a, b) => a - b);
+      documentInfo += `\nSuggestions: line count ${suggestionLines.length}, lines [${suggestionLines.join(", ")}]`;
+    } catch (err) {
+      documentInfo += `\nCollaboration details unavailable: ${err?.message ?? err}`;
+    }
   }
+
   const logs = `Logs:\n${getLogString()}`;
 
   return `\`\`\`\n${[header, time, userAgent, errorText, documentInfo, logs].join("\n")}\n\`\`\``;

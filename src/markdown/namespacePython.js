@@ -236,9 +236,20 @@ def _mystral_restore(data, ns=None):
     # restauree gardent la leur : celle-la est dans l'objet classe, hors
     # d'atteinte d'ici.
     relinked = 0
+    _own_module = ns.get('__name__', '__main__')
     for _n_rl in ok:
         _f_rl = ns.get(_n_rl)
         if not isinstance(_f_rl, _types.FunctionType) or _f_rl.__globals__ is ns:
+            continue
+        # Only what this document defined. A function imported from a library
+        # is restored by reference and already carries its own module globals:
+        # rebuilding it on the namespace cut it off from everything its module
+        # had imported, and the failure came back as the library's own name --
+        # "NameError: name 'curstate' is not defined" from inside bokeh's
+        # show(), for a reader who had never heard of curstate. The test is the
+        # module the function says it belongs to, which cloudpickle preserves
+        # on both paths.
+        if getattr(_f_rl, '__module__', None) not in (None, _own_module, '__main__'):
             continue
         _g_rl = _types.FunctionType(_f_rl.__code__, ns, _f_rl.__name__,
                                     _f_rl.__defaults__, _f_rl.__closure__)

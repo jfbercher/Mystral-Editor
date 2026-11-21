@@ -11,7 +11,7 @@
 
 import { infoHasFold } from "./cellFold.js";
 import IMurMurHash from "imurmurhash";
-import { initCodeCell, cellCache, cellKey, OWNER_SEP, onCellExecuted } from "./pyodideRunner";
+import { initCodeCell, cellCache, cellKey, OWNER_SEP, onCellExecuted, cellTrace } from "./pyodideRunner";
 // `{eval}` asks the engine for the value of one expression. A runtime that
 // does not declare `expressions` -- a kernel that is not Python -- would say
 // so here rather than fail at the call.
@@ -241,9 +241,11 @@ function ensureObserver(parent, owner = "") {
     // font pas partie de son identité.
     if (evictedHost?.dataset.initialized) {
       const textarea = evictedHost.querySelector(".pyodide-editor");
+      cellTrace("paired with an evicted widget", evictedHost, { placeholder: el.id, hasEditor: Boolean(textarea) });
       if (textarea) {
         // .value est soit textarea.value (legacy) soit le getter CM6 défini dans pyodideRunner.js
         const prevCode = textarea.value;
+        cellTrace("code compared", evictedHost, { same: prevCode === code, was: (prevCode ?? "").length, now: code.length });
         if (prevCode !== code) {
           // Le code a changé (édition dans le CM editor) :
           // mettre à jour l'éditeur silencieusement (sans déclencher de sync CM)
@@ -378,12 +380,43 @@ function ensureObserver(parent, owner = "") {
       return [el, null];
     });
 
-    // Passe 2 : assigner les évincés restants aux placeholders sans correspondance
-    // (cas d'une édition directe dans CM sans sync textarea→CM préalable)
+    // Passe 2 : un évincé qui tenait la même place dans le document.
+    //
+    // Elle existe pour une cellule éditée directement dans CodeMirror : son
+    // code a changé, donc son hash, donc son emplacement ne correspond plus à
+    // aucune clé, et il faut bien lui rendre son widget -- avec son éditeur,
+    // sa hauteur, son espace de noms.
+    //
+    // Distribuée dans l'ordre, comme elle l'était, elle appariait n'importe
+    // quoi dès que plusieurs widgets étaient évincés ensemble -- ce qui est
+    // précisément ce que fait le défilement en mode inline, où CodeMirror
+    // détruit tout ce qui sort du champ. Le widget de la cellule A atterrissait
+    // dans l'emplacement de la cellule B : `prevCode !== code`, donc le code
+    // écrasé et la sortie vidée, puis la clé de cache et l'id réécrits, ce qui
+    // désalignait les suivants. Une sortie disparue au retour du défilement,
+    // et deux cellules interverties sans que rien ne le dise.
+    //
+    // La ligne du document tranche ce que le hash ne peut plus trancher : une
+    // cellule dont on édite le code garde sa place, une cellule qui entre dans
+    // le champ pendant qu'une autre en sort n'a pas la même. À défaut de ligne
+    // de part et d'autre, on n'apparie que s'il n'y a qu'un candidat et qu'un
+    // emplacement -- et sinon rien : `initCodeCell` retrouve le widget par sa
+    // clé, qui est sûre, et construit une cellule neuve s'il n'y en a pas.
+    const unmatched = pairs.filter(([, evicted]) => evicted === null);
     const remaining = [...evictedSet];
-    let ri = 0;
+    const lineOf = (node) => node?.dataset?.lineId ?? "";
+    const takeFor = (el) => {
+      const line = lineOf(el);
+      if (line) {
+        const i = remaining.findIndex((candidate) => lineOf(candidate) === line);
+        if (i !== -1) return remaining.splice(i, 1)[0];
+        return null;
+      }
+      if (unmatched.length === 1 && remaining.length === 1) return remaining.splice(0, 1)[0];
+      return null;
+    };
     pairs.forEach(([el, evictedHost]) => {
-      initPending(el, evictedHost !== null ? evictedHost : (remaining[ri++] ?? null));
+      initPending(el, evictedHost ?? takeFor(el));
     });
   });
 
