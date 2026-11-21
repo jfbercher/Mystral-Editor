@@ -15,6 +15,7 @@ import { SHARED_SPACE, isSharedSpace, registerRuntime, runtime, runtimeNameFor, 
 import { chooseEngineFor, chosenKernel, onEngineChange } from "./engineChoice.js";
 import DOMPurify from "dompurify";
 import { containsScript, mountScriptedHtml } from "./scriptedHtml.js";
+import { renderBundle } from "./mimeRenderers.js";
 import { NAMESPACE_HELPERS_PY, PERSISTENCE_HELPERS_PY } from "./namespacePython.js";
 import { config, loadConfig, configReady } from "../config.js";
 import { DEFAULT_PACKAGES, HELPER_PACKAGES, resolvePyodideBase, ensureLocalWheels, localLockNames } from "../utils/local_utils/pyodideInstall.js";
@@ -249,6 +250,50 @@ def _mystral_dep_req(line):
         return None, None
 
 
+async def _mystral_install_round(pending, tolerant):
+    """Install this round, dropping what cannot have a wheel here.
+
+    A package may declare a dependency that cannot exist under Pyodide and
+    work perfectly without it: bokeh asks for tornado, which carries C
+    extensions and has no pure-Python wheel, and uses it only for its server
+    and for push_notebook. Refusing the whole installation on that account is
+    refusing bokeh.
+
+    So a round that fails is retried one requirement at a time, and what has
+    no wheel is left out with a line on stderr naming it. If it really was
+    needed, the ImportError that follows names it again, at the point of use,
+    which tells the reader far more than a resolver's refusal before anything
+    was installed.
+    """
+    import sys as _sys_round
+
+    if not tolerant:
+        # What the reader asked for, by name. A failure there is the answer to
+        # their question and belongs in front of them, not softened into a
+        # warning about a package that was never installed.
+        await _mystral_micropip_install(pending, deps=False)
+        return pending
+
+    try:
+        await _mystral_micropip_install(pending, deps=False)
+        return pending
+    except Exception:
+        pass
+
+    installed = []
+    for requirement in pending:
+        try:
+            await _mystral_micropip_install([requirement], deps=False)
+            installed.append(requirement)
+        except Exception as err:
+            reason = str(err).strip().split(chr(10))[0]
+            _sys_round.stderr.write(
+                '[mystral] skipped ' + str(requirement) + ': ' + reason + chr(10)
+            )
+            _js_mp.console.warn('[mystral] skipped ' + str(requirement) + ' -- ' + reason)
+    return installed
+
+
 async def _mystral_install_walk(requirements):
     """Install, never letting micropip ask for a wheel of the distribution.
 
@@ -272,11 +317,13 @@ async def _mystral_install_walk(requirements):
 
     pending = [requirements] if isinstance(requirements, str) else list(requirements or [])
     seen = set()
+    asked = True   # the first round is what the reader named
 
     for _ in range(8):   # a chain that long is a different problem
         if not pending:
             return
-        await _mystral_micropip_install(pending, deps=False)
+        pending = await _mystral_install_round(pending, not asked)
+        asked = False
 
         # Freshly written: whatever cached the contents of site-packages has
         # to be told before the metadata is read.
@@ -359,6 +406,98 @@ _micropip_mod.install = _mystral_micropip_patched
 `);
       } catch (err) {
         console.warn("[myst] micropip could not be taught about the local install", err);
+      }
+
+      // What a cell *publishes*, as opposed to what it returns. A kernel has
+      // iopub for this; Pyodide has nothing, so the hooks are placed by hand.
+      try {
+        await pyodide.runPythonAsync(`
+import builtins as _bi_disp, json as _json_disp, js as _js_disp
+
+
+def _mystral_publish_bundle(data, metadata=None, *args, **kwargs):
+    """Hand one MIME bundle to the editor, in publication order."""
+    if not data:
+        return
+    try:
+        _js_disp.globalThis._pyodideDisplay(_json_disp.dumps(dict(data), default=str))
+    except Exception as err:
+        _js_disp.console.warn('[mystral] a display could not be published -- ' + str(err))
+
+
+def _mystral_bundle_of(obj):
+    """The MIME bundle of an object, by the conventions IPython established."""
+    whole = getattr(obj, '_repr_mimebundle_', None)
+    if whole is not None:
+        try:
+            bundle = whole()
+            if isinstance(bundle, tuple):
+                bundle = bundle[0]
+            if bundle:
+                return dict(bundle)
+        except Exception:
+            pass
+
+    bundle = {}
+    for attribute, mime in (
+        ('_repr_html_', 'text/html'),
+        ('_repr_markdown_', 'text/markdown'),
+        ('_repr_svg_', 'image/svg+xml'),
+        ('_repr_png_', 'image/png'),
+    ):
+        method = getattr(obj, attribute, None)
+        if method is None:
+            continue
+        try:
+            value = method()
+        except Exception:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, bytes):
+            import base64 as _b64_disp
+            value = _b64_disp.b64encode(value).decode()
+        bundle[mime] = value
+    bundle.setdefault('text/plain', repr(obj))
+    return bundle
+
+
+def _mystral_display(*objects, **kwargs):
+    for obj in objects:
+        _mystral_publish_bundle(_mystral_bundle_of(obj))
+
+
+def _mystral_install_display_hooks():
+    """Make display() and publish_display_data() reach the editor.
+
+    Called before every run rather than once at start-up: IPython can be
+    installed from a cell -- bokeh asks for it, and that is exactly the case
+    this serves -- and a hook placed before that would have had nothing to
+    patch. Libraries bind these names at import time, so patching before the
+    import is what makes the binding ours.
+    """
+    _bi_disp.display = _mystral_display
+    try:
+        import IPython.display as _ipd_disp
+    except Exception:
+        return
+    if getattr(_ipd_disp, '_mystral_hooked', False):
+        return
+    _ipd_disp.publish_display_data = _mystral_publish_bundle
+    _ipd_disp.display = _mystral_display
+    _ipd_disp._mystral_hooked = True
+    try:
+        import IPython.core.display_functions as _idf_disp
+        _idf_disp.display = _mystral_display
+        _idf_disp.publish_display_data = _mystral_publish_bundle
+    except Exception:
+        pass
+
+
+_mystral_install_display_hooks()
+`);
+      } catch (err) {
+        console.warn("[myst] the display hooks could not be placed", err);
       }
 
       let httpPatched = false;
@@ -455,6 +594,30 @@ globalThis._mystralEnsureWheels = async function (namesJson) {
   } catch (err) {
     console.warn("[pyodide] could not complete the local install:", err);
     return JSON.stringify({ skipped: true, added: [], unavailable: [] });
+  }
+};
+
+/**
+ * Where a `display()` under Pyodide lands.
+ *
+ * A kernel publishes its rich outputs on iopub and we read them there. Pyodide
+ * has no such channel: the only thing the runner used to look at was the value
+ * the cell returned, so `display(HTML(...))` went nowhere, and a library that
+ * draws by publishing -- bokeh's `output_notebook()` and `show()`, plotly --
+ * ran without error and without a trace. The Python side hands its bundles
+ * here, in the order they were published, and the runner turns each of them
+ * into a fragment through the same table the kernel engine uses.
+ *
+ * A string crosses rather than an object: see `_mystralEnsureWheels` above for
+ * why -- an object would arrive as a proxy that both sides would have to free.
+ */
+globalThis._pyodideDisplay = function (bundleJson) {
+  const cell = globalThis._pyodideCurrentCell;
+  if (!cell) return;
+  try {
+    (cell.bundles ??= []).push(JSON.parse(bundleJson));
+  } catch (err) {
+    console.warn("[pyodide] a display bundle could not be read:", err);
   }
 };
 
@@ -1032,6 +1195,13 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
   globalThis._pyodideCurrentCell = capture;
 
   pyodide.runPython(`import matplotlib.pyplot as plt\nplt.close('all')`);
+  // IPython may have been installed by a cell since the last run -- bokeh asks
+  // for it -- so the hooks are (re)placed here rather than once at start-up.
+  try {
+    pyodide.runPython("_mystral_install_display_hooks()");
+  } catch (err) {
+    console.warn("[pyodide] display hooks not refreshed:", err);
+  }
 
   await loadConfig();
   const prestagedBytes = await prestageFiles(pyodide, code);
@@ -1091,7 +1261,13 @@ async function executePython(code, packages, onStream = null, space = SHARED_SPA
   // renderer serves both. Matplotlib figures are collected after the run and
   // have no place of their own in the sequence, which is why they come first,
   // as they always did.
+  // Published first, in the order the cell published them, then the matplotlib
+  // figures -- which are collected after the run and have no place of their
+  // own in the sequence -- and last the value the cell returned, which is by
+  // definition its final word.
+  const published = (capture.bundles ?? []).map((bundle) => renderBundle(bundle)).filter(Boolean);
   const outputs = [
+    ...published,
     ...figures.map((src) => ({ id: "image", kind: "image", src, figure: true })),
     ...htmls.map((html) => ({ id: "html", kind: "html", html, frame: containsScript(html) })),
   ];

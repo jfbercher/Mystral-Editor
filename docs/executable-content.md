@@ -295,6 +295,12 @@ Matplotlib figures are captured automatically: draw with `plt.plot(...)`, and th
 
 `print()` output appears as it is produced rather than all at once at the end, which matters for a loop that reports progress. It is also mirrored to the browser console, prefixed `[py]`, where it can be read in time order alongside JavaScript messages.  
 
+### What a cell publishes, and not only what it returns  
+
+A kernel announces its rich outputs on a channel of its own, and the editor reads them there. Pyodide has no such channel: for a long time the only thing looked at was the value a cell ended on, so `display(HTML(...))` went nowhere and a library drawing by publication — bokeh's `output_notebook()` and `show()`, plotly's `fig.show()` — ran without error and without a trace. The hooks are now placed by hand: `display()` exists even where IPython does not, and when IPython is there its `publish_display_data` and `display` are routed to the editor, which turns each bundle into an output through the same table the kernel engine uses. They are placed again before every run, since IPython can be installed from a cell — which is exactly what bokeh asks for.  
+
+So bokeh under Pyodide needs IPython: `micropip.install("ipython")`, or `:packages: ipython` on the cell. Bokeh calls `publish_display_data` through IPython at the moment it draws, not at import, so it reaches the editor whether or not bokeh was imported first.  
+
 ### Outputs that bring their own JavaScript  
 
 Some libraries draw by shipping a small web page rather than an image: bokeh, plotly, folium and altair all return HTML with a `<script>` in it. Such an output is displayed, but not in the page itself: it is placed in a sandboxed frame of its own, where scripts may run and nothing else — no reach into the editor's document, no storage, no file API. The reason is ownership. That HTML is written by a library, and in a document you received from someone else it could have been written by its author; code running in the page would hold the editor's own privileges, file access included, so `display(HTML(...))` would be enough to read and write on your machine. An output with no script in it keeps its place in the page as before, which is what lets a pandas table stay selectable and copyable in the document.  
@@ -354,7 +360,7 @@ A kernel that is not Python keeps only what owes nothing to a language: interrup
 
 Pyodide runs on the page's main thread. A long computation freezes the interface until it returns, and there is no way to interrupt a running cell short of reloading — keep an eye on loops without a bound.  
 
-There are no processes and no threads: `subprocess`, `multiprocessing` and anything that shells out will not work. `input()` has no console to read from. Packages with C extensions exist only if someone built them for WebAssembly: the Pyodide distribution and the pure-Python wheels on PyPI are the limit.  
+There are no processes and no threads: `subprocess`, `multiprocessing` and anything that shells out will not work. `input()` has no console to read from. Packages with C extensions exist only if someone built them for WebAssembly: the Pyodide distribution and the pure-Python wheels on PyPI are the limit. A package that *depends* on one of those is not lost for it: the dependency is left out, with a line on stderr naming it, and the package is installed without it. Bokeh asks for tornado, which has no pure-Python wheel and serves only its server and `push_notebook`, so bokeh installs and draws perfectly without it. If something really was needed, the `ImportError` that follows names it where it is used, which says more than a refusal before anything was installed.  
 
 Finally, the runtime itself is fetched from a CDN on first use. The first cell of a session therefore needs the network, and so does a hard restart.  
 
