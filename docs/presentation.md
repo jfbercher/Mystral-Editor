@@ -73,6 +73,23 @@ Mystral Editor retains and extends all upstream editor features:
 - **Custom transforms**: regular expressions turning syntax into arbitrary HTML (issue links, etc.).
 - **MyST roles and directives**: some roles (`{ref}`, `{eq}`, etc.) and directives were already present in MyST editor and are extended/completed in Mystral.
 
+### The view modes
+
+The same document can be looked at in six ways, chosen from the group of buttons at the top left. The mode is remembered between sessions, and each button's tooltip shows the key that reaches it.
+
+| Mode | What it shows | Default key |
+|---|---|---|
+| **Source** | The document's text alone, with syntax highlighting, completion and the spell checker. | none |
+| **Dual pane** | Source and rendering side by side, scrolling and clicks kept in step. | `Mod-Shift-d` |
+| **Preview** | The rendering alone, as the reader of the document will see it. | `Mod-Shift-p` |
+| **Inline preview** | The rendering drawn on the editor's own lines, block by block: the block under the caret shows its source, the others their result, so one writes inside the rendered document. | `Mod-Shift-l` |
+| **Slides** | The document cut into slides at projector size, with its own navigation and a grid view of the deck. | `Mod-Shift-m` |
+| **MyST site** | The document as the published site renders it, in a pane beside the editor — the real mystmd output, with its own Jupyter stack. The button appears only while a site is being served, so in the desktop application and once `myst start` is running. | none |
+
+`Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Every one of these is a key in `shortcuts` in `config.json`, so a binding that collides with something on your machine is changed there rather than endured; see *[Customisation reference](customisation-reference.md)*. The source view and the site view have no default key — no letter is obviously theirs, and an unused binding is better than one taken from something else — but `shortcuts.modeSource` and `shortcuts.modeSite` are read, so setting either gives it one, and the tooltip then says so.
+
+The same group of buttons also holds three views that are not ways of reading the document itself: the diff against the text as it was opened, the table of contents, and, in a shared session, the resolved comments.
+
 ## Local File Management
 
 ### Main menu

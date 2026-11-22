@@ -150,6 +150,11 @@ export const DEFAULT_CONFIG = {
     bookmarkNext:     "Mod-Shift-n",
     // Move to previous bookmark
     bookmarkPrevious: "Mod-Alt-n",
+    // The source alone, and the published site in a pane. Empty: no letter is
+    // obviously theirs, and an unused binding is better than one taken from
+    // something else. Set either to bind it; the toolbar's tooltip follows.
+    modeSource: "",
+    modeSite:   "",
     // Switch to dual mode (source+preview)
     modeDual:    "Mod-Shift-d",
     // Switch to preview mode

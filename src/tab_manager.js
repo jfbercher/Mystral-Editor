@@ -153,7 +153,18 @@ function matchesShortcut(ev, spec) {
  * answers to. Set on the active tab's editor and persisted exactly as the
  * toolbar buttons do it (Topbar.jsx), so the two routes cannot drift apart.
  */
-const MODE_SHORTCUTS = { modeDual: "Both", modePreview: "Preview", modeInline: "Inline", modeSlides: "Slides" };
+const MODE_SHORTCUTS = {
+  modeDual: "Both",
+  modePreview: "Preview",
+  modeInline: "Inline",
+  modeSlides: "Slides",
+  // Bound to nothing by default -- there is no obvious letter left for
+  // either -- but read all the same, so that setting one in config.json is
+  // enough to give it a key. The toolbar reads the same table for its
+  // tooltips, and would otherwise promise a shortcut that answers to nobody.
+  modeSource: "Source",
+  modeSite: "Site",
+};
 
 function setEditorMode(editorId, mode) {
   const options = window.myst_editor?.[editorId]?.state?.options;
