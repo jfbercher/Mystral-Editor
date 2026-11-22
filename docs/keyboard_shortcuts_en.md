@@ -23,10 +23,49 @@ extends: mdocs_fm.yml
 | `Mod-Shift-d` | Dual pane (source and preview) |
 | `Mod-Shift-p` | Preview only |
 | `Mod-Shift-l` | Inline preview |
+| `Mod-Shift-m` | Slides |
+| *(none by default)* | Source only — `shortcuts.modeSource` |
+| *(none by default)* | The MyST site in a pane — `shortcuts.modeSite` |
+| `Mod-Shift-b` | Place or remove a bookmark on the current line |
+| `Mod-Shift-n` | Go to the next bookmark, cycling |
+| `Mod-Alt-n` | Go to the previous one |
 :::
 These keys are configurable in `config.json`; see [Customisation](customisation.md).
 
-The three view keys do the same thing as the toolbar buttons, the mode chosen being remembered across sessions as a click on one is. They work from anywhere in the window, which matters for leaving Preview, where the editor is hidden and holds no focus. They are free in the desktop application, and on macOS in a browser as well -- there the developer tools are on Cmd-Alt-I and Safari's private window on Cmd-Shift-N, so nothing competes. On Windows and Linux the browser keeps two of them for itself and will not let them be taken over: `Ctrl-Shift-I` opens the developer tools, and `Ctrl-Shift-P` a private window in Firefox. `config.json` is where to choose others.
+The view keys do the same thing as the toolbar buttons, the mode chosen being remembered across sessions as a click on one is. They work from anywhere in the window, which matters for leaving Preview, where the editor is hidden and holds no focus. They are free in the desktop application, and on macOS in a browser as well -- there the developer tools are on Cmd-Alt-I and Safari's private window on Cmd-Shift-N, so nothing competes. On Windows and Linux the browser keeps two of them for itself and will not let them be taken over: `Ctrl-Shift-I` opens the developer tools, and `Ctrl-Shift-P` a private window in Firefox. `config.json` is where to choose others. Each button's tooltip shows the key it answers to, read from the configuration, so a changed binding is announced rather than guessed. The source view and the site view have no default key -- no letter is obviously theirs, and an unused binding is better than one taken from something else -- but their keys are read, so filling `shortcuts.modeSource` or `shortcuts.modeSite` binds them. The bookmarks are written in the document as `% bookmark` comments and listed under the outline; see *[Document organisation](document-organization-and-navigation.md)*.
+
+## Slides
+
+While the deck is being presented. The arrows and the space bar navigate everywhere except inside a code cell, where they edit -- a cell on a slide stays a cell, and that exception is what makes the mode usable in front of a room.
+
+:::{table} Presenting
+:align: center
+:name: slide_shortcuts
+
+| Key | Action |
+|---|---|
+| `→` `↓` `Space` `Enter` | Next fragment, then next slide |
+| `←` `↑` `Backspace` | Back |
+| `PageDown` / `PageUp` | The same, and these two work even from inside a cell: that is what a presenter remote sends |
+| `Home` / `End` | First / last slide |
+| `o` | The panorama: every slide as a thumbnail |
+| `Escape` | Leave the slides |
+:::
+
+:::{table} In the panorama
+:align: center
+:name: panorama_shortcuts
+
+| Key | Action |
+|---|---|
+| `←` `→` | Previous / next thumbnail |
+| `↑` `↓` | One row up / down |
+| `Home` / `End` | First / last |
+| `Enter` / `Space` | Go to the selected slide |
+| `o` / `Escape` | Back to where you were |
+:::
+
+Everything else is swallowed while the panorama is up: the deck is being looked through rather than presented. Cells already running go on running, there as on a slide.
 
 
 ## Editing (`defaultKeymap`)
@@ -119,6 +158,8 @@ key the editor already uses shadows it while the cursor is in a cell.
 | *(none by default)* | Restart the kernel | `restart` |
 | *(none by default)* | Delete this cell | `deleteCell` |
 | *(none by default)* | Inline preview: edit this cell's source | `editSource` |
+| *(none by default)* | Fold this cell's code away, or back | `toggleInput` |
+| `Mod-Shift--` | Cut this cell in two at the caret | `splitCell` |
 :::
 
 Configurable in `config.json` under `pyodide.keys`; an empty string means no
@@ -126,3 +167,27 @@ shortcut. Two keys are fixed: `Tab` accepts the completion when the popup is
 open and indents otherwise, and `ArrowUp` / `ArrowDown` move to the previous or
 next cell once the cursor reaches the first or last line.
 [executable-content](executable-content.md) covers the cells themselves.
+
+### Alt on a button
+
+The cell's toolbar speaks a second word with the same buttons: holding `Alt`
+(`⌥` on macOS) while clicking one asks for the wider version of what it does.
+It is the grammar rather than an eleventh button, and the tooltips say so.
+
+:::{table} Alt-click on a cell's toolbar
+:align: center
+:name: cell_alt_click
+
+| Button | Click | `Alt`-click |
+|---|---|---|
+| Run | Run this cell | Run every cell of the document |
+| Clear | Clear this cell's output | Clear every output |
+| Restart | Restart the kernel: the variables of this document | Reload the whole Pyodide runtime, which affects every open document |
+| ↑ / ↓ | Move the cell up or down | Merge it with the cell above or below |
+| `+` / `−` | Grow or shrink the code of this cell | Give it back the size the document and the view decide |
+| The button of a `:button:` cell | Show the quiz | Open the cell underneath it |
+:::
+
+A merge does nothing when the neighbour is not a code cell, or when anything
+but blank lines stands between the two: a paragraph caught in a merge would
+have to go somewhere, and there is no answer to where.
