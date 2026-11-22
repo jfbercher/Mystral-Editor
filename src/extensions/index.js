@@ -69,6 +69,7 @@ import { python } from "@codemirror/lang-python";
 import { mystCompletions } from "./mystCompletions";
 import { mystComments } from "./mystComments";
 import { caretFollowsTheClick } from "./focusClick";
+import { bookmarks } from "./bookmarks.js";
 
 
 
@@ -301,6 +302,15 @@ export class ExtensionBuilder {
 
   useMystComments() {
     this.extensions.push(mystComments());
+    return this;
+  }
+
+  /**
+   * Bookmarks: a gutter and three keys. Markdown only, because a bookmark is
+   * written as a MyST comment and a configuration file has no such thing.
+   */
+  useBookmarks() {
+    this.extensions.push(bookmarks());
     return this;
   }
 

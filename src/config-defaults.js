@@ -144,6 +144,12 @@ export const DEFAULT_CONFIG = {
     open:   "Mod-Shift-o", 
     // Open a new tab
     newTab: "Mod-Shift-e", 
+    // Place or remove a bookmark on the current line
+    bookmarkToggle:   "Mod-Shift-b",
+    //  Move to the next bookmark
+    bookmarkNext:     "Mod-Shift-n",
+    // Move to previous bookmark
+    bookmarkPrevious: "Mod-Alt-n",
     // Switch to dual mode (source+preview)
     modeDual:    "Mod-Shift-d",
     // Switch to preview mode

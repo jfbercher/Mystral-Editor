@@ -47,6 +47,23 @@ Several documents on the tabbed interface, which can be reorganized by drag & dr
 
 Headings can be folded individually (chevron marker in the editor gutter) or globally at load time (option `unfoldedHeadings`). The YAML frontmatter can also be folded.
 
+### Bookmarks
+
+A bookmark is a place one comes back to: the section being rewritten, the cell that is misbehaving, the paragraph to show someone tomorrow. Click in the narrow column left of the text — the one beside the comment markers — or press `Mod-Shift-b`, and the line is marked; `Mod-Shift-n` and `Mod-Alt-n` go from one to the next and back, cycling, so a document with three bookmarks is toured by pressing one key.
+
+What is written in the document is a MyST comment:
+
+```
+% bookmark
+## The section being worked on
+```
+
+which mystmd drops from every output and the preview never shows, exactly as it does for `% slide-vspace:`. Two consequences are worth knowing. The bookmarks travel with the file — through git, and to whoever you send it to, who will see them in their own editor — and nothing can drift out of step with the text, since a bookmark *is* a line of it rather than a position recorded elsewhere. The price is that placing one modifies the document: one undo step, and the modified marker. Anything written after the word is yours, a note to yourself that the editor ignores: `% bookmark à revoir avec M.`
+
+Clicking the marked line removes its bookmark, as does clicking the marker line itself.
+
+They are also listed at the foot of the table of contents, under the outline, and a click there goes straight to one — which is how you reach the third without passing through the first two. An entry shows what you wrote after the word, if you wrote anything; otherwise it borrows the line it marks, so a bookmark on a heading names itself. The list is read from the document's text rather than from the editor, so it answers in the preview-only mode as well.
+
 ### Comments
 
 This follows MyST spec: lines starting with `%` are hidden from the preview. Keyboard shortcuts are `Mod-/ or Mod-:` to quickly comment or uncomment a line or block of text. `Mod` = `Cmd` on macOS, `Ctrl` elsewhere.

@@ -568,6 +568,7 @@ const tA = performance.now();
               getBibEntries: () => text.bibArray,
             })
             .useMystComments()
+            .useBookmarks()
             .useOrphanFenceCheck()
             .useProofLabelCaseCheck(),
         )

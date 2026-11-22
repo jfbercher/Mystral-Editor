@@ -8,6 +8,7 @@ import { numberHeadings } from "../utils/headingNumbering";
 import { moveSectionInText } from "../utils/sectionReorder";
 import { headingInlineHtml } from "../utils/headingInline";
 import { watchPreviewSection } from "../extensions/activeSection";
+import { bookmarksInText } from "../extensions/bookmarks";
 
 const Wrapper = styled.div`
   background-color: var(--panel-bg);
@@ -25,6 +26,11 @@ const Wrapper = styled.div`
     padding-left: ${(props) => (props.compact ? "16px" : "100px")};
     margin-bottom: 0;
   }
+  /* The bookmarks' title is the panel's second: the same size as the first,
+     and a gap above it so the two lists do not run together. */
+  & > h1 + hr + div + h1 {
+    margin-top: 28px;
+  }
 `;
 
 
@@ -34,6 +40,58 @@ const VerticalSparator = styled.hr`
   background-color: var(--border);
   margin-top: 20px;
   margin-bottom: 0;
+`;
+
+/**
+ * The bookmarks, under the outline.
+ *
+ * Deliberately quieter than the headings: the outline is the document's own
+ * structure, this is a handful of personal marks, and a panel where the two
+ * shout equally loudly would read as one list of twenty things.
+ */
+const BookmarkList = styled.div`
+  margin-left: ${(props) => (props.compact ? "16px" : "100px")};
+  margin-top: 20px;
+  margin-bottom: 20px;
+
+  ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+  li {
+    overflow: hidden;
+  }
+  /* Close to the outline's entries, a touch smaller and not bold: the two
+     lists sit in the same panel and should read as two of a kind, without the
+     bookmarks claiming the weight the document's own structure carries. */
+  li > span {
+    display: block;
+    padding-left: 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 150%;
+    user-select: none;
+  }
+  li > span:hover {
+    text-decoration: underline;
+  }
+  li > span::before {
+    /* The bullet written as itself, and not as "\\2022".
+       A styled component is a tagged template, and an invalid escape sequence
+       there -- which a lone backslash followed by digits is -- makes the whole
+       cooked string undefined. styled-components reads the cooked string, so
+       the entire block below and above this line was silently dropped: no
+       pointer, no hover, and an h2 falling back to the browser's own size,
+       which is larger than the h1 this panel styles down to 20px. */
+    content: "•";
+    color: var(--accent, #2563eb);
+    margin-right: 6px;
+  }
 `;
 
 const HeadingList = styled.div`
@@ -232,6 +290,15 @@ export const TableOfContents = ({ compact = false }) => {
   );
 
   /**
+   * The bookmarks of the document, read from its text.
+   *
+   * From the text and not from the editor, so the panel answers in Preview
+   * mode as well, where there is no view to ask -- and recomputed when the
+   * text changes, which is what a mark placed or removed does.
+   */
+  const bookmarks = useMemo(() => bookmarksInText(text?.text?.value ?? ""), [text?.text?.value]);
+
+  /**
    * The current section and the ones containing it, by position.
    *
    * Computed over the displayed tree rather than the editor's: the two pair by
@@ -310,6 +377,17 @@ export const TableOfContents = ({ compact = false }) => {
     scrollToPos(parseInt(posAttr, 10), { editorView, options, text });
   }
 
+  /**
+   * The same shape as `handleClick` above: one handler on the list, the
+   * position read from the entry the click landed in. A click can land on the
+   * bullet rather than on the text, and `closest` answers for both.
+   */
+  function handleBookmarkClick(ev) {
+    const pos = ev.target?.closest?.("[data-bookmark-pos]")?.dataset?.bookmarkPos;
+    if (pos == null) return;
+    scrollToPos(parseInt(pos, 10), { editorView, options, text });
+  }
+
   function handleDrop(draggedNode, targetNode, position) {
     // Last line of defence: the move rewrites the document's text, and neither
     // of these exists in it.
@@ -354,6 +432,23 @@ export const TableOfContents = ({ compact = false }) => {
           ))}
         </ul>
       </HeadingList>
+      {bookmarks.length > 0 && (
+        <>
+          <h1>Bookmarks</h1>
+          <VerticalSparator />
+          <BookmarkList compact={compact} onClick={handleBookmarkClick}>
+            <ul>
+              {bookmarks.map((b) => (
+                <li key={b.pos}>
+                  <span data-bookmark-pos={b.pos} title={`Line ${b.targetLine}`}>
+                    {b.label}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </BookmarkList>
+        </>
+      )}
     </Wrapper>
   );
 };

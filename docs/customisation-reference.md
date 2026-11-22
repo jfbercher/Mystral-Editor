@@ -67,6 +67,9 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
 | `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
 | `shortcuts.modeInline` | `"Mod-Shift-l"` | Switch to the inline preview |
+| `shortcuts.bookmarkToggle` | `"Mod-Shift-b"` | Place or remove a bookmark on the current line |
+| `shortcuts.bookmarkNext` | `"Mod-Shift-n"` | Go to the next bookmark, cycling |
+| `shortcuts.bookmarkPrevious` | `"Mod-Alt-n"` | Go to the previous one. The same letter as the next one, the modifier saying which way: a letter is in the same place on every keyboard layout, where `]` costs two modifiers on a French Mac and `[` cannot be reached at all. |
 | `shortcuts.modeSlides` | `"Mod-Shift-m"` | Switch to the slide view. `m` because "slides" has no free initial left; in a browser tab Firefox and Chrome both claim this one, so it only works in the desktop build unless you change it. |
 
 `Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Modifiers are combined with `-`, for instance `"Mod-Alt-p"`.
