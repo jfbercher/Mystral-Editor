@@ -6,10 +6,13 @@ extends:
 project:
   id: 4802dc76-71d4-46b2-a056-91ba66ba2d49
   plugins:
-  - plugins/example-admonition.mjs
-  - plugins/exercise-admonition-pdf.mjs
-  #- plugins/foldable-solutions.mjs
   - plugins/page-last-updated.mjs
+  - myst-plugins/exercise-admonition.mjs
+  - myst-plugins/marks.mjs
+  - myst-plugins/cards-grids.mjs
+  - myst-plugins/pyodide-outputs.mjs
+  - myst-plugins/float-lists.mjs
+  - myst-plugins/quiz.mjs
   toc:
     - file: index.md
     - file: presentation.md
@@ -20,7 +23,7 @@ project:
         - file: overview.md
         - file: local-file-management.md
         - file: scientific-authoring.md
-        - file: python-executable-code-cells-(pyodide).md
+        - file: python-executable-code-cells.md
         - file: document-organization-and-navigation.md
         - file: theming-and-interface.md
         - file: desktop-application-(tauri).md
@@ -32,6 +35,7 @@ project:
       children:
         - file: additions.md
         - file: modifications.md
+        - file: clipboard.md
         - file: completion.md  
         - file: export.md
         - file: git.md
