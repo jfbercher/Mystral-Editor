@@ -13,7 +13,7 @@ import { batch, computed, signal, effect, useSignal, useSignalEffect } from "@pr
 import { MystContainer } from "./styles/MystStyles";
 import { syncCheckboxes } from "./markdown/markdownCheckboxes";
 import { TableOfContents } from "./components/TableOfContents";
-import { SitePane } from "./components/SitePane";
+import { SitePane, HelpPane } from "./components/SitePane";
 import ErrorModal from "./components/ErrorModal";
 import { GitModal } from "./components/GitPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -49,6 +49,8 @@ const EditorParent = styled.div`
       case "Inline":
         return "#preview-wrapper { display: none }";
       case "Site":
+        return "#preview-wrapper { display: none }";
+      case "Help":
         return "#preview-wrapper { display: none }";
       // The slides are the preview, re-cut: both panes stay, and the source
       // stays beside them, which is the point -- one edits while watching
@@ -333,6 +335,11 @@ function stopResize() {
               {options.mode.value === "Site" && (
                 <FlexWrapper id="site-wrapper" className="flex-wrapper">
                   <SitePane />
+                </FlexWrapper>
+              )}
+              {options.mode.value === "Help" && (
+                <FlexWrapper id="help-wrapper" className="flex-wrapper">
+                  <HelpPane />
                 </FlexWrapper>
               )}
             </MystWrapper>

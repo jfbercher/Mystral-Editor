@@ -136,6 +136,15 @@ export const DEFAULT_CONFIG = {
   fallbackImage:
     "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png",
 
+  // Where the Documentation view points. The published pages by default; set
+  // this to a local build -- `myst start` in the docs folder, say -- to read
+  // them without a network, or to another address entirely.
+  //
+  // A site may refuse to be shown inside a frame, and gives no error when it
+  // does: the pane carries a line offering to open the address in the
+  // browser, which is the way out in that case.
+  docsUrl: "https://mystral-editor.readthedocs.io/en/latest/",
+
   // Keyboard shortcuts  
   shortcuts: {
     // Save
@@ -150,6 +159,9 @@ export const DEFAULT_CONFIG = {
     bookmarkNext:     "Mod-Shift-n",
     // Move to previous bookmark
     bookmarkPrevious: "Mod-Alt-n",
+    // The documentation in a pane, which is the same view as the site, with
+    // another address. `h` for help, and free on the three platforms.
+    modeHelp: "Mod-Shift-h",
     // The source alone, and the published site in a pane. Empty: no letter is
     // obviously theirs, and an unused binding is better than one taken from
     // something else. Set either to bind it; the toolbar's tooltip follows.

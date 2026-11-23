@@ -164,6 +164,7 @@ const MODE_SHORTCUTS = {
   // tooltips, and would otherwise promise a shortcut that answers to nobody.
   modeSource: "Source",
   modeSite: "Site",
+  modeHelp: "Help",
 };
 
 function setEditorMode(editorId, mode) {

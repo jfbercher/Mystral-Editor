@@ -88,7 +88,7 @@ The same document can be looked at in six ways, chosen from the group of buttons
 
 `Mod` is Cmd on macOS and Ctrl elsewhere, following CodeMirror's convention. Every one of these is a key in `shortcuts` in `config.json`, so a binding that collides with something on your machine is changed there rather than endured; see *[Customisation reference](customisation-reference.md)*. The source view and the site view have no default key — no letter is obviously theirs, and an unused binding is better than one taken from something else — but `shortcuts.modeSource` and `shortcuts.modeSite` are read, so setting either gives it one, and the tooltip then says so.
 
-The same group of buttons also holds three views that are not ways of reading the document itself: the diff against the text as it was opened, the table of contents, and, in a shared session, the resolved comments.
+The same group of buttons also holds views that are not ways of reading the document itself: the diff against the text as it was opened, the table of contents, the editor's own documentation shown in a pane (`Mod-Shift-h`, the address being `docsUrl` in `config.json`), and, in a shared session, the resolved comments.
 
 ## Local File Management
 

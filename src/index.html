@@ -24,6 +24,13 @@
     https form would let a local Pyodide work on macOS and Linux and be
     blocked on Windows, with the CSP as the last place anyone would look.
 
+    frame-src also allows the documentation's host, for the Documentation
+    view, which shows those pages in the same kind of pane as the site. The
+    address itself is `docsUrl` in config.json: pointed elsewhere -- a local
+    build, another site -- the frame is refused by this policy and the pane's
+    "open in the browser" line is what remains. Loopback is already allowed
+    above, so a local `myst start` of the documentation works as it is.
+
     cdn.bokeh.org and cdn.plot.ly are allowed for the plotting libraries whose
     output draws itself: such an output runs in a sandboxed frame of its own
     (see markdown/scriptedHtml.js), and a frame inherits the policy of the page
@@ -47,7 +54,7 @@
     font-src 'self' https://fonts.gstatic.com data:;
     img-src 'self' asset: https://asset.localhost asset://* blob: data: https: http:;
     connect-src 'self' https: tauri: asset: https://asset.localhost http://asset.localhost ipc: http://ipc.localhost;
-    frame-src https://accounts.google.com http://localhost:* http://127.0.0.1:*;
+    frame-src https://accounts.google.com https://mystral-editor.readthedocs.io https://*.readthedocs.io http://localhost:* http://127.0.0.1:*;
   "
 />
   <link rel="stylesheet" href="./styles/MystEditor.css" />

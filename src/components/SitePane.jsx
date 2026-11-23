@@ -1,6 +1,8 @@
 import { useContext } from "preact/hooks";
 import styled from "styled-components";
 import { MystState } from "../mystState";
+import { config } from "../config";
+import { openExternalUrl } from "../utils/local_utils/zoom";
 
 /**
  * The page of the running MyST site that shows this document.
@@ -21,6 +23,36 @@ const Frame = styled.iframe`
   height: 100%;
   border: none;
   background: var(--editor-bg, #fff);
+`;
+
+const Column = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+`;
+
+const Bar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: "Lato", sans-serif;
+  color: var(--gray-500);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  button {
+    flex: 0 0 auto;
+    cursor: pointer;
+  }
 `;
 
 const Empty = styled.div`
@@ -47,6 +79,43 @@ export const SitePane = () => {
   // Keyed by the URL so that changing document reloads the frame rather than
   // leaving the previous page in place.
   return <Frame key={url} src={url} title="MyST site" />;
+};
+
+/**
+ * The documentation, in the same pane.
+ *
+ * A second view rather than a second use of the one above: the site and the
+ * documentation are two URLs, each with its own mode, so showing one never
+ * takes anything from the other -- `myst start` goes on serving while the
+ * documentation is read, and the site is one key away again.
+ *
+ * The address is a configuration key, so a reader who keeps a local build of
+ * these pages can point this at it and work offline.
+ *
+ * A site may refuse to be displayed inside a frame -- `X-Frame-Options`, or a
+ * `frame-ancestors` of its own -- and a browser gives no event when it does:
+ * the frame simply stays empty, which is indistinguishable from a slow one.
+ * Hence the line above it, which costs nothing when the page does appear and
+ * is the way out when it does not.
+ */
+export const HelpPane = () => {
+  const url = (config.docsUrl ?? "").trim();
+
+  if (!url) {
+    return <Empty>No documentation address is configured: set `docsUrl` in config.json.</Empty>;
+  }
+
+  return (
+    <Column>
+      <Bar>
+        <span>{url}</span>
+        <button type="button" onClick={() => openExternalUrl(url)}>
+          Open in the browser
+        </button>
+      </Bar>
+      <Frame key={url} src={url} title="Documentation" />
+    </Column>
+  );
 };
 
 export default SitePane;

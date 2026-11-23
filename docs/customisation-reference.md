@@ -67,6 +67,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
 | `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
 | `shortcuts.modeInline` | `"Mod-Shift-l"` | Switch to the inline preview |
+| `shortcuts.modeHelp` | `"Mod-Shift-h"` | Show the documentation in a pane |
 | `shortcuts.bookmarkToggle` | `"Mod-Shift-b"` | Place or remove a bookmark on the current line |
 | `shortcuts.bookmarkNext` | `"Mod-Shift-n"` | Go to the next bookmark, cycling |
 | `shortcuts.bookmarkPrevious` | `"Mod-Alt-n"` | Go to the previous one. The same letter as the next one, the modifier saying which way: a letter is in the same place on every keyboard layout, where `]` costs two modifiers on a French Mac and `[` cannot be reached at all. |
@@ -81,6 +82,16 @@ Some keys are still taken by the system, the browser or another application befo
 ---
 
 (spellcheck)=
+## `docsUrl` — where the Documentation view points
+
+```json
+"docsUrl": "https://mystral-editor.readthedocs.io/en/latest/"
+```
+
+The Documentation button, and `Mod-Shift-h`, show that address in a pane — the same kind of pane as the MyST site, and a separate view from it, so reading the documentation takes nothing from a site that is being served.
+
+Point it at a local build to read the pages without a network: `myst start` in the editor's `docs` folder gives an address on `localhost`, which the editor's security policy already allows. Any other host has to be added to `frame-src` in `src/index.html`, and some sites refuse to be shown in a frame at all, giving no error when they do — the pane carries a line offering to open the address in the browser, which is the way out in that case.
+
 ## `spellcheck` — the language of the spell checker
 
 | Key | Default | Meaning |
