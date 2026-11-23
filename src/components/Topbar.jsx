@@ -6,6 +6,8 @@ import { DefaultButton } from "./CommonUI";
 import ButtonGroup from "./ButtonGroup";
 import Avatars from "./Avatars";
 import { MystState } from "../mystState";
+import { config } from "../config";
+import { withShortcut } from "../utils/shortcutLabel";
 import { useComputed, useSignal } from "@preact/signals";
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -331,6 +333,14 @@ const DiffIcon = () => (
   </svg>
 );
 
+const HelpIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+    <circle cx="8" cy="8" r="6.5" />
+    <path d="M6.2 6.1a1.8 1.8 0 1 1 2.3 1.9c-.4.2-.6.5-.6.9v.4" stroke-linecap="round" />
+    <circle cx="8" cy="11.6" r="0.75" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const TocIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -494,11 +504,16 @@ export const EditorTopbar = ({ alert, buttons }) => {
   }
 
   const editorModeButtons = useComputed(() => {
+    // The binding each button answers to, shown in its tooltip. Read from the
+    // configuration rather than written here: a reader who has changed a
+    // shortcut in config.json is told the one that works, not the one that
+    // used to. A mode with no binding simply shows its name.
+    const keys = config.shortcuts ?? {};
     const modeButtons = [
-      { id: "source", tooltip: "Source", action: () => (setMode("Source")), icon: SourceIcon },
-      { id: "preview", tooltip: "Preview", action: () => (setMode("Preview")), icon: PreviewIcon },
-      { id: "both", tooltip: "Dual Pane", action: () => (setMode("Both")), icon: BothIcon },
-      { id: "inline", tooltip: "Inline Preview", action: () => (setMode("Inline")), icon: InlinePreviewIcon },
+      { id: "source", tooltip: withShortcut("Source", keys.modeSource), action: () => (setMode("Source")), icon: SourceIcon },
+      { id: "preview", tooltip: withShortcut("Preview", keys.modePreview), action: () => (setMode("Preview")), icon: PreviewIcon },
+      { id: "both", tooltip: withShortcut("Dual Pane", keys.modeDual), action: () => (setMode("Both")), icon: BothIcon },
+      { id: "inline", tooltip: withShortcut("Inline Preview", keys.modeInline), action: () => (setMode("Inline")), icon: InlinePreviewIcon },
       {
         id: "diff",
         tooltip: emptyDiff.value ? "No changes to show" : null,
@@ -509,7 +524,13 @@ export const EditorTopbar = ({ alert, buttons }) => {
         icon: DiffIcon,
       },
       { id: "outline", text: "Table of Contents", action: () => (options.mode.value = "Outline"), icon: TocIcon },
-      { id: "slides", text: "Slides", tooltip: "The document cut into slides, at projector size", action: () => setMode("Slides"), icon: SlidesIcon },
+      {
+        id: "slides",
+        text: "Slides",
+        tooltip: withShortcut("The document cut into slides, at projector size", keys.modeSlides),
+        action: () => setMode("Slides"),
+        icon: SlidesIcon,
+      },
     ];
     // Only while a site is being served: `options.siteUrl` is set by the
     // desktop build when `myst start` runs and empty everywhere else, so this
@@ -518,11 +539,20 @@ export const EditorTopbar = ({ alert, buttons }) => {
       modeButtons.push({
         id: "site",
         text: "MyST site",
-        tooltip: "The document as the published site renders it",
+        tooltip: withShortcut("The document as the published site renders it", keys.modeSite),
         action: () => setMode("Site"),
         icon: PreviewIcon,
       });
     }
+    // The documentation, in the same kind of pane as the site. Always there,
+    // unlike the site button: it needs nothing to be running.
+    modeButtons.push({
+      id: "help",
+      text: "Documentation",
+      tooltip: withShortcut("The documentation, in a pane", keys.modeHelp),
+      action: () => setMode("Help"),
+      icon: HelpIcon,
+    });
     if (options.collaboration.value.resolvingCommentsEnabled) {
       modeButtons.push({ id: "resolved", text: "Resolved", action: () => (options.mode.value = "Resolved"), icon: ResolvedIcon });
     }
