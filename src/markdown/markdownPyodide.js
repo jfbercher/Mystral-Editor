@@ -44,6 +44,7 @@ export const evalCache = {
    * that confirms what is on screen has to stay silent.
    */
   set(key, value) {
+    if (globalThis.mystralCellDebug) console.log("[eval] settled", JSON.stringify({ key, value }));
     const before = this._map.get(key);
     this._map.set(key, value);
     this._stale.delete(key);
@@ -57,7 +58,8 @@ export const evalCache = {
    * invalidated before the promise settles, the result is discarded rather
    * than re-poisoning the cache.
    */
-  resolve(key, promise) {
+  resolve(key, promise, how = null) {
+    if (how) this._how.set(key, how);
     if (this._pending.has(key)) return;
     if (this._map.has(key) && !this._stale.has(key)) return;
     this._pending.add(key);
@@ -73,6 +75,13 @@ export const evalCache = {
       .then(settle)
       .catch(err => settle({ kind: "error", value: String(err) }));
   },
+  /**
+   * How to compute each key again, remembered when it is first submitted.
+   *
+   * It is what lets a cell run re-evaluate the expressions without a render:
+   * see `invalidate`.
+   */
+  _how: new Map(),
   /** Subscribe to results; returns an unsubscribe function. */
   onChange(fn) {
     this._listeners.add(fn);
@@ -93,15 +102,30 @@ export const evalCache = {
    * render either. A value that really did change still goes through, which
    * is the whole point of invalidating.
    *
-   * The render is still needed: an expression is only re-submitted when the
-   * role runs, and the role only runs during a render.
+   * And no render is asked for here, which is the point of the second
+   * version of this. Asking for one meant that a document holding a single
+   * `{eval}` anywhere re-rendered in full after every cell run -- every chunk
+   * rewritten, every code cell re-paired with its widget, and, on a deck,
+   * every slide re-furnished. A flash, after each turn of a slider, for a
+   * value that usually has not moved.
+   *
+   * The expressions are re-evaluated directly instead, each through the
+   * thunk it was submitted with. A value that comes back the same is recorded
+   * in silence by `set`; one that really changed fires the listeners and the
+   * document is rendered then -- which is the only moment that ever needed
+   * it.
    */
   invalidate() {
     this._epoch++;
     this._pending.clear();
     if (this._map.size === 0) return;
     for (const key of this._map.keys()) this._stale.add(key);
-    this._listeners.forEach(fn => fn(null));
+    for (const key of [...this._map.keys()]) {
+      const how = this._how.get(key);
+      // No thunk means the key was recorded by an older path: it is left
+      // stale, and the next render re-submits it as it always did.
+      if (how) this.resolve(key, how());
+    }
   },
   /**
    * Forget everything, for when the values cannot be trusted at all -- a
@@ -112,6 +136,7 @@ export const evalCache = {
     this._epoch++;
     this._stale.clear();
     this._pending.clear();
+    this._how.clear();
     const had = this._map.size > 0;
     this._map.clear();
     if (had) this._listeners.forEach(fn => fn(null));
@@ -182,8 +207,20 @@ export class EvalRole extends Role {
     // thing this expression answered, and showing a placeholder instead
     // would rewrite the chunk twice for a value that may well be unchanged.
     const known = evalCache.has(cacheKey);
+    // Traced on demand -- `window.mystralCellDebug = true` -- because an
+    // {eval} that shows nothing can mean three different things: the role
+    // never ran, it ran and the cache holds an empty value, or the value
+    // never came back. The three look identical on the page.
+    if (globalThis.mystralCellDebug) {
+      console.log(
+        "[eval] role",
+        JSON.stringify({ expr, space, known, stale: evalCache.isStale(cacheKey), value: known ? evalCache.get(cacheKey) : null }),
+      );
+    }
     if (!known || evalCache.isStale(cacheKey)) {
-      evalCache.resolve(cacheKey, runtime(space).evaluate(expr, space));
+      // The thunk goes with it, so a cell run can ask the same question again
+      // without a render (see `invalidate`).
+      evalCache.resolve(cacheKey, runtime(space).evaluate(expr, space), () => runtime(space).evaluate(expr, space));
     }
     if (known) {
       token.content = renderEvalValue(evalCache.get(cacheKey));

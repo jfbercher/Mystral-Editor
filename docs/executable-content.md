@@ -226,6 +226,10 @@ A range that declares no step gets one rounded to 1, 2 or 5 times a power of ten
 
 The slider does nothing until Apply is pressed, deliberately: applying is an edit to the source, and a drag would otherwise produce thirty of them, thirty saves, and thirty site rebuilds. If the declared name has no assignment in the cell, Apply adds one at the top.
 
+While a cell sits on a slide, Apply writes nothing — neither into the document nor into the cell's listing. The chosen values are kept aside and handed to the run, which is the only thing that needs them; the output is therefore computed from what the controls say, while the line under them still reads what is in the file. The slider is the truth and the output follows it; the listing catches up when the deck is put away or the document is saved, in one edit per cell.
+
+The reason is not the file but the deck. The slide view watches the preview and re-measures every slide when anything inside it changes, so rewriting `N = 5` in a cell's own listing is enough to re-furnish the whole deck — header, footer, numbering — for a change that concerns one output. Editing the listing by hand cancels what the controls had in store, the author's typing winning over a value computed before it.
+
 These are parameters, not a widget toolkit. There is no layout, no composition, no callbacks, and no controls linked to each other; a cell that needs those wants a notebook and a kernel, not this.  
 
 ## Keyboard shortcuts  

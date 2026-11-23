@@ -508,6 +508,13 @@ export class TextManager {
       if (_notMine(owner)) return;
       const view = this.editorView.value;
       if (!view) return;
+      // The one place a cell's code reaches the document. Traced on demand --
+      // `window.mystralCellDebug = true` -- with the stack, because knowing
+      // *that* the document was written says nothing about which of the
+      // dozen paths through a cell asked for it.
+      if (globalThis.mystralCellDebug) {
+        console.log("[cell] document write asked", JSON.stringify({ lineId, owner, chars: String(newCode ?? "").length }), new Error("stack").stack);
+      }
       const src = view.state.doc.toString();
       const found = findFenceBlock(src, originalCode.trim(), this._posFromLineId(lineId));
       if (!found) return;

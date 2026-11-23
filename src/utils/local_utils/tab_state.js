@@ -1,5 +1,6 @@
 // Gère l'état et la manipulation d'un onglet ou d'un fichier ouvert.
 import { get, set, del } from "idb-keyval";
+import { flushDeferredCellSources } from "../../markdown/pyodideRunner.js";
 import { refreshPyodideOutputs } from "./pyodideExport.js";
 import { siteRunning } from "./mystExport.js";
 import { applyThemeAtStartup, applyCodeMirrorTheme } from './theme.js';
@@ -739,6 +740,23 @@ export function createTabState(editorId, onFileChanged, onDirtyChanged) {
   };
 
   tab.saveCurrentDoc = async ({ skipSidecar = false, interactive = true } = {}) => {
+    // A cell on a slide holds back what its `:params:` controls wrote, so
+    // that turning a knob does not rebuild the slide (see pyodideRunner). A
+    // save the reader asked for cannot wait for the deck to be put away -- a
+    // value chosen and then saved has to be in the file -- so it writes those
+    // edits first.
+    //
+    // An automatic save must not. A running site is followed by saving the
+    // document after every cell run (editor_factory), which is precisely what
+    // happens when a knob is turned: flushing there put the write back on the
+    // path the deferral exists to keep it off, six tenths of a second later
+    // and no less disruptive. The price is that the site shows the previous
+    // value until the deck is put away or the document is saved by hand,
+    // which is the right way round -- nobody is reading the site during the
+    // talk.
+    if (interactive !== false) {
+      flushDeferredCellSources(window.myst_editor[editorId]?.state?.options?.parent ?? null);
+    }
     const editorText = window.myst_editor[editorId].text;
     // Belt and braces: a tab is never mounted on a notebook, but if one ever is
     // (path param, restored handle), write notebook JSON rather than Markdown.

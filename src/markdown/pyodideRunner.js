@@ -2022,6 +2022,28 @@ export const OWNER_SEP = "\u0000";
  * Nothing of value is lost by forgetting: a document's outputs are kept by the
  * sidecar, which restores them by document rather than by tab.
  */
+/**
+ * Write into the document what the cells deferred while the deck was shown.
+ *
+ * One pass over the cells of this editor, each writing its own code if a
+ * `:params:` control moved during the projection. Called when presenting
+ * stops; a cell that changed nothing does nothing.
+ */
+export function flushDeferredCellSources(root = null) {
+  for (const el of cellCache.values()) {
+    // The cells of this preview, and no others: the cache is shared by every
+    // open editor, and a document that is not being shown has nothing
+    // deferred anyway. Asked of the DOM rather than of the cache key, because
+    // what held these writes back was a class on the preview above them.
+    if (root && !root.contains(el)) continue;
+    try {
+      el._flushSource?.();
+    } catch (err) {
+      console.warn("[pyodide] a cell could not write its parameters back:", err);
+    }
+  }
+}
+
 export function clearCellCache(owner) {
   if (!owner) return 0;
   const prefix = owner + OWNER_SEP;
@@ -2840,10 +2862,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
               : formatValue(spec, quantise(spec, Number(input.value)));
         next = writeValue(next, spec.name, written);
       }
-      // Setting .value dispatches a CM change; _syncToEditor then moves the
-      // cache entry and tells the source side, exactly as a typed edit would.
-      if (next !== editorContainer.value) editorContainer.value = next;
-      _syncToEditor(view);
+      if (onSlide()) {
+        // Not into the listing: see `_paramOverride`. The run below takes it
+        // from there, and the editor is left exactly as it is, so the slide
+        // view has nothing to re-measure.
+        _paramBase = editorContainer.value;
+        _paramOverride = next === _paramBase ? null : next;
+        _deferredSync = Boolean(_paramOverride);
+      } else {
+        // Setting .value dispatches a CM change; _syncToEditor then moves the
+        // cache entry and tells the source side, exactly as a typed edit would.
+        if (next !== editorContainer.value) editorContainer.value = next;
+        _syncToEditor(view);
+      }
       // The values are written either way; the run waits when one is already
       // under way rather than stacking on it. Run disables its own button for
       // the length of an execution, which is the state to read.
@@ -3041,6 +3072,19 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   syncDropdown();
   el._syncDropdown = syncDropdown;
   el._syncChrome = syncChrome;
+  /** Write what the projection deferred. Called once the deck is put away. */
+  el._flushSource = () => {
+    if (!_deferredSync) return;
+    _deferredSync = false;
+    // What the controls chose goes into the listing now, in one edit, and
+    // from there into the document through the ordinary path.
+    if (_paramOverride !== null) {
+      const chosen = _paramOverride;
+      _paramOverride = null;
+      if (chosen !== editorContainer.value) editorContainer.value = chosen;
+    }
+    _syncToEditor(editorContainer._cmView);
+  };
 
   // ── État de synchronisation ───────────────────────────────────────────────
   let _currentCode    = code;
@@ -3054,13 +3098,81 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
   // restamp the host after an edit elsewhere in the document.
   const _lineId = () => el.dataset.lineId ?? null;
 
+  /**
+   * Nothing is written into the document while this cell sits on a slide.
+   *
+   * A `:params:` control writes its value into the cell's code, which is
+   * where those values live -- and that write is an edit of the document, so
+   * the chunk is rendered again, the slide's element is replaced, and its
+   * header and footer are rebuilt. The whole slide flinches for a change that
+   * concerns the cell's output alone.
+   *
+   * The test is the slide, not the projection. The first version of this
+   * asked whether the deck was being *presented* -- the class the slide view
+   * puts on the preview in full screen -- and that was a misreading of where
+   * the trouble is: preparing a deck is where one turns these knobs, both
+   * panes open and no projector in sight, and there the guard never fired.
+   * `data-slide-index` is on every slide as soon as the slide view is
+   * attached, in preparation as in projection.
+   *
+   * The value still reaches the cell's own editor, so the run uses it and the
+   * output is right; only the document waits. It is written when the deck is
+   * put away -- the projection ending, or the slide view being detached --
+   * and when the document is saved, which must not leave a chosen value out
+   * of the file. One edit per cell, so one undo step rather than one per turn
+   * of a knob; see `flushDeferredCellSources`.
+   */
+  const onSlide = () => Boolean(el.closest("[data-slide-index]"));
+  let _deferredSync = false;
+  /**
+   * The code a `:params:` control chose, held outside the cell's editor.
+   *
+   * On a slide, writing the value into the editor is itself the trouble --
+   * and the document has nothing to do with it. The slide view watches the
+   * preview with a MutationObserver and re-measures every slide when anything
+   * inside it changes, so rewriting the line `N = 5` in the cell's own listing
+   * is enough to re-furnish the whole deck: header, footer, numbering. That is
+   * the flinch, and it happens with no file written and no chunk rendered.
+   *
+   * So on a slide the chosen values do not go into the listing at all. They
+   * are kept here and handed to the run instead, which is the only thing that
+   * needs them, and written into the cell -- and from there into the document
+   * -- when the deck is put away or the reader saves. The listing then shows
+   * the value that is in the file, as it always did.
+   *
+   * The cost is honest and worth stating: while the deck is up, the slider
+   * says 42 and the line under it still says 5. The slider is the truth, and
+   * the output is computed from it.
+   */
+  let _paramOverride = null;
+  /** The listing the override was built from, to notice it being edited. */
+  let _paramBase = null;
+
   const _syncToEditor = (view) => {
     // The toolbar calls this with the cell's own editor, which does not exist
     // yet while the cell is being built: an absent view is not an error here,
     // only a cell with nothing to synchronise.
     if (!view || editorContainer._suppressSync) return;
     const newCode = view.state.doc.toString();
+    // The listing was edited by hand since a control last chose something:
+    // what the controls had in store was computed from the text as it was,
+    // and writing it later would undo that edit. The author's typing wins,
+    // and the next Apply takes it into account.
+    if (_paramOverride !== null && newCode !== _paramBase) {
+      _paramOverride = null;
+      _paramBase = null;
+    }
     if (newCode === _currentCode) return;
+    cellTrace("sync asked", el, {
+      onSlide: onSlide(),
+      slide: el.closest("[data-slide-index]")?.dataset?.slideIndex ?? null,
+      connected: el.isConnected,
+      from: (newCode.match(/^.*$/m) ?? [""])[0].slice(0, 40),
+    });
+    if (onSlide()) {
+      _deferredSync = true;
+      return;
+    }
 
     const newHex = new IMurMurHash(newCode, 42).result().toString(16);
     const newId  = `code-cell-${newHex}`;
@@ -3585,7 +3697,9 @@ export function initCodeCell(el, code, { packages = [], linenos = false, hash, o
         // le bureau.
         const cwd = resolveWorkingDir();
         await loadConfig();
-        result = await runtime(_space()).execute(view.state.doc.toString(), {
+        // What the cell holds, or what a `:params:` control chose while the
+        // deck is up and the listing is deliberately left alone.
+        result = await runtime(_space()).execute(_paramOverride ?? view.state.doc.toString(), {
           packages: _packages(),
           onStream,
           space: _space(),

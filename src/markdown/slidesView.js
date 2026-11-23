@@ -25,6 +25,7 @@
 
 import { config } from "../config.js";
 import { hidePreviewPopup } from "../utils/previewPopup.js";
+import { flushDeferredCellSources } from "./pyodideRunner.js";
 
 const SETTLE_MS = 150;
 
@@ -751,6 +752,14 @@ export function attachSlideView(preview, getSettings = () => null) {
     shownIndex = -1;
     dismissPopup();
     preview.classList.remove("presenting");
+    // The cells held back what their `:params:` controls wrote while the deck
+    // was up, so that turning a knob would not rebuild the slide in front of
+    // the audience. The class is gone, so they may write now -- one edit per
+    // cell that changed, and the re-render that follows is nobody's business
+    // any more.
+    // Every cell inside this preview, which is this document's: the helper
+    // is given no owner and skips what is not in the DOM here.
+    flushDeferredCellSources(preview);
     if (document.fullscreenElement === preview) document.exitFullscreen?.().catch(() => {});
     schedule();
     // Leave the audience's slide under the author's eyes rather than wherever
@@ -948,6 +957,10 @@ export function attachSlideView(preview, getSettings = () => null) {
   schedule();
 
   return () => {
+    // Leaving the slide view: the cells may write what they held back while
+    // they were on slides. Symmetrical with the end of a projection, and the
+    // moment that matters in preparation, where no projection ever starts.
+    flushDeferredCellSources(preview);
     cancelAnimationFrame(frame);
     clearTimeout(settle);
     clearTimeout(badgeTimer);
