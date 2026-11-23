@@ -48,7 +48,7 @@ import { markProgrammaticChange } from "../text";
  */
 
 /** How long the pane that was acted upon keeps the scroll to itself. */
-const OWNERSHIP_MS = 220;
+export const OWNERSHIP_MS = 220;
 
 /**
  * The line numbers that have an element in the preview, in order.
@@ -64,7 +64,7 @@ function mappedLines(lineMap) {
 }
 
 /** Where a preview element sits in the preview's own scroll coordinates. */
-function previewOffsetOf(preview, el) {
+export function previewOffsetOf(preview, el) {
   return el.getBoundingClientRect().top - preview.getBoundingClientRect().top + preview.scrollTop;
 }
 
@@ -77,10 +77,10 @@ function previewOffsetOf(preview, el) {
  * never scrolls, and writing a scrollTop nothing reads, is a sync that does
  * exactly nothing -- which is what the first version of this did.
  */
-const editorScroller = (view) => view.dom.parentElement;
+export const editorScroller = (view) => view.dom.parentElement;
 
 /** Where a line sits in the editor's own scroll coordinates. */
-function editorOffsetOf(view, lineNumber) {
+export function editorOffsetOf(view, lineNumber) {
   const doc = view.state.doc;
   if (lineNumber < 1 || lineNumber > doc.lines) return null;
   const block = view.lineBlockAt(doc.line(lineNumber).from);

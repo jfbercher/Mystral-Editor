@@ -561,6 +561,7 @@ const tA = performance.now();
           b
             .useCodeBlockLanguages(editorView, linter)
             .if(options.mode.value === "Inline", (c) => c.useInlinePreview(text, options))
+            .if(options.mode.value === "Slides", (c) => c.useSlidesScrollSync(text))
             .useTrackHeadings(headings)
             .useTrackActiveSection(headings, activeSection)
             .useMystCompletions({

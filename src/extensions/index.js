@@ -70,6 +70,7 @@ import { mystCompletions } from "./mystCompletions";
 import { mystComments } from "./mystComments";
 import { caretFollowsTheClick } from "./focusClick";
 import { bookmarks } from "./bookmarks.js";
+import { syncScrollSlides } from "./syncScrollSlides.js";
 
 
 
@@ -309,6 +310,15 @@ export class ExtensionBuilder {
    * Bookmarks: a gutter and three keys. Markdown only, because a bookmark is
    * written as a MyST comment and a configuration file has no such thing.
    */
+  /**
+   * Source and slides in step, while a deck is being prepared. Always on in
+   * that mode: both panes are there precisely to be read together.
+   */
+  useSlidesScrollSync(text) {
+    this.extensions.push(syncScrollSlides(text));
+    return this;
+  }
+
   useBookmarks() {
     this.extensions.push(bookmarks());
     return this;
