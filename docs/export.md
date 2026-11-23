@@ -67,31 +67,23 @@ project up, and declared there:
 project:
   plugins:
     - myst-plugins/exercise-admonition.mjs
+    - myst-plugins/marks.mjs
+    - myst-plugins/cards-grids.mjs
     - myst-plugins/pyodide-outputs.mjs
+    - myst-plugins/float-lists.mjs
+    - myst-plugins/quiz.mjs
   static_files:
     - _build/pyodide
 ```
 
-In the project rather than referenced from the application, so that the project
-builds for anyone who opens it, with `myst build` alone and without this
-editor. They are kept in step with the application — rewritten when they differ,
-before an export, a build or a site start — but `myst.yml` itself is never
-touched again after the project is created. **A project made before this
-existed, or set up by hand, needs those lines added once.** Without them
-nothing fails: the figures are simply absent, which is the hardest kind of
-defect to attribute.
+In the project rather than referenced from the application, so that the projectbuilds for anyone who opens it, with `myst build` alone and without thiseditor. They are kept in step with the application — rewritten when they differ,before an export, a build or a site start — but `myst.yml` itself is nevertouched again after the project is created. **A project made before this existed, or set up by hand, needs those lines added once.** Without them nothing fails: the figures are simply absent, which is the hardest kind of defect to attribute.
 
-`static_files` is what makes the cell images reachable from the site: the
-editor writes them under `_build/pyodide`, and that entry copies the folder
-into the site's public folder under its own name.
+`static_files` is what makes the cell images reachable from the site: the editor writes them under `_build/pyodide`, and that entry copies the folder into the site's public folder under its own name.
 
 (cells-that-stay-executable-on-the-site)=
 ### Cells that stay executable on the site
 
-The figures the editor computed travel into the site as they are, so a reader
-sees them straight away. If the document also declares a `kernelspec`, the same
-cells can be re-run in the reader's browser, the result replacing the figure in
-place:
+The figures the editor computed travel into the site as they are, so a reader sees them straight away. If the document also declares a `kernelspec`, the same cells can be re-run in the reader's browser, the result replacing the figure in place:
 
 ```yaml
 ---
@@ -109,18 +101,9 @@ project:
     lite: true
 ```
 
-`kernelspec` is what decides, document by document: without it a page is never
-executed and keeps the editor's figures; with it the page becomes replayable.
-`jupyter.lite` is the in-browser kernel (JupyterLite), loaded on demand — a
-reader who never presses Run pays nothing for it. The editor writes
-`jupyter: lite: true` when it creates a project; `kernelspec` is yours to add,
-since it is a statement about that document.
+`kernelspec` is what decides, document by document: without it a page is never executed and keeps the editor's figures; with it the page becomes replayable. `jupyter.lite` is the in-browser kernel (JupyterLite), loaded on demand — a reader who never presses Run pays nothing for it. The editor writes `jupyter: lite: true` when it creates a project; `kernelspec` is yours to add, since it is a statement about that document.
 
-`myst start --execute` exists as well and is rarely what you want: it computes
-the outputs at build time with a **local** Jupyter kernel — so it needs one
-installed, with your packages — and its results are cached and then take
-precedence for good. The editor's own figures already provide the initial state
-without any of that.
+`myst start --execute` exists as well and is rarely what you want: it computes the outputs at build time with a **local** Jupyter kernel — so it needs one installed, with your packages — and its results are cached and then take precedence for good. The editor's own figures already provide the initial state without any of that.
 
 ### The project file as a model for the exports
 

@@ -42,7 +42,7 @@ math:
 
 **Mystral Editor runs Python inside the document!** A `code-cell` block becomes a small editor with its own toolbar; running it executes the code in a Python interpreter living in the page, and the result appears underneath.
 
-For a scientific editor this is more than a convenience, and it is the feature that changes how a document is written. The prose, the computation and the figure it produces live in one file and travel together, so a number in a sentence and the code that produced it cannot drift apart: change the data and re-run, and the text follows. A colleague opening the file gets the argument and the means of checking it at once, without a separate notebook to locate, a script to reconstruct or an environment to install — the interpreter comes with the page. It is the same promise as a computational notebook, made to a document that is meant to be read rather than to a notebook that happens to contain prose. 
+For a scientific editor, this is more than a convenience; it changes how you write a document. The prose, the computation, and the figure it produces live in one file and travel together, so a number in a sentence and the code that produced it cannot drift apart: change the data and re-run, and the text follows. A colleague opening the file gets the argument and the means of checking it at once, without a separate notebook to locate, a script to reconstruct or an environment to install — the interpreter comes with the page. It is the same promise as a computational notebook, made to a document meant to be read rather than a notebook that happens to contain prose. 
 
 This page covers writing and running cells, the namespace a document runs in, what the Python side can and cannot do, the variable inspector, and the settings that govern all of it.  
 
@@ -139,13 +139,7 @@ Those two alt-clicks replace the Run All and Clear All buttons that used to sit 
 
 **✕** deletes the cell, after an inline confirmation.  
 
-**✎** appears in the inline preview only, and turns the cell into its markdown
-source right there in the document. A code cell is the one block the inline
-preview never unfolds when the cursor reaches it — it is already an editor, and
-showing the raw fence instead would only take away execution, highlighting and
-completion — so this button is the way in for whoever edits in inline mode and
-needs to touch the fence itself, its `:label:` or its options. The cell renders
-again as soon as the cursor leaves it, or on `Escape`.  
+**✎** appears in the inline preview only, and turns the cell into its markdown source right there in the document. A code cell is the one block the inline preview never unfolds when the cursor reaches it — it is already an editor, and showing the raw fence instead would only take away execution, highlighting and completion — so this button is the way in for whoever edits in inline mode and needs to touch the fence itself, its `:label:` or its options. The cell renders again as soon as the cursor leaves it, or on `Escape`.  
 
 ### Folding the code away  
 
@@ -280,14 +274,23 @@ The magic line is commented out for a reason worth knowing, since IPython does t
 
 Loading needs a working folder, which means the document must have been saved somewhere; until then the cell says so instead of failing quietly. Nothing is written back — `%load` only reads. To get code from a cell into a file, copy it out.
 
-## What Python can do here  
+## What and which Python, kernels, and what they can do  
 
-The interpreter is [Pyodide](https://pyodide.org): CPython compiled to WebAssembly, running in the page. `numpy`, `matplotlib` and `micropip` are loaded at start-up. Anything else is installed at run time:  
+The default interpreter, with no install, is [Pyodide](https://pyodide.org): CPython compiled to WebAssembly, running in the page. Optionally, in desktop apps, one can also select and use a local Jupyter kernel.  
+What a kernel brings beyond files is a real interrupt on a runaway loop, the packages already installed on the machine including those with compiled extensions, `subprocess` and threads, and the kernel's own completion — which knows the live objects rather than deducing from the text, and therefore answers only once a cell has run. The cost is a kernel to install, a first start of a few seconds, and a document that no longer runs for a reader who has nothing. Pyodide remains the default and the only engine of the web build, and a document that says nothing runs there.
+
+In our Pyodide version, `numpy`, `matplotlib`, and `micropip` are loaded at start-up. Anything else is installed at runtime:  
 
 ``` 
 import micropip 
 await micropip.install("pandas") 
 ```  
+
+For Jupyter Python kernels (other languages) can be used as well), installation follows the usual
+
+```
+%pip install pandas
+```
 
 Top-level `await` works, since cells are executed as coroutines.  
 
@@ -305,7 +308,7 @@ So bokeh under Pyodide needs IPython: `micropip.install("ipython")`, or `:packag
 
 ### Outputs that bring their own JavaScript  
 
-Some libraries draw by shipping a small web page rather than an image: bokeh, plotly, folium and altair all return HTML with a `<script>` in it. Such an output is displayed, but not in the page itself: it is placed in a sandboxed frame of its own, where scripts may run and nothing else — no reach into the editor's document, no storage, no file API. The reason is ownership. That HTML is written by a library, and in a document you received from someone else it could have been written by its author; code running in the page would hold the editor's own privileges, file access included, so `display(HTML(...))` would be enough to read and write on your machine. An output with no script in it keeps its place in the page as before, which is what lets a pandas table stay selectable and copyable in the document.  
+Some libraries draw by shipping a small web page rather than an image: bokeh, plotly, folium and altair all return HTML with a `<script>` in it. Such an output is displayed, but not in the page itself: it is placed in a sandboxed frame of its own, where scripts may run and nothing else — no reach into the editor's document, no storage, no file API. The reason is ownership. That HTML is written by a library, and in a document you received from someone else it could have been written by its author; code running in the page would hold the editor's own privileges, file access included, so `display(HTML(...))` would be enough to read and write on your machine. An output with no script keeps its place in the page as before, which lets a pandas table stay selectable and copyable in the document.  
 
 One frame is built per cell and per run, and it holds *all* of that cell's HTML outputs in the order they were produced — not only those carrying a script. A library spreads one drawing over several outputs: bokeh publishes four, the "Loading BokehJS" line, the loader, the plot's placeholder and the code that fills it, and two of them have no script in them. Leaving those in the page would put the placeholder on one side of the frame boundary and the script looking for it on the other, which draws nothing and says nothing. The consequence to know is that a cell mixing a table and a plot shows the table inside the frame too, where it is no longer selectable; separate cells keep it selectable. A cell calling `output_notebook()` and then `show(p)` works, since both belong to the same cell. Two cells share nothing, which is the price of the isolation: the loader published by `output_notebook()` in one cell is invisible to a `show()` in another, and that second cell draws nothing. The way round it is simply to keep the loader and the plot in the same cell:  
 
