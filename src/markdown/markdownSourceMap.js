@@ -69,7 +69,12 @@ export default function markdownSourceMap(md) {
         addLineAttr(state.tokens[idx]);
       }
 
-      state.tokens[idx].children?.filter?.((c) => c.map && !ignoreTypes.includes(c))?.forEach?.((c) => addLineAttr(c));
+      // `includes(c)` compared a token to a list of type names, so the
+      // filter never filtered. Inert as it stands -- none of the ignored
+      // types ever appears among an inline token's children, and the output
+      // over every document in docs/ is byte-identical either way -- but it
+      // would have quietly failed the day one did.
+      state.tokens[idx].children?.filter?.((c) => c.map && !ignoreTypes.includes(c.type))?.forEach?.((c) => addLineAttr(c));
     }
   });
 }
