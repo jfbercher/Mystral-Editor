@@ -53,6 +53,16 @@ A table's own title comes with it. Wikipedia and many another page put one insid
 
 What comes from HTML keeps its bold, its italics, its inline code and its links; the rest of the markup is dropped. What comes from tab-separated text is taken as plain, and its first row as the header — which is what a spreadsheet paste almost always is.
 
+### Joining the lines a PDF broke
+
+Text copied out of a PDF arrives with a newline at the end of every printed line, because that is what the page had. Markdown reads those as part of the paragraph, so it renders as one block either way — until the passage is edited, reflowed, exported or searched, at which point every line is a little wall. `Mod-Shift-j` puts it back together: the selection if there is one, otherwise the paragraph the caret is in, which is usually where one already is after reading what was pasted.
+
+What it joins is a paragraph and nothing else. A blank line separates paragraphs and is kept; a line that begins something of its own — a heading, a list item, a quote, a table row, a fence, a directive, a definition, a MyST comment — keeps the break before it; a heading, a quote or a table row is never appended to; and inside a fenced or colon-delimited block nothing is touched at all, a line break there being the code's own. Markdown's explicit hard breaks, two spaces at the end of a line or a trailing backslash, are removed along the way: they are what the command is named after.
+
+A word the page cut in two is put back together: `exem-` followed by `ple` gives `exemple`. The hyphen is kept when what follows begins with a capital, since `Marie-` before `Claire` is a name and not an accident — and in both readings nothing separates the two halves.
+
+The joined passage stays selected, so a second thought is one undo away and the eye finds what moved.
+
 ### Pasting a page
 
 A fragment copied from a web page or a word processor carries its markup in the clipboard — headings, lists, quotes, code, links — and pasting it as text flattens every one of them. The same notice therefore offers to convert it to Markdown, on the same terms: the paste itself is untouched, the offer is one button, and one undo puts the text back.

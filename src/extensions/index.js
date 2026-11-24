@@ -71,6 +71,7 @@ import { mystComments } from "./mystComments";
 import { caretFollowsTheClick } from "./focusClick";
 import { bookmarks } from "./bookmarks.js";
 import { syncScrollSlides } from "./syncScrollSlides.js";
+import { joinLines } from "./joinLines.js";
 
 
 
@@ -316,6 +317,16 @@ export class ExtensionBuilder {
    */
   useSlidesScrollSync(text) {
     this.extensions.push(syncScrollSlides(text));
+    return this;
+  }
+
+  /**
+   * Put back together the lines a PDF broke, on the selection or on the
+   * paragraph the caret is in. Markdown only: the rule is made of markdown
+   * structure, and a configuration file has none.
+   */
+  useJoinLines() {
+    this.extensions.push(joinLines());
     return this;
   }
 

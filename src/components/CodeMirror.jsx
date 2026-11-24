@@ -570,6 +570,7 @@ const tA = performance.now();
             })
             .useMystComments()
             .useBookmarks()
+            .useJoinLines()
             .useOrphanFenceCheck()
             .useProofLabelCaseCheck(),
         )

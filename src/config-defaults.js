@@ -153,6 +153,12 @@ export const DEFAULT_CONFIG = {
     open:   "Mod-Shift-o", 
     // Open a new tab
     newTab: "Mod-Shift-e", 
+    // Join the lines of the selection, or of the paragraph the caret is in:
+    // what a passage pasted from a PDF needs, every printed line arriving as
+    // its own. `j` for join. Free in the desktop application; in a browser on
+    // Windows and Linux, Chrome keeps Ctrl-Shift-J for its developer tools,
+    // which is one more reason these are configurable.
+    joinLines: "Mod-Shift-j",
     // Place or remove a bookmark on the current line
     bookmarkToggle:   "Mod-Shift-b",
     //  Move to the next bookmark

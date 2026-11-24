@@ -67,6 +67,7 @@ An unreadable or malformed `config.json` is not fatal — it is reported in the 
 | `shortcuts.modeDual` | `"Mod-Shift-d"` | Switch to the dual pane |
 | `shortcuts.modePreview` | `"Mod-Shift-p"` | Switch to the preview alone |
 | `shortcuts.modeInline` | `"Mod-Shift-l"` | Switch to the inline preview |
+| `shortcuts.joinLines` | `"Mod-Shift-j"` | Join the broken lines of a passage. Free in the desktop application; in a browser on Windows and Linux, Chrome keeps `Ctrl-Shift-J` for its developer tools |
 | `shortcuts.modeHelp` | `"Mod-Shift-h"` | Show the documentation in a pane |
 | `shortcuts.bookmarkToggle` | `"Mod-Shift-b"` | Place or remove a bookmark on the current line |
 | `shortcuts.bookmarkNext` | `"Mod-Shift-n"` | Go to the next bookmark, cycling |

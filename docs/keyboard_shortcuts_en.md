@@ -27,6 +27,7 @@ extends: mdocs_fm.yml
 | *(none by default)* | Source only — `shortcuts.modeSource` |
 | *(none by default)* | The MyST site in a pane — `shortcuts.modeSite` |
 | `Mod-Shift-h` | The documentation, in a pane |
+| `Mod-Shift-j` | Join the broken lines of the selection, or of the paragraph the caret is in |
 | `Mod-Shift-b` | Place or remove a bookmark on the current line |
 | `Mod-Shift-n` | Go to the next bookmark, cycling |
 | `Mod-Alt-n` | Go to the previous one |
