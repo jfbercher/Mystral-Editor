@@ -2902,6 +2902,12 @@ function slidesPrintCss(w, h) {
     // second one.
     `  html-chunk + html-chunk { break-before: page; }`,
     `  hr.slide-break, hr.fragment-break { display: none !important; }`,
+    // A fragment marker between two items ends a list and opens another, and
+    // the two carry margins the single list did not. The preview drops them
+    // so that a cut list keeps the spacing it was written with; the page has
+    // to drop them too, or the same slide is laid out two ways.
+    `  hr.fragment-break + ul, hr.fragment-break + ol { margin-top: 0 !important; }`,
+    `  ul:has(+ hr.fragment-break), ol:has(+ hr.fragment-break) { margin-bottom: 0 !important; }`,
     // Everything is on the page at once: a reveal that survived into print
     // would hand out slides carrying their first third only.
     `  hr.fragment-break ~ * { visibility: visible !important; }`,

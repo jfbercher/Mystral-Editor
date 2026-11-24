@@ -24,6 +24,8 @@ Revealed after it.
 
 `---` ends a slide. `----` ends a *fragment*: the part after it belongs to the same slide and is revealed separately during the presentation. Fragments are cumulative — what has been revealed stays on screen, which is what one wants when uncovering a list point by point.
 
+In the slide preview a fragment marker shows as a small numbered circle in the slide's left margin, outside the text, saying in which order the parts come up and how many steps the slide takes. It is drawn out of the flow and takes no room: a slide with fragments is laid out exactly like the same slide without them, so the preview shows what the projector will. A marker between two list items is given back the spacing of the single list it was written as; an ordered list, however, starts again at one after the cut, so write the next number yourself (`3.` after the marker) if you want the count to carry on.
+
 `+++` and `++++` mean the same two things:
 
 ```

@@ -903,22 +903,71 @@ const SlideStyles = css`
     display: none;
   }
 
-  /* The fragment marker is a marker, not a rule -- and it was being drawn as
-     one, right across the slide. It went unnoticed because it is usually
-     pushed out of a box that already overflows: lower the type size until the
-     slide fits and the bar appears, which reads as a bug introduced by the
-     type size and is in fact the thing that was always there.
+  /* The fragment marker is a marker, not a rule, and it must cost nothing.
 
-     Kept visible while editing, because it says where the reveal happens, but
-     drawn as a faint dashed line nobody would take for the document's own
-     horizontal rule. Gone the moment the deck is projected, exported or
-     printed, where it would only be a line across the slide. */
+     Drawn in the flow -- as a dashed line with margins -- it pushed the two
+     blocks it separates apart, so a slide with fragments was not laid out
+     like the same slide without them, and the preview did not show what the
+     projector would: measured at a 28px slide, 29 extra pixels between two
+     paragraphs and 57 between two list items. Worse, it only appeared while
+     editing, so the preview disagreed with the projection it is there to
+     preview.
+
+     So the marker takes no room at all. The rule is an empty box -- no
+     height, no border, no margin -- and the number is painted out of flow in
+     the slide's own left padding, where it cannot touch the text column. It
+     numbers the reveals, which a line could not: the author sees in which
+     order the blocks come up, and how many steps the slide takes.
+
+     A list pays a second, separate cost: a marker between two items ends the
+     list and opens another, and two lists carry their own margins where one
+     carried none (hence the 57 pixels, not 29 -- the chunk is a flex column,
+     where margins never collapse). Those two margins are dropped below, so a
+     cut list reads as the single list it was written as. What a cut cannot
+     restore is the numbering of an ordered list, which starts again at one:
+     markdown's own answer is to write the next number after the break, and
+     markdown-it turns it into the start attribute. */
   hr.fragment-break {
     height: 0;
     border: 0;
-    border-top: 1px dashed var(--border);
-    opacity: 0.45;
-    margin: 0.3em 0;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    overflow: visible;
+    counter-increment: slide-fragment;
+  }
+
+  hr.fragment-break::before {
+    content: counter(slide-fragment);
+    position: absolute;
+    /* Right of 100% is left of the text column, inside the slide's padding,
+       so nothing is clipped by the chunk's overflow: hidden. */
+    right: 100%;
+    margin-right: 0.4em;
+    font-size: 0.5em;
+    top: -0.55em;
+    min-width: 1.1em;
+    height: 1.1em;
+    line-height: 1.05em;
+    box-sizing: border-box;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--icon-color, #555);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  /* A cut list, given back the spacing of the single list it was written as.
+     The selectors match whether or not the marker is displayed, so projecting
+     changes nothing in the layout. */
+  hr.fragment-break + :is(ul, ol) {
+    margin-top: 0;
+  }
+
+  :is(ul, ol):has(+ hr.fragment-break) {
+    margin-bottom: 0;
   }
 
   &.presenting hr.fragment-break {
@@ -965,6 +1014,8 @@ const SlideStyles = css`
     flex-direction: column;
     justify-content: var(--slide-align, flex-start);
     position: relative;
+    /* Each slide numbers its own reveals, from one. */
+    counter-reset: slide-fragment;
     box-sizing: border-box;
     width: var(--slide-w, 1280px);
     height: var(--slide-h, 720px);
