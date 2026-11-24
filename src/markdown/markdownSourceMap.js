@@ -51,6 +51,16 @@ export default function markdownSourceMap(md) {
             continue;
           }
 
+          // Strong emphasis leaves an empty text token where its delimiter
+          // was: `**b**` parses as text(""), strong_open, text("b"),
+          // strong_close, text(""). Rendered, that empty token used to carry
+          // the line id -- the first child to be given a map wins it -- and
+          // came out as an empty span in front of the <strong>. Single
+          // emphasis leaves no such token, which is why bold misbehaved
+          // where italic did not. Skip them: the id belongs on the text one
+          // can see and click.
+          if (childToken.type === "text" && childToken.content === "") continue;
+
           if (!childToken.type.includes("_open")) {
             childToken.map = [state.tokens[idx].map[0] + lineInParagraph, state.tokens[idx].map[0] + lineInParagraph + 1];
           }
@@ -133,6 +143,10 @@ function wrapTextInSpan(/** @type {markdownIt} */ md) {
   md.renderer.rules.text = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const defaultOutput = defaultTextRule(tokens, idx, options, env, self);
+    // An empty text token carries nothing to map and nothing to show. Wrapped
+    // all the same, it put an empty span in the document -- which is a node
+    // the preview has to lay out, and which changed where a list marker fell.
+    if (!defaultOutput && !token.attrs?.length) return defaultOutput;
     let html = `<span${self.renderAttrs(token)}>${defaultOutput}</span>`;
     return html;
   };
